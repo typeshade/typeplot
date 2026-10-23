@@ -41,7 +41,9 @@ export function typeplot(options: TypePlotPluginOptions = {}): Plugin {
       const kind =
         mode === "3d" || mode === "parametric"
           ? "parametric"
-          : (configured.kind ?? "scalar");
+          : mode === "2d" || mode === "scalar"
+            ? "scalar"
+            : (configured.kind ?? "scalar");
       const program = compilePlot(readFileSync(fileName, "utf8"), {
         ...configured,
         fileName,
