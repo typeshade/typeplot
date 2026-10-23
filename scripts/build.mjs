@@ -51,8 +51,10 @@ await build({
   )
     .filter(([, value]) => value.bytesInOutput > 0)
     .map(([name]) => name);
+  // Device-owned runtime plans may include TypeShade's IR emitter. Its TypeScript
+  // frontend and language service must never enter the browser bundle.
   const leaked = shipped.filter((p) =>
-    /typescript\/|typeshade\/src\/(compiler|core\/emit)/.test(p),
+    /typescript\/|typeshade\/src\/(compiler|language-service)\//.test(p),
   );
   if (leaked.length)
     throw new Error(`Compiler leaked into browser entry: ${leaked.join(", ")}`);

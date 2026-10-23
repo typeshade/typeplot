@@ -1,4 +1,10 @@
-import { createRuntime, type Pack, type Runtime } from "typeshade/runtime";
+import {
+  createRuntime,
+  type Pack,
+  type Runtime,
+  type Texture,
+} from "typeshade/runtime";
+import { loadGlyphAtlas } from "./font.js";
 import { createPlotInteraction } from "./interaction.js";
 import type {
   Plot,
@@ -6,6 +12,7 @@ import type {
   PlotOptions,
   PlotProgram,
   PlotProjection,
+  PlotStyle,
 } from "./types.js";
 import { plot as plotData } from "./data.js";
 import type { Figure, NumericData, QuickPlotOptions } from "./data.js";
@@ -31,6 +38,7 @@ export type {
   PlotOptions,
   PlotProgram,
   PlotProjection,
+  PlotStyle,
 } from "./types.js";
 
 const ACTIVE = new WeakSet<HTMLCanvasElement>();
@@ -40,9 +48,12 @@ const RESERVED = new Set([
   "plotCenter",
   "plotSpan",
   "plotRotation",
+  "plotPan",
   "plotBlend",
   "probe",
   "view3d",
+  "appearance",
+  "decorations",
 ]);
 
 function finite(value: number, name: string): number {
@@ -158,6 +169,47 @@ export async function createPlot(
   Object.assign(parameters, options.parameters);
   const initialParameters = { ...parameters };
   const initialMode = mode;
+  const manifest = program.manifest as Pack;
+  const supportsStyle = manifest.bindings.some(
+    (binding) => binding.name === "font",
+  );
+  const style: Required<PlotStyle> = {
+    axisWidth: 1,
+    gridWidth: 1,
+    curveWidth: 2,
+    labelSize: 11,
+    grid: true,
+    tickLabels: true,
+    axisLabels: true,
+  };
+  const checkStyle = (value: PlotStyle): void => {
+    if (!supportsStyle)
+      throw new Error(
+        "Recompile this TypePlot program to configure its style.",
+      );
+    for (const [key, setting] of Object.entries(value)) {
+      if (!Object.hasOwn(style, key))
+        throw new TypeError(`Unknown plot style '${key}'.`);
+      if (["grid", "tickLabels", "axisLabels"].includes(key)) {
+        if (typeof setting !== "boolean")
+          throw new TypeError(`${key} must be a boolean.`);
+      } else if (
+        typeof setting !== "number" ||
+        !Number.isFinite(setting) ||
+        setting < (key === "labelSize" ? 6 : 0) ||
+        setting > (key === "labelSize" ? 48 : 32)
+      ) {
+        throw new RangeError(
+          `${key} must be ${key === "labelSize" ? "6–48" : "0–32"} CSS pixels.`,
+        );
+      }
+    }
+  };
+  if (options.style) {
+    checkStyle(options.style);
+    Object.assign(style, options.style);
+  }
+  const initialStyle = { ...style };
   const original = {
     width: canvas.width,
     height: canvas.height,
@@ -177,8 +229,8 @@ export async function createPlot(
     );
   }
   if (original.role === null) canvas.setAttribute("role", "img");
-  const manifest = program.manifest as Pack;
   let rt: Runtime | undefined;
+  let glyphs: Texture | undefined;
   let context: GPUCanvasContext | WebGL2RenderingContext | undefined;
   let controller: ReturnType<typeof createPlotInteraction> | undefined;
   let observer: ResizeObserver | undefined;
@@ -229,6 +281,7 @@ export async function createPlot(
     controller?.destroy();
     if (rt?.tier === "webgpu")
       (context as GPUCanvasContext | undefined)?.unconfigure();
+    glyphs?.destroy();
     rt?.destroy();
     restoreCanvas();
   }
@@ -289,6 +342,9 @@ export async function createPlot(
     const runtime = rt;
     const target = context;
     const pipeline = await runtime.load(manifest).render({ targets: [format] });
+    // Older manifests have no font binding and remain usable without recompilation.
+    if (manifest.bindings.some((binding) => binding.name === "glyphAtlas"))
+      glyphs = await loadGlyphAtlas(runtime);
     let preparedSizing = false;
     controller = createPlotInteraction(
       canvas,
@@ -335,17 +391,49 @@ export async function createPlot(
       if (canvas.height !== nextHeight) canvas.height = nextHeight;
       const u = {
         ...parameters,
-        resolution: [canvas.width, canvas.height],
+        resolution: [box.width, box.height],
+        ...(supportsStyle
+          ? {
+              appearance: [
+                style.axisWidth,
+                style.gridWidth,
+                style.curveWidth,
+                style.labelSize,
+              ],
+              decorations:
+                (style.grid ? 1 : 0) |
+                (style.tickLabels ? 2 : 0) |
+                (style.axisLabels ? 4 : 0),
+            }
+          : {}),
         plotCenter: controller!.value("plotCenter"),
         plotSpan: controller!.value("plotSpan"),
         plotRotation: controller!.value("plotRotation"),
+        plotPan: controller!.value("plotPan"),
         plotBlend: controller!.value("plotBlend")![0],
         probe,
         view3d: mode === "3d" ? (projection === "perspective" ? 2 : 1) : 0,
       };
       const frame = runtime.frame();
       frame.pass({ color: [target] }, (pass) =>
-        pass.draw(pipeline, { u } as never, { count: 3 }),
+        pass.draw(
+          pipeline,
+          {
+            u,
+            ...(glyphs
+              ? {
+                  glyphAtlas: glyphs,
+                  font: {
+                    pixelRatio: Math.min(
+                      canvas.width / box.width,
+                      canvas.height / box.height,
+                    ),
+                  },
+                }
+              : {}),
+          } as never,
+          { count: 3 },
+        ),
       );
       await frame.submit();
     };
@@ -366,6 +454,12 @@ export async function createPlot(
         checkMode(value);
         mode = value;
         controller!.setMode(value === "3d");
+        requestDraw();
+      },
+      setStyle(value) {
+        alive();
+        checkStyle(value);
+        Object.assign(style, value);
         requestDraw();
       },
       setProbe(value) {
@@ -396,6 +490,7 @@ export async function createPlot(
       reset() {
         alive();
         probe = initialProbe;
+        Object.assign(style, initialStyle);
         Object.assign(parameters, initialParameters);
         mode = initialMode;
         projection = initialProjection;

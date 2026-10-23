@@ -1,5 +1,9 @@
 import {
   createRuntime,
+  resident,
+  type Resident,
+  createDevice,
+  type Device,
   type Runtime,
   type Pack,
   type Texture,
@@ -7,7 +11,7 @@ import {
   type RenderPass,
 } from "typeshade/runtime";
 import manifest from "../.build/data-program.json";
-import atlasUrl from "../assets/typeplot-font.png";
+import { loadGlyphAtlas } from "./font.js";
 import type { AxesOptions, SeriesOptions } from "./data.js";
 
 export type Backend = "webgpu" | "webgl2";
@@ -129,51 +133,12 @@ function letters(
   }
   return new Float32Array(points);
 }
-function checked(value: number, log: boolean): boolean {
-  return (
-    Number.isFinite(value) &&
-    Math.abs(value) <= 3.402823466e38 &&
-    (!log || value > 0)
-  );
-}
-function records(
-  series: RenderSeries,
-  axes: RenderAxes,
-  mode: "line" | "points" | "bar",
-): Float32Array {
-  const data = series.data,
-    count = mode === "line" ? Math.max(0, data.x.length - 1) : data.x.length;
-  const out = new Float32Array(count * 5);
-  const logX = axes.settings.xScale === "log",
-    logY = axes.settings.yScale === "log";
-  for (let i = 0; i < count; i++) {
-    const x = data.x[i],
-      y = data.y[i];
-    const a =
-      mode === "bar" ? (series.edges?.[i] ?? x - series.style.width / 2) : x;
-    const b =
-      mode === "bar"
-        ? (series.edges?.[i + 1] ?? x + series.style.width / 2)
-        : mode === "line"
-          ? data.x[i + 1]
-          : x;
-    const end =
-      mode === "bar"
-        ? logY
-          ? 10 ** axes.bounds.y[0]
-          : 0
-        : mode === "line"
-          ? data.y[i + 1]
-          : y;
-    const valid =
-      checked(x, logX) &&
-      checked(y, logY) &&
-      checked(a, logX) &&
-      checked(b, logX) &&
-      checked(end, logY);
-    out.set(valid ? [a, y, b, end, 1] : [0, 0, 0, 0, 0], i * 5);
-  }
-  return out;
+interface SampleResource {
+  data: RenderSeries["data"];
+  points: Resident<Float32Array>;
+  count: number;
+  ordered: boolean;
+  period: number;
 }
 
 /** One runtime and glyph texture per figure; all visible geometry and text comes from TypeShade. */
@@ -182,6 +147,8 @@ export class GpuRenderer {
   private series!: RenderPipeline;
   private text!: RenderPipeline;
   private glyphs!: Texture;
+  private device?: Device;
+  private samples = new Map<RenderSeries, SampleResource>();
   private destroyed = false;
   private constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -254,45 +221,13 @@ export class GpuRenderer {
         targets: [{ format: this.format, blend: BLEND }],
       });
     this.axes = await make("surfaceVertex", "axesFragment");
-    this.series = await make("seriesVertex", "seriesFragment");
+    this.series = await make("surfaceVertex", "seriesFragment");
     this.text = await make("textVertex", "textFragment");
-    const response = await fetch(atlasUrl);
-    const image = await createImageBitmap(await response.blob(), {
-      premultiplyAlpha: "none",
-      colorSpaceConversion: "none",
-    });
-    try {
-      this.glyphs = this.runtime.texture({
-        size: [image.width, image.height],
-        format: "rgba8unorm",
-      });
-      if (this.backend === "webgpu")
-        (this.runtime.device as GPUDevice).queue.copyExternalImageToTexture(
-          { source: image },
-          { texture: this.glyphs.texture as GPUTexture },
-          [image.width, image.height],
-        );
-      else {
-        const gl = this.target as WebGL2RenderingContext;
-        const bound = gl.getParameter(
-          gl.TEXTURE_BINDING_2D,
-        ) as WebGLTexture | null;
-        gl.bindTexture(gl.TEXTURE_2D, this.glyphs.texture as WebGLTexture);
-        gl.texSubImage2D(
-          gl.TEXTURE_2D,
-          0,
-          0,
-          0,
-          gl.RGBA,
-          gl.UNSIGNED_BYTE,
-          image,
-        );
-        gl.bindTexture(gl.TEXTURE_2D, bound);
-      }
-    } finally {
-      image.close();
-    }
+    if (this.backend === "webgpu")
+      this.device = await createDevice({ runtime: this.runtime });
+    this.glyphs = await loadGlyphAtlas(this.runtime);
   }
+
   private uniform(
     axes: RenderAxes,
     width: number,
@@ -317,6 +252,62 @@ export class GpuRenderer {
       legend,
       focus: axes.focused ? 1 : 0,
     };
+  }
+  /** Input data stays resident. Camera changes update uniforms, not path geometry. */
+  private sampleResource(series: RenderSeries): SampleResource {
+    const previous = this.samples.get(series);
+    if (previous?.data === series.data) return previous;
+    if (previous) this.release(previous.points);
+    const { x, y } = series.data;
+    const ordered = x.every(
+      (value, i) => Number.isFinite(value) && (i === 0 || value > x[i - 1]),
+    );
+    const useX =
+      series.style.parameter === "x" ||
+      (series.style.parameter === "auto" && ordered);
+    const packed = new Float32Array(x.length * (series.kind === "bar" ? 5 : 4));
+    let lower = Infinity,
+      upper = -Infinity;
+    for (let i = 0; i < x.length; i++) {
+      const parameter = useX ? x[i] : i;
+      if (series.kind === "bar")
+        packed.set(
+          [
+            series.edges?.[i] ?? x[i] - series.style.width / 2,
+            y[i],
+            series.edges?.[i + 1] ?? x[i] + series.style.width / 2,
+            0,
+            1,
+          ],
+          i * 5,
+        );
+      else packed.set([x[i], y[i], parameter, 1], i * 4);
+      if (Number.isFinite(parameter)) {
+        lower = Math.min(lower, parameter);
+        upper = Math.max(upper, parameter);
+      }
+    }
+    const resource = {
+      data: series.data,
+      points: this.device ? this.device.array(packed) : resident(packed),
+      count: x.length,
+      ordered,
+      period: series.style.dashPeriod || Math.max((upper - lower) / 60, 1e-20),
+    };
+    this.samples.set(series, resource);
+    return resource;
+  }
+  private release(points: Resident<Float32Array>): void {
+    if (this.device) this.device.release(points);
+    else points.destroy();
+  }
+  private prune(scene: Scene): void {
+    const live = new Set(scene.axes.flatMap((axes) => axes.series));
+    for (const [series, resource] of this.samples)
+      if (!live.has(series)) {
+        this.release(resource.points);
+        this.samples.delete(series);
+      }
   }
   private scene(
     pass: RenderPass,
@@ -346,7 +337,12 @@ export class GpuRenderer {
       const data = letters(value, x, y, size, align, rotate);
       pass.draw(
         this.text,
-        { u, text: { color: tint }, glyphAtlas: this.glyphs } as never,
+        {
+          u,
+          text: { color: tint },
+          glyphAtlas: this.glyphs,
+          font: { pixelRatio: Math.min(ratioX, ratioY) },
+        } as never,
         { vertices: data, count: data.length / 7 },
       );
     };
@@ -386,28 +382,60 @@ export class GpuRenderer {
             ]
           : [0, 0, 0, 0];
       const u = this.uniform(axes, cellWidth, cellHeight, bg, legend);
-      pass.draw(this.axes, { u, glyphAtlas: this.glyphs } as never, {
-        count: 3,
-      });
+      pass.draw(
+        this.axes,
+        {
+          u,
+          glyphAtlas: this.glyphs,
+          font: { pixelRatio: Math.min(ratioX, ratioY) },
+        } as never,
+        {
+          count: 3,
+        },
+      );
       for (const series of axes.series) {
         const style = series.style,
           tint = color(style.color, doc);
         tint[3] *= style.alpha;
         const draw = (mode: "line" | "points" | "bar") => {
-          const points = records(series, axes, mode);
-          if (!points.length) return;
+          const resource = this.sampleResource(series);
+          const points = resource.points;
+          const count = resource.count;
+          if (!count) return;
           const s = {
             color: tint,
             kind: mode === "line" ? 0 : mode === "points" ? 1 : 2,
             width: mode === "line" ? style.lineWidth : style.markerSize,
             dash:
-              style.lineStyle === "--" ? 1 : style.lineStyle === ":" ? 2 : 0,
+              mode === "line"
+                ? style.lineStyle === "--"
+                  ? 1
+                  : style.lineStyle === ":"
+                    ? 2
+                    : 0
+                : 0,
             marker: style.marker === "s" ? 1 : 0,
+            count,
+            ordered:
+              resource?.ordered &&
+              (axes.settings.xScale !== "log" || series.data.x[0] > 0)
+                ? 1
+                : 0,
+            period: resource?.period ?? 1,
+            offset: style.dashOffset,
           };
-          pass.draw(this.series, { u, s, points } as never, {
-            count: 6,
-            instances: points.length / 5,
-          });
+          pass.draw(
+            this.series,
+            {
+              u,
+              s,
+              points,
+              font: { pixelRatio: Math.min(ratioX, ratioY) },
+            } as never,
+            {
+              count: 3,
+            },
+          );
         };
         if (series.kind === "bar") draw("bar");
         else {
@@ -418,7 +446,11 @@ export class GpuRenderer {
       }
       pass.draw(
         this.axes,
-        { u: { ...u, layer: 1 }, glyphAtlas: this.glyphs } as never,
+        {
+          u: { ...u, layer: 1 },
+          glyphAtlas: this.glyphs,
+          font: { pixelRatio: Math.min(ratioX, ratioY) },
+        } as never,
         { count: 3 },
       );
       text(u, axes.settings.title ?? "", (76 + cellWidth - 24) / 2, 6, 14, 0.5);
@@ -472,7 +504,11 @@ export class GpuRenderer {
       );
       pass.draw(
         this.axes,
-        { u: { ...u, grid: 0 }, glyphAtlas: this.glyphs } as never,
+        {
+          u: { ...u, grid: 0 },
+          glyphAtlas: this.glyphs,
+          font: { pixelRatio: Math.min(ratioX, ratioY) },
+        } as never,
         { count: 3 },
       );
       text(u, scene.title, scene.width / 2, 8, 16, 0.5);
@@ -485,6 +521,7 @@ export class GpuRenderer {
     if (this.canvas.width !== width) this.canvas.width = width;
     if (this.canvas.height !== height) this.canvas.height = height;
     const frame = this.runtime.frame();
+    this.prune(scene);
     frame.pass(
       {
         color: [
@@ -511,6 +548,7 @@ export class GpuRenderer {
     });
     try {
       const frame = this.runtime.frame();
+      this.prune(scene);
       frame.pass(
         {
           color: [
@@ -548,8 +586,12 @@ export class GpuRenderer {
     if (this.destroyed) return;
     this.destroyed = true;
     this.glyphs?.destroy();
+    for (const resource of this.samples.values()) this.release(resource.points);
+    this.samples.clear();
     if (this.backend === "webgpu")
       (this.target as GPUCanvasContext | undefined)?.unconfigure();
-    this.runtime.destroy();
+    if (this.device)
+      void this.device.dispose().then(() => this.runtime.destroy());
+    else this.runtime.destroy();
   }
 }

@@ -172,8 +172,13 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "Render a spatial curve",
-          text: "A parametric callback returns vec3. Its first argument is the curve parameter. The x bounds supply its parameter interval; x/y bounds normalize the camera. Spatial plots use a bounded polyline and open in 3D with perspective projection. Orthographic projection is also available; 2D always uses orthographic projection.",
+          text: "A parametric callback returns vec3. Its first argument is the curve parameter. The x bounds supply its parameter interval; x/y bounds normalize the camera. Spatial curves evaluate bounded intervals of the callback as a distance field in the fragment shader, with no uploaded curve mesh. They open in 3D with perspective projection. Orthographic projection is also available; 2D always uses orthographic projection.",
           code: helixCode,
+        },
+        {
+          title: "Shader appearance and navigation",
+          text: "Axes and ticks default to 1 CSS px. style and setStyle configure axisWidth, gridWidth, curveWidth, labelSize, grid, tickLabels and axisLabels. Widths stay independent of zoom and display density. Left-drag orbits in 3D, right-drag pans, and both buttons pan in 2D. Spatial axes and the ground lattice are implicit distance fields using the same camera as the curve.",
+          code: `plot.setStyle({ axisWidth: 1, gridWidth: 0.5, curveWidth: 2, labelSize: 12, tickLabels: true });`,
         },
         {
           title: "Host integration and resources",
@@ -200,7 +205,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "Style and axes options",
-          text: "Series styles use label, color, lineWidth, lineStyle, marker, markerSize and alpha. Line styles are -, --, : and none. Markers are o, s and none. Axes can have linear or log xScale/yScale, fixed xLimits/yLimits, titles, labels, grids and legends.",
+          text: "Series styles use label, color, lineWidth, lineStyle, marker, markerSize and alpha. Procedural dashes repeat in parameter coordinates: parameter selects auto/x/index, dashPeriod sets the period, and dashOffset shifts it. Line styles are -, --, : and none. Markers are o, s and none. Axes can have linear or log xScale/yScale, fixed xLimits/yLimits, titles, labels, grids and legends.",
           code: `ax.plot(x, y, {\n  label: "Measurements", color: "#1677ff",\n  lineWidth: 2, lineStyle: "--", marker: "o", markerSize: 3,\n});\nax.set({ xScale: "log", xLimits: [1, 100], grid: true });`,
         },
         {
@@ -224,8 +229,12 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
               "Update declared finite f32 parameters; unknown names are rejected.",
             ],
             [
-              "plot.setMode / setProbe / bounds",
+              "plot.setMode / setProjection / setProbe / bounds",
               "Switch 2D/3D mode, select perspective/orthographic projection, set the probe or read bounds.",
+            ],
+            [
+              "plot.setStyle(style)",
+              "Configure CSS-pixel widths, label size and shader decorations without resetting the camera.",
             ],
             [
               "plot.reset / redraw / destroy",
@@ -327,8 +336,13 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "공간 곡선 표시",
-          text: "매개변수 곡선 콜백은 vec3를 반환합니다. 첫 인수는 곡선의 매개변수입니다. x 범위는 매개변수 구간을 정하며, x/y 범위는 카메라 정규화에 사용합니다. 공간 그래프는 제한된 수의 선분으로 그리며 Perspective 투영의 3D로 시작합니다. 3D에서는 Orthographic으로 전환할 수 있습니다. 2D는 항상 Orthographic을 사용합니다.",
+          text: "매개변수 곡선 콜백은 vec3를 반환합니다. 첫 인수는 곡선의 매개변수입니다. x 범위는 매개변수 구간을 정하며, x/y 범위는 카메라 정규화에 사용합니다. 공간 곡선은 콜백의 유한한 구간을 프래그먼트 셰이더에서 거리장으로 평가하며 곡선 메시를 업로드하지 않습니다. Perspective 투영의 3D로 시작합니다. 3D에서는 Orthographic으로 전환할 수 있습니다. 2D는 항상 Orthographic을 사용합니다.",
           code: helixCode,
+        },
+        {
+          title: "셰이더 스타일과 탐색",
+          text: "축과 눈금의 기본 굵기는 1 CSS px입니다. style과 setStyle에서 axisWidth, gridWidth, curveWidth, labelSize, grid, tickLabels, axisLabels를 설정합니다. 굵기는 줌과 화면 배율에 영향을 받지 않습니다. 3D에서는 왼쪽 드래그로 회전하고 오른쪽 드래그로 이동하며, 2D에서는 양쪽 버튼으로 이동합니다. 공간 축과 바닥 격자는 곡선과 같은 카메라를 사용하는 암시적 거리장입니다.",
+          code: `plot.setStyle({ axisWidth: 1, gridWidth: 0.5, curveWidth: 2, labelSize: 12, tickLabels: true });`,
         },
         {
           title: "앱 연결과 리소스",
@@ -355,7 +369,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "계열 스타일과 축 옵션",
-          text: "계열에는 label, color, lineWidth, lineStyle, marker, markerSize, alpha를 지정합니다. 선 종류는 -, --, :, none이며, 마커는 o, s, none입니다. xScale/yScale은 linear 또는 log이고 xLimits/yLimits로 범위를 고정합니다.",
+          text: "계열에는 label, color, lineWidth, lineStyle, marker, markerSize, alpha를 지정합니다. 절차형 대시는 곡선 매개변수 좌표에서 반복하며 parameter(auto/x/index), dashPeriod, dashOffset으로 기준·주기·위상을 조절합니다. 선 종류는 -, --, :, none이며, 마커는 o, s, none입니다. xScale/yScale은 linear 또는 log이고 xLimits/yLimits로 범위를 고정합니다.",
           code: `ax.plot(x, y, {\n  label: "Measurements", color: "#1677ff",\n  lineWidth: 2, lineStyle: "--", marker: "o", markerSize: 3,\n});\nax.set({ xScale: "log", xLimits: [1, 100], grid: true });`,
         },
         {
@@ -379,8 +393,12 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
               "선언된 유한 f32 매개변수를 갱신합니다. 알 수 없는 이름은 거부합니다.",
             ],
             [
-              "plot.setMode / setProbe / bounds",
+              "plot.setMode / setProjection / setProbe / bounds",
               "2D/3D 모드, Perspective/Orthographic 투영, 프로브와 현재 범위를 관리합니다.",
+            ],
+            [
+              "plot.setStyle(style)",
+              "카메라를 초기화하지 않고 CSS px 단위의 굵기와 글자 크기, 격자·라벨 표시를 설정합니다.",
             ],
             [
               "plot.reset / redraw / destroy",

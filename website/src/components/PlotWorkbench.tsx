@@ -13,11 +13,22 @@ import {
   type Plot,
   type PlotProgram,
   type PlotProjection,
+  type PlotStyle,
 } from "../vendor/typeplot/index.js";
 import power from "../vendor/typeplot/curve.js";
 import helix from "../vendor/typeplot/helix.js";
 import { exampleCode, type Preset } from "../content/samples";
 import version from "../vendor/typeplot/version.json";
+
+const DEFAULT_STYLE: Required<PlotStyle> = {
+  axisWidth: 1,
+  gridWidth: 1,
+  curveWidth: 2,
+  labelSize: 11,
+  grid: true,
+  tickLabels: true,
+  axisLabels: true,
+};
 
 type Backend = "auto" | "webgpu" | "webgl2";
 export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
@@ -28,6 +39,7 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
   const [backend, setBackend] = useState<Backend>("auto");
   const [threeD, setThreeD] = useState(false);
   const [projection, setProjection] = useState<PlotProjection>("perspective");
+  const [style, setStyle] = useState(DEFAULT_STYLE);
   const [dark, setDark] = useState(false);
   const [status, setStatus] = useState(
     ko ? "그래프를 준비하고 있습니다…" : "Preparing the plot…",
@@ -41,8 +53,8 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
     gpu?: Plot;
     signal?: { x: Float64Array; lines: Series[] };
   }>({});
-  const desired = useRef({ exponent, threeD, projection });
-  desired.current = { exponent, threeD, projection };
+  const desired = useRef({ exponent, threeD, projection, style });
+  desired.current = { exponent, threeD, projection, style };
   const gpu = preset === "power" || preset === "helix";
   useEffect(() => {
     const update = () =>
@@ -180,6 +192,7 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
           }
           plot = result;
           const current = desired.current;
+          result.setStyle(current.style);
           result.setMode(preset === "helix" || current.threeD ? "3d" : "2d");
           if (preset === "helix" || current.threeD)
             result.setProjection(current.projection);
@@ -214,10 +227,11 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
   useEffect(() => {
     const plot = active.current.gpu;
     if (!plot) return;
+    plot.setStyle(style);
     plot.setMode(preset === "helix" || threeD ? "3d" : "2d");
     if (preset === "helix" || threeD) plot.setProjection(projection);
     if (preset === "power") plot.setParameters({ exponent });
-  }, [preset, exponent, threeD, projection, ready]);
+  }, [preset, exponent, threeD, projection, style, ready]);
   async function save() {
     if (!active.current.figure) return;
     setSaving(true);
@@ -231,7 +245,7 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
       setSaving(false);
     }
   }
-  const code = exampleCode(
+  const sourceCode = exampleCode(
     preset,
     frequency,
     exponent,
@@ -239,6 +253,11 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
     threeD,
     projection,
   );
+  const code = gpu
+    ? sourceCode +
+      `
+plot.setStyle(${JSON.stringify(style, null, 2)});`
+    : sourceCode;
   const descriptions: Record<Preset, string> = ko
     ? {
         signals:
@@ -382,6 +401,7 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
                 const plot = active.current.gpu;
                 if (plot) {
                   plot.reset();
+                  plot.setStyle(style);
                   plot.setMode(preset === "helix" || threeD ? "3d" : "2d");
                   if (preset === "helix" || threeD)
                     plot.setProjection(projection);
@@ -400,6 +420,62 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
             </Button>
           </div>
         </div>
+        {gpu && (
+          <details className="plot-style-options">
+            <summary>
+              {ko
+                ? "선과 라벨 설정 (CSS px)"
+                : "Line and label settings (CSS px)"}
+            </summary>
+            <div className="plot-toolbar">
+              {(
+                [
+                  ["axisWidth", ko ? "축 굵기" : "Axis width", 0, 4, 0.25],
+                  ["gridWidth", ko ? "격자 굵기" : "Grid width", 0, 4, 0.25],
+                  ["curveWidth", ko ? "곡선 굵기" : "Curve width", 0, 8, 0.25],
+                  ["labelSize", ko ? "글자 크기" : "Label size", 8, 24, 1],
+                ] as const
+              ).map(([key, label, min, max, step]) => (
+                <div className="plot-field" key={key}>
+                  <label id={`style-${key}`}>
+                    {label}: {style[key]} px
+                  </label>
+                  <Slider
+                    min={min}
+                    max={max}
+                    step={step}
+                    value={style[key]}
+                    ariaLabelledByForHandle={`style-${key}`}
+                    onChange={(value) =>
+                      setStyle((previous) => ({ ...previous, [key]: value }))
+                    }
+                  />
+                </div>
+              ))}
+              {(
+                [
+                  ["grid", ko ? "격자" : "Grid"],
+                  ["tickLabels", ko ? "눈금 숫자" : "Tick labels"],
+                  ["axisLabels", ko ? "축 이름" : "Axis labels"],
+                ] as const
+              ).map(([key, label]) => (
+                <div className="plot-field" key={key}>
+                  <span id={`style-${key}`}>{label}</span>
+                  <Switch
+                    checked={style[key]}
+                    aria-labelledby={`style-${key}`}
+                    onChange={(value) =>
+                      setStyle((previous) => ({ ...previous, [key]: value }))
+                    }
+                  />
+                </div>
+              ))}
+              <Button onClick={() => setStyle(DEFAULT_STYLE)}>
+                {ko ? "스타일 초기화" : "Reset style"}
+              </Button>
+            </div>
+          </details>
+        )}
         <div className="plot-stage">
           <div className="plot-mount" ref={mount} />
         </div>
@@ -418,8 +494,8 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
         )}
         <p id="plot-help" className="plot-help">
           {ko
-            ? "드래그로 이동하거나 회전하고, 스크롤로 확대합니다. 그래프에 초점을 맞추면 방향키, +/−, Home을 사용할 수 있습니다. PNG 저장은 데이터 예제에서 지원합니다."
-            : "Drag to pan or orbit. Scroll to zoom. Focus the plot for arrow keys, +/− and Home. PNG export is available for data examples."}
+            ? "왼쪽 드래그로 이동하거나 회전하고, 오른쪽 드래그로 이동하며, 스크롤로 확대합니다. 그래프에 초점을 맞추면 방향키, +/−, Home을 사용할 수 있습니다. PNG 저장은 데이터 예제에서 지원합니다."
+            : "Left-drag to pan or orbit. Right-drag to pan. Scroll to zoom. Focus the plot for arrow keys, +/− and Home. PNG export is available for data examples."}
         </p>
       </div>
       <p className="plot-details">{descriptions[preset]}</p>

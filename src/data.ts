@@ -11,6 +11,11 @@ export interface SeriesOptions {
   readonly color?: string;
   readonly lineWidth?: number;
   readonly lineStyle?: "-" | "--" | ":" | "none";
+  /** Dash coordinate. Auto uses increasing x, otherwise sample index. */
+  readonly parameter?: "auto" | "x" | "index";
+  /** Period in parameter units. Defaults to 1/60 of the parameter domain. */
+  readonly dashPeriod?: number;
+  readonly dashOffset?: number;
   readonly marker?: "o" | "s" | "none";
   /** Marker radius in CSS pixels. */
   readonly markerSize?: number;
@@ -140,11 +145,20 @@ function style(
     color: options.color ?? COLORS[index % COLORS.length],
     lineWidth: options.lineWidth ?? 1.8,
     lineStyle: options.lineStyle ?? "-",
+    parameter: options.parameter ?? "auto",
+    dashPeriod: options.dashPeriod ?? 0,
+    dashOffset: options.dashOffset ?? 0,
     marker: options.marker ?? (kind === "scatter" ? "o" : "none"),
     markerSize: options.markerSize ?? 3.5,
     alpha: options.alpha ?? 1,
     width: options.width ?? 0.8,
   };
+  if (!["auto", "x", "index"].includes(result.parameter))
+    throw new TypeError("Unknown curve parameter.");
+  if (options.dashPeriod !== undefined)
+    positive(options.dashPeriod, "dashPeriod");
+  if (!Number.isFinite(result.dashOffset))
+    throw new RangeError("dashOffset must be finite.");
   positive(result.lineWidth, "lineWidth");
   positive(result.markerSize, "markerSize");
   positive(result.width, "width");

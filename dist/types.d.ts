@@ -13,6 +13,20 @@ export interface PlotProgram {
     /** Programs compiled with the projective camera support both projection modes. */
     readonly camera?: "projective";
 }
+/** CSS-pixel widths and shader decorations, independent of zoom and display density. */
+export interface PlotStyle {
+    /** Axis and tick width. Default 1 CSS px; zero hides the strokes. */
+    readonly axisWidth?: number;
+    /** Grid stroke width. Default 1 CSS px. */
+    readonly gridWidth?: number;
+    /** Function/trajectory stroke width. Default 2 CSS px. */
+    readonly curveWidth?: number;
+    /** Numeric tick and axis label size. Default 11 CSS px. */
+    readonly labelSize?: number;
+    readonly grid?: boolean;
+    readonly tickLabels?: boolean;
+    readonly axisLabels?: boolean;
+}
 export interface PlotOptions {
     /** Accessible canvas name. Existing aria-label/aria-labelledby are preserved unless supplied. */
     readonly label?: string;
@@ -20,6 +34,7 @@ export interface PlotOptions {
     readonly backend?: "auto" | "webgpu" | "webgl2";
     readonly mode?: "2d" | "3d";
     readonly projection?: PlotProjection;
+    readonly style?: PlotStyle;
     readonly probe?: number;
     readonly parameters?: Readonly<Record<string, number>>;
     readonly pixelRatio?: number;
@@ -31,6 +46,7 @@ export interface Plot {
     readonly projection: PlotProjection;
     setMode(mode: "2d" | "3d"): void;
     setProjection(projection: PlotProjection): void;
+    setStyle(style: PlotStyle): void;
     setProbe(value: number): void;
     setParameters(values: Readonly<Record<string, number>>): void;
     bounds(): PlotBounds;

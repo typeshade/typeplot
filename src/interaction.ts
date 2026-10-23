@@ -4,7 +4,13 @@ export interface PlotBounds {
 }
 
 type Pair = [number, number];
-type View = { center: Pair; span: Pair; rotation: Pair; blend: [number] };
+type View = {
+  center: Pair;
+  span: Pair;
+  rotation: Pair;
+  pan: Pair;
+  blend: [number];
+};
 
 const ROTATION: Pair = [0.65, 0.45];
 const DURATION = 140;
@@ -14,6 +20,7 @@ const copy = (view: View): View => ({
   center: [...view.center],
   span: [...view.span],
   rotation: [...view.rotation],
+  pan: [...view.pan],
   blend: [...view.blend],
 });
 
@@ -42,6 +49,7 @@ export function createPlotInteraction(
       initialBounds.y[1] - initialBounds.y[0],
     ],
     rotation: [...ROTATION],
+    pan: [0, 0],
     blend: [0],
   };
   if (!original.span.every((span) => Number.isFinite(span * 1e6))) {
@@ -54,7 +62,7 @@ export function createPlotInteraction(
   let destroyed = false;
   let frame = 0;
   let started = 0;
-  let pointer: { id: number; x: number; y: number } | null = null;
+  let pointer: { id: number; x: number; y: number; pan: boolean } | null = null;
   const motion = win.matchMedia("(prefers-reduced-motion: reduce)");
   const oldTouchAction = canvas.style.touchAction;
   const oldTabIndex = canvas.getAttribute("tabindex");
@@ -64,7 +72,7 @@ export function createPlotInteraction(
   }
 
   function assign(view: View) {
-    for (const key of ["center", "span", "rotation", "blend"] as const) {
+    for (const key of ["center", "span", "rotation", "pan", "blend"] as const) {
       for (let i = 0; i < view[key].length; i++) current[key][i] = view[key][i];
     }
   }
@@ -74,7 +82,7 @@ export function createPlotInteraction(
     if (destroyed) return;
     const progress = clamp((time - started) / DURATION, 0, 1);
     const eased = 1 - (1 - progress) ** 3;
-    for (const key of ["center", "span", "rotation", "blend"] as const) {
+    for (const key of ["center", "span", "rotation", "pan", "blend"] as const) {
       for (let i = 0; i < current[key].length; i++) {
         current[key][i] =
           start[key][i] + (target[key][i] - start[key][i]) * eased;
@@ -140,11 +148,21 @@ export function createPlotInteraction(
   }
 
   function down(event: PointerEvent) {
-    if (pointer || event.button !== 0 || !event.isPrimary) return;
+    if (
+      pointer ||
+      (event.button !== 0 && event.button !== 2) ||
+      !event.isPrimary
+    )
+      return;
     target = copy(current);
     target.blend[0] = threeD ? 1 : 0;
     change(true);
-    pointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    pointer = {
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      pan: event.button === 2,
+    };
     canvas.setPointerCapture(event.pointerId);
     canvas.focus({ preventScroll: true });
     event.preventDefault();
@@ -170,12 +188,19 @@ export function createPlotInteraction(
     );
     pointer.x = event.clientX;
     pointer.y = event.clientY;
-    if (threeD) rotate(dx * Math.PI, dy * Math.PI);
-    else {
+    if (threeD && !pointer.pan) rotate(dx * Math.PI, dy * Math.PI);
+    else if (threeD) {
+      target.pan[0] += dx;
+      target.pan[1] -= dy;
+    } else {
       target.center[0] = limitCenter(0, target.center[0] - dx * target.span[0]);
       target.center[1] = limitCenter(1, target.center[1] + dy * target.span[1]);
     }
     change(true);
+  }
+
+  function contextmenu(event: MouseEvent) {
+    event.preventDefault();
   }
 
   function up(event: PointerEvent) {
@@ -230,6 +255,7 @@ export function createPlotInteraction(
     canvas.addEventListener("pointercancel", up);
     canvas.addEventListener("lostpointercapture", up);
     canvas.addEventListener("keydown", keydown);
+    canvas.addEventListener("contextmenu", contextmenu);
   }
   motion.addEventListener("change", motionChanged);
 
@@ -242,6 +268,8 @@ export function createPlotInteraction(
           return current.span;
         case "plotRotation":
           return current.rotation;
+        case "plotPan":
+          return current.pan;
         case "plotBlend":
           return current.blend;
         default:
@@ -307,6 +335,7 @@ export function createPlotInteraction(
       canvas.removeEventListener("pointercancel", up);
       canvas.removeEventListener("lostpointercapture", up);
       canvas.removeEventListener("keydown", keydown);
+      canvas.removeEventListener("contextmenu", contextmenu);
       motion.removeEventListener("change", motionChanged);
       if (enabled) {
         canvas.style.touchAction = oldTouchAction;

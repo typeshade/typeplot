@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { compile, packModule } from "typeshade";
 import shaderSource from "../shaders/plot.shade.ts?source";
+import fontSource from "../shaders/font.shade.ts?source";
 import type { PlotKind, PlotProgram } from "./types.js";
 
 export interface CompilePlotOptions {
@@ -41,9 +42,12 @@ const reserved = new Set([
   "plotCenter",
   "plotSpan",
   "plotRotation",
+  "plotPan",
   "plotBlend",
   "probe",
   "view3d",
+  "appearance",
+  "decorations",
 ]);
 
 /** Compile a named TypeShade callback once, on the build machine. */
@@ -111,7 +115,14 @@ class VertexOutput { @builtin("position") position: vec4; @location(0) uv: vec2;
     ]),
   );
   documents.set(userFile, source);
-  documents.set(sharedFile, shaderSource);
+  documents.set(
+    sharedFile,
+    shaderSource.replace('"./font.shade.ts"', '"./__typeplot-font.shade.ts"'),
+  );
+  documents.set(
+    path.join(path.dirname(userFile), "__typeplot-font.shade.ts"),
+    fontSource,
+  );
   const readDocument = (name: string): string | undefined => {
     const known = documents.get(name) ?? options.readDocument?.(name);
     if (known !== undefined) return known;

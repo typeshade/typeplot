@@ -1,5 +1,5 @@
 "use typeshade";
-import { glyphCoverage, tickNumber } from "./font.shade.ts";
+import { glyphCoverage, tickNumber, pixelWidth } from "./font.shade.ts";
 
 class DataUniforms {
   resolution: vec2;
@@ -19,6 +19,10 @@ class SeriesUniforms {
   width: f32;
   dash: f32;
   marker: f32;
+  count: u32;
+  ordered: u32;
+  period: f32;
+  offset: f32;
 }
 declare const s: uniform<SeriesUniforms>;
 declare const points: storage<array<f32>>;
@@ -26,12 +30,8 @@ class TextUniforms { color: vec4; }
 declare const text: uniform<TextUniforms>;
 
 class Surface { @builtin("position") position: vec4; @location(0) uv: vec2; }
-class Primitive { @builtin("position") position: vec4; @location(0) pixel: vec2; @location(1) a: vec2; @location(2) b: vec2; }
 class Letter { @builtin("position") position: vec4; @location(0) local: vec2; @location(1) code: u32; @location(2) size: f32; }
 
-function corner(i: u32): vec2 {
-  return vec2(i == u32(1) || i == u32(2) || i == u32(4) ? 1 : 0, i == u32(2) || i == u32(4) || i == u32(5) ? 1 : 0);
-}
 function clipPosition(p: vec2): vec4 { return vec4(p.x / u.resolution.x * 2 - 1, 1 - p.y / u.resolution.y * 2, 0, 1); }
 function extent(): vec2 { return max(u.resolution - vec2(100, 104), vec2(1)); }
 function pixelPoint(p: vec2): vec2 {
@@ -42,7 +42,8 @@ function pixelPoint(p: vec2): vec2 {
 function line(p: vec2, a: vec2, b: vec2, radius: f32): f32 {
   const d = b - a;
   const t = clamp(dot(p - a, d) / max(dot(d, d), 0.00001), 0, 1);
-  return 1 - smoothstep(max(0, radius - 0.6), radius + 0.6, length(p - a - t * d));
+  const aa = pixelWidth() * 0.5;
+  return 1 - smoothstep(max(0, radius - aa), radius + aa, length(p - a - t * d));
 }
 function tickSpacing(span: f32, size: f32, logarithmic: f32): f32 {
   const raw = span / max(4, floor(size / 80));
@@ -93,45 +94,103 @@ function tickSpacing(span: f32, size: f32, logarithmic: f32): f32 {
   return color;
 }
 
-/** Per-instance segments/markers/bars are expanded in the vertex shader. */
-@vertex export function seriesVertex(@builtin("vertex_index") vertex: u32, @builtin("instance_index") instance: u32): Primitive {
-  const offset = instance * u32(5);
-  const a = pixelPoint(vec2(points[offset], points[offset + u32(1)]));
-  const b = pixelPoint(vec2(points[offset + u32(2)], points[offset + u32(3)]));
-  const q = corner(vertex);
-  let p = vec2(0);
-  if (s.kind < 0.5) {
-    const delta = b - a;
-    const direction = delta / max(length(delta), 0.00001);
-    const normal = vec2(-direction.y, direction.x);
-    const radius = s.width * 0.5 + 1;
-    p = mix(a, b, q.x) + direction * ((q.x * 2 - 1) * radius) + normal * ((q.y * 2 - 1) * radius);
-  } else if (s.kind < 1.5) p = a + (q * 2 - 1) * (s.width + 1);
-  else p = mix(min(a, b) - vec2(1), max(a, b) + vec2(1), q);
-  const position = points[offset + u32(4)] > 0 ? clipPosition(p) : vec4(2, 2, 0, 1);
-  return { position, pixel: p, a, b };
+/** The path is a field, evaluated once per pixel; no line vertex/index geometry. */
+function sampleAt(index: u32): vec4 {
+  const i = index * u32(4);
+  const p = vec4(points[i], points[i + u32(1)], points[i + u32(2)], points[i + u32(3)]);
+  const valid = p.w > 0 && abs(p.x) <= 3.4028234e38 && abs(p.y) <= 3.4028234e38 && (u.logarithmic.x <= 0 || p.x > 0) && (u.logarithmic.y <= 0 || p.y > 0);
+  return vec4(p.xyz, valid ? 1 : 0);
 }
-@fragment export function seriesFragment(v: Primitive): vec4 {
+
+function segmentDistance(p: vec2, a: vec2, b: vec2): f32 {
+  const delta = b - a;
+  const t = clamp(dot(p - a, delta) / max(dot(delta, delta), 1e-20), 0, 1);
+  return length(p - a - t * delta);
+}
+
+function boxDistance(p: vec2, a: vec2, b: vec2): f32 {
+  const q = abs(p - (a + b) * 0.5) - abs(b - a) * 0.5;
+  return length(max(q, vec2(0))) + min(max(q.x, q.y), 0);
+}
+
+function pathDistance(p: vec2, a: vec2, b: vec2, parameters: vec2): f32 {
+  if (s.dash <= 0) return segmentDistance(p, a, b);
+  const delta = b - a;
+  const along = clamp(dot(p - a, delta) / max(dot(delta, delta), 1e-20), 0, 1);
+  const parameter = mix(parameters.x, parameters.y, along);
+  const on = s.dash > 1.5 ? 0 : 0.6;
+  const phase = (parameter - s.offset) / s.period;
+  const cycle = floor(phase - on * 0.5 + 0.5);
+  const difference = parameters.y - parameters.x;
+  if (abs(difference) < 1e-20) return fract(phase) <= on ? segmentDistance(p, a, b) : 1e20;
+  let distance = 1e20;
+  for (let neighbor = -1; neighbor <= 1; neighbor++) {
+    const start = s.offset + (cycle + f32(neighbor)) * s.period;
+    const first = (start - parameters.x) / difference;
+    const second = (start + on * s.period - parameters.x) / difference;
+    const lo = max(0, min(first, second));
+    const hi = min(1, max(first, second));
+    if (hi >= lo) distance = min(distance, segmentDistance(p, mix(a, b, lo), mix(a, b, hi)));
+  }
+  return distance;
+}
+
+/** Increasing-x data restricts field evaluation to the samples overlapping this pixel. */
+function lowerBound(value: f32): u32 {
+  let lo = u32(0), hi = s.count;
+  for (let iteration = 0; iteration < 32; iteration++) {
+    if (lo >= hi) break;
+    const middle = lo + (hi - lo) / u32(2);
+    if (points[middle * u32(4)] < value) lo = middle + u32(1);
+    else hi = middle;
+  }
+  return lo;
+}
+
+@fragment export function seriesFragment(v: Surface): vec4 {
+  const p = vec2(v.uv.x, 1 - v.uv.y) * u.resolution;
   const lo = vec2(76, 42), hi = lo + extent();
-  if (v.pixel.x < lo.x || v.pixel.x > hi.x || v.pixel.y < lo.y || v.pixel.y > hi.y) return vec4(0);
-  let coverage = 1;
+  if (p.x < lo.x || p.x > hi.x || p.y < lo.y || p.y > hi.y) return vec4(0);
+  let distance = 1e20;
   if (s.kind < 0.5) {
-    coverage = line(v.pixel, v.a, v.b, s.width * 0.5);
-    if (s.dash > 0) {
-      const direction = (v.b - v.a) / max(length(v.b - v.a), 0.00001);
-      const distance = dot(v.pixel, direction);
-      const period = s.dash > 1.5 ? 5 : 11;
-      coverage = coverage * (fract(distance / period) < (s.dash > 1.5 ? 0.4 : 0.64) ? 1 : 0);
+    let start = u32(0), end = s.count > u32(0) ? s.count - u32(1) : u32(0);
+    const radius = s.width * 0.5 + pixelWidth();
+    if (s.ordered > u32(0)) {
+      const low = u.lower.x + (p.x - radius - lo.x) / extent().x * u.span.x;
+      const high = u.lower.x + (p.x + radius - lo.x) / extent().x * u.span.x;
+      const left = lowerBound(u.logarithmic.x > 0 ? pow(10, low) : low);
+      start = left > u32(0) ? left - u32(1) : u32(0);
+      end = min(end, lowerBound(u.logarithmic.x > 0 ? pow(10, high) : high));
+    }
+    for (let index = start; index < end; index++) {
+      const a = sampleAt(index), b = sampleAt(index + u32(1));
+      if (a.w > 0 && b.w > 0) {
+        const first = pixelPoint(a.xy), second = pixelPoint(b.xy);
+        if (all(p >= min(first, second) - vec2(radius)) && all(p <= max(first, second) + vec2(radius)))
+          distance = min(distance, pathDistance(p, first, second, vec2(a.z, b.z)) - s.width * 0.5);
+      }
     }
   } else if (s.kind < 1.5) {
-    const d = abs(v.pixel - v.a);
-    const radius = s.marker > 0.5 ? max(d.x, d.y) : length(d);
-    coverage = 1 - smoothstep(s.width - 0.6, s.width + 0.6, radius);
+    for (let index: u32 = 0; index < s.count; index++) {
+      const point = sampleAt(index);
+      if (point.w > 0) {
+        const q = abs(p - pixelPoint(point.xy));
+        const d = s.marker > 0.5 ? max(q.x, q.y) : length(q);
+        distance = min(distance, d - s.width);
+      }
+    }
   } else {
-    const d = max(min(v.a, v.b) - v.pixel, v.pixel - max(v.a, v.b));
-    coverage = 1 - smoothstep(-0.5, 0.5, max(d.x, d.y));
+    for (let index: u32 = 0; index < s.count; index++) {
+      const i = index * u32(5);
+      const a = vec2(points[i], points[i + u32(1)]);
+      const baseline = u.logarithmic.y > 0 ? pow(10, u.lower.y) : 0;
+      const b = vec2(points[i + u32(2)], baseline);
+      const valid = all(abs(a) <= vec2(3.4028234e38)) && abs(b.x) <= 3.4028234e38 && (u.logarithmic.x <= 0 || min(a.x, b.x) > 0) && (u.logarithmic.y <= 0 || a.y > 0);
+      if (valid) distance = min(distance, boxDistance(p, pixelPoint(a), pixelPoint(b)));
+    }
   }
-  return vec4(s.color.rgb, s.color.a * coverage);
+  const aa = pixelWidth() * 0.5;
+  return vec4(s.color.rgb, s.color.a * (1 - smoothstep(-aa, aa, distance)));
 }
 
 @vertex export function textVertex(@location(0) origin: vec2, @location(1) info: vec3, @location(2) unit: vec2): Letter {

@@ -40,12 +40,18 @@ export declare class GpuRenderer {
     private series;
     private text;
     private glyphs;
+    private device?;
+    private samples;
     private destroyed;
     private constructor();
     get backend(): Backend;
     static create(canvas: HTMLCanvasElement, backend?: "auto" | Backend): Promise<GpuRenderer>;
     private initialize;
     private uniform;
+    /** Input data stays resident. Camera changes update uniforms, not path geometry. */
+    private sampleResource;
+    private release;
+    private prune;
     private scene;
     render(scene: Scene, ratio: number): Promise<void>;
     pixels(scene: Scene, ratio: number): Promise<{

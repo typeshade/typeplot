@@ -21,3 +21,9 @@ Use orthographic projection in 2D. Spatial plots default to perspective and also
 orthographic projection. Pointer dragging must track input directly rather than restarting
 an eased camera transition on every move.
 Website work follows website/PRODUCT.md and website/DESIGN.md (the TypeNN site conventions).
+
+Prefer direct procedural SDF/field evaluation over host-created path meshes. Dashes repeat
+in curve parameter coordinates; do not add screen arc-length accumulation passes. Keep
+input data resident across camera changes. Let TypeShade Runtime own rendering and Device
+own compute resources; use fuse for real compatible kernel chains and inspect its report,
+not as a wrapper for draws or a claim that every pass is fused. Axes default to 1 CSS px.

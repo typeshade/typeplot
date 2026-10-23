@@ -272,10 +272,48 @@ mode, projection (`perspective` or `orthographic`), probe, parameter values, pix
 interaction enablement and an error callback. `plot.projection` reports the effective projection.
 Programs compiled before this camera feature retain orthographic rendering; recompile them
 to enable perspective projection.
-The returned plot provides `setMode`, `setProjection`, `setProbe`, `setParameters`, `bounds`, `reset`, `redraw`
+The returned plot provides `setMode`, `setProjection`, `setProbe`, `setParameters`, `setStyle`, `bounds`, `reset`, `redraw`
 and `destroy`. Unknown parameter names and non-finite values are rejected.
 
-Wheel input zooms around the cursor. Dragging tracks the pointer directly to pan a scalar plot or orbit a 3D plot. Rendering
+Axis and tick strokes default to **1 CSS px**, independent of camera zoom and display density.
+`style` configures the shader's appearance; `setStyle()` patches it without recreating the plot
+or resetting the camera. `reset()` restores the initial style along with the camera:
+
+```ts
+const plot = await createPlot(canvas, program, {
+  style: {
+    axisWidth: 1,
+    gridWidth: 1,
+    curveWidth: 2,
+    labelSize: 11,
+    grid: true,
+    tickLabels: true,
+    axisLabels: true,
+  },
+});
+plot.setStyle({ gridWidth: 0.5, labelSize: 13 });
+```
+
+Widths accept 0–32 CSS px; zero hides the strokes. Labels accept 6–48 CSS px. Recompile
+older programs to enable these settings. The shader projects world-coordinate tick multiples
+through the curve's camera for spatial grids and numeric labels, in both projection modes.
+Stroke outlines and rounded dash ends are analytic distance fields; text uses an offline IBM
+Plex signed distance atlas. Line, marker and bar fields use a fullscreen triangle per series, without host path
+tessellation. Increasing-x lines use GPU binary searches to limit local field evaluation. Spatial curves still approximate their callback with bounded segments.
+
+Dashed data paths repeat in **curve parameter coordinates**, evaluated directly in the SDF.
+`parameter: "auto"` uses x for strictly increasing x data, and sample index otherwise. Select
+`"x"` or `"index"` explicitly when needed. `dashPeriod` is in those parameter units (default:
+1/60 of the parameter domain), and `dashOffset` shifts the pattern. The pattern stays attached
+to the curve while zooming or panning; its screen-pixel length varies with the projection and
+slope. Missing data splits the distance field without rephasing later samples. No cumulative
+path-length buffer or prefix-scan pass is used. PNG export uses the same field and layout.
+
+```ts
+ax.plot(x, Math.sin, { lineStyle: "--", parameter: "x", dashPeriod: 0.2 });
+```
+
+Wheel input zooms around the cursor. Left-dragging tracks the pointer directly to pan a scalar plot or orbit a 3D plot. Right-dragging pans either mode; the canvas suppresses its context menu only while interaction is enabled. Rendering
 is coalesced to animation frames; dragging and wheel input do not restart eased transitions.
 Arrow keys move the view, `+`/`-` zoom, and Home resets the camera. `reset()` restores the
 initial plot settings. Reduced motion applies camera changes immediately. Idle plots do

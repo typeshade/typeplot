@@ -1,4 +1,103 @@
-var e=`'use typeshade';
+var e=`"use typeshade";
+
+declare const glyphAtlas: texture_2d<f32>;
+class FontUniforms { pixelRatio: f32; }
+declare const font: uniform<FontUniforms>;
+
+export function pixelWidth(): f32 { return 1 / max(font.pixelRatio, 0.0001); }
+
+/** Signed distance IBM Plex glyphs; no host text canvas or DOM overlay. */
+export function glyphIndex(code: i32): i32 {
+  if (code >= 32 && code < 256) return code - 32;
+  if (code >= 880 && code < 1024) return 224 + code - 880;
+  if (code >= 12592 && code < 12688) return 368 + code - 12592;
+  if (code >= 44032 && code <= 55203) return 464 + code - 44032;
+  if (code >= 8192 && code < 8960) return 11636 + code - 8192;
+  return 12404;
+}
+
+export function glyphCoverage(p: vec2, code: i32, fontSize: f32): f32 {
+  // Sample at texel centers. A distance field preserves outlines under DPR and scaling.
+  const q = p * (24 / fontSize) - vec2(0.5);
+  if (q.x < 0 || q.y < 0 || q.x >= 29 || q.y >= 35) return 0;
+  const index = glyphIndex(code);
+  const origin = vec2i((index % 132) * 30, (index / 132) * 36);
+  const base = vec2i(floor(q));
+  const t = fract(q);
+  const a = textureLoad(glyphAtlas, origin + base, 0).r;
+  const b = textureLoad(glyphAtlas, origin + base + vec2i(1, 0), 0).r;
+  const c = textureLoad(glyphAtlas, origin + base + vec2i(0, 1), 0).r;
+  const d = textureLoad(glyphAtlas, origin + base + vec2i(1, 1), 0).r;
+  const distance = mix(mix(a, b, t.x), mix(c, d, t.x), t.y) - 0.5;
+  // The host supplies only layout scale; explicit footprint also works inside tick branches.
+  const width = max(1.5 / (fontSize * font.pixelRatio), 0.003);
+  return smoothstep(-width, width, distance);
+}
+
+class NumberFormat {
+  value: f32;
+  negative: bool;
+  scientific: bool;
+  decimals: i32;
+  digits: i32;
+  exponent: i32;
+  length: i32;
+}
+
+function numberFormat(input: f32, spacing: f32): NumberFormat {
+  const value = abs(input) < abs(spacing) * 0.0001 ? 0 : input;
+  let magnitude = abs(value);
+  let exponent = i32(floor(log2(max(magnitude, 1e-30)) / log2(10)));
+  const scientific = magnitude > 0 && (exponent >= 5 || exponent < -3);
+  let decimals = i32(clamp(ceil(-log2(max(abs(spacing), 1e-30)) / log2(10)), 0, 6));
+  let digits: i32 = 1;
+  if (scientific) {
+    magnitude = floor(magnitude / pow(10, f32(exponent)) * 10 + 0.5);
+    if (magnitude >= 100) { magnitude = 10; exponent = exponent + 1; }
+    decimals = 1;
+  } else {
+    magnitude = floor(magnitude * pow(10, f32(decimals)) + 0.5);
+    digits = i32(floor(log2(max(floor(magnitude / pow(10, f32(decimals))), 1)) / log2(10))) + 1;
+  }
+  const negative = value < 0;
+  const length: i32 = scientific ? 7 + (negative ? i32(1) : i32(0)) : digits + (decimals > 0 ? 1 + decimals : 0) + (negative ? i32(1) : i32(0));
+  return { value: magnitude, negative, scientific, decimals, digits, exponent, length };
+}
+
+/** Tick formatting and glyph selection run on the GPU with the grid spacing. */
+export function tickNumberSized(p: vec2, value: f32, spacing: f32, align: f32, fontSize: f32): f32 {
+  const n = numberFormat(value, spacing);
+  const advance = fontSize * 0.625;
+  const offset = p + vec2(f32(n.length) * advance * align, 0);
+  const column = i32(floor(offset.x / advance));
+  if (column < 0 || column >= n.length || offset.y < 0 || offset.y > fontSize * 1.5) return 0;
+  let i = column;
+  let code: i32 = 32;
+  if (n.negative && i == 0) code = 45;
+  else {
+    i = i - (n.negative ? i32(1) : i32(0));
+    if (n.scientific) {
+      if (i == 0) code = 48 + i32(floor(n.value / 10));
+      else if (i == 1) code = 46;
+      else if (i == 2) code = 48 + i32(n.value) % 10;
+      else if (i == 3) code = 101;
+      else if (i == 4) code = n.exponent < 0 ? 45 : 43;
+      else if (i == 5) code = 48 + abs(n.exponent) / 10;
+      else code = 48 + abs(n.exponent) % 10;
+    } else if (n.decimals > 0 && i == n.digits) code = 46;
+    else {
+      const digit = i - (i > n.digits ? i32(1) : i32(0));
+      code = 48 + i32(floor(n.value / pow(10, f32(n.digits + n.decimals - digit - 1)))) % 10;
+    }
+  }
+  return glyphCoverage(vec2(offset.x - f32(column) * advance, offset.y), code, fontSize);
+}
+
+export function tickNumber(p: vec2, value: f32, spacing: f32, align: f32): f32 {
+  return tickNumberSized(p, value, spacing, align, 11);
+}
+`;var t=`"use typeshade";
+import { glyphCoverage, tickNumberSized, pixelWidth } from "./font.shade.ts";
 
 /** Host-controlled viewport, in data units; rotation is yaw/pitch in radians. */
 export class PlotViewport {
@@ -6,7 +105,10 @@ export class PlotViewport {
   plotCenter: vec2;
   plotSpan: vec2;
   plotRotation: vec2;
+  plotPan: vec2;
   plotBlend: f32;
+  appearance: vec4;
+  decorations: u32;
 }
 
 export class PlotUniforms extends PlotViewport {
@@ -17,34 +119,41 @@ export class PlotUniforms extends PlotViewport {
 type ScalarCurve = (x: f32) => f32;
 type SpaceCurve = (t: f32) => vec3;
 
-/** Use a logical drawing grid so axes remain legible on high-density displays. */
+/** CSS-pixel layout keeps line widths and text stable across sizes and display density. */
 function plotSize(resolution: vec2): vec2 {
-  const size = max(resolution, vec2(1));
-  return size / max(min(size.x, size.y) / 320, 1);
+  return max(resolution, vec2(1));
 }
 
-function stroke(p: vec2, a: vec2, b: vec2): f32 {
+function distanceCoverage(distance: f32, width: f32): f32 {
+  if (width <= 0) return 0;
+  const aa = pixelWidth() * 0.5;
+  return 1 - smoothstep(max(0, width * 0.5 - aa), width * 0.5 + aa, distance);
+}
+
+function stroke(p: vec2, a: vec2, b: vec2, width: f32): f32 {
+  const radius = width * 0.5;
+  if (width <= 0 || any(p < min(a, b) - vec2(radius + 1)) || any(p > max(a, b) + vec2(radius + 1))) return 0;
   const ab = b - a;
   const t = clamp(dot(p - a, ab) / max(dot(ab, ab), 0.0001), 0, 1);
-  return 1 - smoothstep(0.65, 1.65, length(p - a - ab * t));
+  return distanceCoverage(length(p - a - ab * t), width);
 }
 
-/** Small vector glyphs keep labels sharp without a texture or a host overlay. */
-function glyph(p: vec2, origin: vec2, axis: i32): f32 {
-  const q = (p - origin) / 6;
-  if (axis == 0) {
-    return max(stroke(q * 6, vec2(-3, -4), vec2(3, 4)), stroke(q * 6, vec2(-3, 4), vec2(3, -4)));
-  }
-  if (axis == 1) {
-    return max(
-      stroke(q * 6, vec2(-3, 4), vec2(0, 0)),
-      max(stroke(q * 6, vec2(3, 4), vec2(0, 0)), stroke(q * 6, vec2(0, 0), vec2(0, -4))),
-    );
-  }
-  return max(
-    stroke(q * 6, vec2(-3, 4), vec2(3, 4)),
-    max(stroke(q * 6, vec2(3, 4), vec2(-3, -4)), stroke(q * 6, vec2(-3, -4), vec2(3, -4))),
-  );
+/** SDF labels share the font and antialiasing used by the data renderer. */
+function glyph(p: vec2, origin: vec2, axis: i32, size: f32): f32 {
+  return glyphCoverage(vec2(p.x - origin.x + size * 0.42, origin.y - p.y + size * 0.75), 120 + axis, size);
+}
+
+function niceSpacing(span: f32, pixels: f32): f32 {
+  const raw = span / max(4, min(12, floor(pixels / 65)));
+  const unit = pow(10, floor(log2(max(raw, 1e-30)) / log2(10)));
+  const fraction = raw / unit;
+  return (fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10) * unit;
+}
+
+function numberAt(pixel: vec2, anchor: vec2, value: f32, spacing: f32, align: f32, size: f32): f32 {
+  const delta = vec2(pixel.x - anchor.x, anchor.y - pixel.y);
+  if (delta.y < 0 || delta.y > size * 1.5 || abs(delta.x) > size * 9) return 0;
+  return tickNumberSized(delta, value, spacing, align, size);
 }
 
 function pointColor(color: vec3, p: vec2, selected: vec2): vec3 {
@@ -64,24 +173,31 @@ function axes2D(uv: vec2, u: PlotViewport): f32 {
   // When zero is outside the viewport, a boundary spine marks the visible frame.
   const origin = clamp((-lo / span) * size, vec2(14), size - vec2(14));
   let axes = max(
-    stroke(pixel, vec2(12, origin.y), vec2(size.x - 12, origin.y)),
-    stroke(pixel, vec2(origin.x, 12), vec2(origin.x, size.y - 12)),
+    stroke(pixel, vec2(12, origin.y), vec2(size.x - 12, origin.y), u.appearance.x),
+    stroke(pixel, vec2(origin.x, 12), vec2(origin.x, size.y - 12), u.appearance.x),
   );
   const tickStep = vec2(
-    pow(10, floor(log2(span.x / 5) / log2(10))),
-    pow(10, floor(log2(span.y / 5) / log2(10))),
+    niceSpacing(span.x, size.x * 11 / u.appearance.w),
+    niceSpacing(span.y, size.y * 11 / u.appearance.w),
   );
   const grid = ((abs(fract(p / tickStep + 0.5) - 0.5) * tickStep) / span) * size;
   const ticks = max(
-    (1 - smoothstep(0.6, 1.5, grid.x)) * (1 - step(4, abs(pixel.y - origin.y))),
-    (1 - smoothstep(0.6, 1.5, grid.y)) * (1 - step(4, abs(pixel.x - origin.x))),
+    distanceCoverage(grid.x, u.appearance.x) * (1 - step(4, abs(pixel.y - origin.y))),
+    distanceCoverage(grid.y, u.appearance.x) * (1 - step(4, abs(pixel.x - origin.x))),
   );
   axes = max(axes, ticks);
-  axes = max(axes, glyph(pixel, vec2(size.x - 12, clamp(origin.y + 30, 40, size.y - 40)), 0));
-  axes = max(axes, glyph(pixel, vec2(clamp(origin.x + 14, 28, size.x - 28), size.y - 40), 1));
+  // Choose the nearest label column/row without a per-pixel loop over all ticks.
+  const nearest = floor(p / tickStep + 0.5) * tickStep;
+  const at = (nearest - lo) / span * size;
+  if ((u.decorations & u32(2)) != u32(0) && at.x > 28 && at.x < size.x - 28)
+    axes = max(axes, numberAt(pixel, vec2(at.x, origin.y < u.appearance.w * 2 ? origin.y + u.appearance.w * 2 : origin.y - u.appearance.w * 0.65), nearest.x, tickStep.x, 0.5, u.appearance.w));
+  if ((u.decorations & u32(2)) != u32(0) && at.y > 25 && at.y < size.y - 25 && abs(nearest.y) > tickStep.y * 0.001)
+    axes = max(axes, numberAt(pixel, vec2(origin.x < u.appearance.w * 6 ? origin.x + 8 : origin.x - 8, at.y + u.appearance.w * 0.75), nearest.y, tickStep.y, origin.x < u.appearance.w * 6 ? 0 : 1, u.appearance.w));
+  if ((u.decorations & u32(4)) != u32(0)) axes = max(axes, glyph(pixel, vec2(size.x - 12, clamp(origin.y + 30, 40, size.y - 40)), 0, u.appearance.w));
+  if ((u.decorations & u32(4)) != u32(0)) axes = max(axes, glyph(pixel, vec2(clamp(origin.x + 14, 28, size.x - 28), size.y - 40), 1, u.appearance.w));
   // The same data-space ticks define the grid; no host-generated line geometry.
-  const backgroundGrid = max(1 - smoothstep(0.35, 1.1, grid.x), 1 - smoothstep(0.35, 1.1, grid.y));
-  return max(axes, backgroundGrid * 0.2);
+  const backgroundGrid = max(distanceCoverage(grid.x, u.appearance.y), distanceCoverage(grid.y, u.appearance.y));
+  return max(axes, ((u.decorations & u32(1)) != u32(0) ? backgroundGrid * 0.2 : 0));
 }
 
 function curveCoverage(p: vec2, value: f32, span: vec2, size: vec2, thickness: f32): f32 {
@@ -141,9 +257,11 @@ export function plot2D(sample: ScalarCurve, uv: vec2, u: PlotUniforms, jumps: bo
   const value = sample(p.x);
   const y = clamp(value, -1e18, 1e18);
   const d = (p.y - y) / span.y;
-  const derivative = fwidth(d);
-  const width = max(1 / size.y, jumps ? min(derivative, 2 / size.y) : min(derivative, 0.025));
-  const curve = (1 - smoothstep(0, width * 1.5, abs(d))) * (abs(value) < 1e18 ? 1 : 0);
+  // Euclidean screen-space gradient gives a consistent SDF stroke at every slope.
+  const gradient = length(vec2(dpdx(d), dpdy(d)));
+  const denominator = jumps ? min(gradient, 2 * pixelWidth() / size.y) : gradient;
+  const distance = abs(d) / max(denominator, 1e-12) * pixelWidth();
+  const curve = distanceCoverage(distance, u.appearance.z) * (abs(value) < 1e18 ? 1 : 0);
   const axes = axes2D(uv, u);
   let color = mix(vec3(0.965, 0.973, 0.985), vec3(0.39, 0.43, 0.49), axes);
   color = mix(color, vec3(0.09, 0.42, 0.92), curve);
@@ -151,28 +269,94 @@ export function plot2D(sample: ScalarCurve, uv: vec2, u: PlotUniforms, jumps: bo
   return vec4(pointColor(color, pixel, selected), 1);
 }
 
-/** Projective camera. view3d: 0 = 2D, 1 = orthographic, 2 = perspective. */
-function project(p: vec3, u: PlotUniforms): vec2 {
+/** Camera coordinates in normalized world units, shared by projection and inverse rays. */
+function cameraVector(p: vec3, u: PlotUniforms): vec3 {
   const span = max(u.plotSpan, vec2(0.00001));
-  const q = vec3((p.xy - u.plotCenter) / span, p.z / max(span.x, span.y));
-  const yaw = u.plotRotation.x;
-  const pitch = u.plotRotation.y;
+  const q = p / vec3(span, max(span.x, span.y));
+  const yaw = u.plotRotation.x, pitch = u.plotRotation.y;
   const horizontal = q.x * cos(yaw) + q.z * sin(yaw);
   const depth = -q.x * sin(yaw) + q.z * cos(yaw);
-  const vertical = q.y * cos(pitch) - depth * sin(pitch);
-  const cameraDepth = q.y * sin(pitch) + depth * cos(pitch);
-  const size = plotSize(u.resolution);
-  const distance = u.view3d == u32(2) ? max(0.1, 3 - cameraDepth) : 3;
-  const focal = 1 / tan(0.3926990817);
-  return (vec2(horizontal / (size.x / size.y), vertical) * (focal / distance) + 0.5) * size;
+  return vec3(horizontal, q.y * cos(pitch) - depth * sin(pitch), q.y * sin(pitch) + depth * cos(pitch));
 }
 
-/** Omit segments behind the perspective near plane instead of mirroring them. */
-function inFront(p: vec3, u: PlotUniforms): bool {
-  if (u.view3d != u32(2)) return true;
-  const q = vec3((p.xy - u.plotCenter) / max(u.plotSpan, vec2(0.00001)), p.z / max(u.plotSpan.x, u.plotSpan.y));
-  const depth = -q.x * sin(u.plotRotation.x) + q.z * cos(u.plotRotation.x);
-  return 3 - (q.y * sin(u.plotRotation.y) + depth * cos(u.plotRotation.y)) > 0.1;
+function cameraPoint(p: vec3, u: PlotUniforms): vec3 {
+  return cameraVector(p - vec3(u.plotCenter, 0), u);
+}
+
+function inverseCamera(p: vec3, u: PlotUniforms): vec3 {
+  const yaw = u.plotRotation.x, pitch = u.plotRotation.y;
+  const y = p.y * cos(pitch) + p.z * sin(pitch);
+  const depth = -p.y * sin(pitch) + p.z * cos(pitch);
+  const q = vec3(p.x * cos(yaw) - depth * sin(yaw), y, p.x * sin(yaw) + depth * cos(yaw));
+  return q * vec3(u.plotSpan, max(u.plotSpan.x, u.plotSpan.y));
+}
+
+/** Project without division so implicit line fields also work at vanishing points. */
+function homogeneous(p: vec3, u: PlotUniforms, direction: bool): vec3 {
+  const size = plotSize(u.resolution);
+  const camera = direction ? cameraVector(p, u) : cameraPoint(p, u);
+  const w = u.view3d == u32(2) ? (direction ? -camera.z : 3 - camera.z) : (direction ? 0 : 3);
+  const focal = 1 / tan(0.3926990817);
+  return vec3((vec2(camera.x / (size.x / size.y), camera.y) * focal + (vec2(0.5) + u.plotPan) * w) * size, w);
+}
+
+function project(p: vec3, u: PlotUniforms): vec2 {
+  const h = homogeneous(p, u, false);
+  return h.xy / max(h.z, 0.101);
+}
+
+function cameraDistance(p: vec3, u: PlotUniforms): f32 { return 3 - cameraPoint(p, u).z; }
+function inFront(p: vec3, u: PlotUniforms): bool { return u.view3d != u32(2) || cameraDistance(p, u) >= 0.101; }
+
+class ViewRay { origin: vec3; direction: vec3; }
+
+function viewRay(uv: vec2, u: PlotUniforms): ViewRay {
+  const screen = uv - vec2(0.5) - u.plotPan;
+  const size = plotSize(u.resolution);
+  const cameraXY = vec2(screen.x * (size.x / size.y), screen.y) * tan(0.3926990817);
+  const origin = u.view3d == u32(2) ? vec3(0, 0, 3) : vec3(cameraXY * 3, 3);
+  const direction = u.view3d == u32(2) ? vec3(cameraXY, -1) : vec3(0, 0, -1);
+  return { origin: inverseCamera(origin, u) + vec3(u.plotCenter, 0), direction: inverseCamera(direction, u) };
+}
+
+/** Infinite world axis as a projected implicit line SDF; no range-derived endpoints. */
+function axisField(pixel: vec2, axis: vec3, ray: ViewRay, u: PlotUniforms): f32 {
+  const origin = homogeneous(vec3(0), u, false);
+  const direction = homogeneous(axis, u, true);
+  const coefficients = cross(origin, direction);
+  const magnitude = length(coefficients.xy);
+  let distance = length(pixel - project(vec3(0), u));
+  if (magnitude > 1e-12) distance = abs(dot(coefficients, vec3(pixel, 1))) / magnitude;
+  // Reject the portion of the infinite line behind the camera.
+  const transverse = vec3(1) - axis;
+  const a = ray.origin * transverse, b = ray.direction * transverse;
+  const depth = -dot(a, b) / max(dot(b, b), 1e-20);
+  return u.view3d != u32(2) || depth >= 0.101 ? distanceCoverage(distance, u.appearance.x) : 0;
+}
+
+/** Intersect the camera ray with y=0, then evaluate the world lattice as a distance field. */
+function groundField(ray: ViewRay, u: PlotUniforms, spacing: vec2): f32 {
+  const denominator = abs(ray.direction.y) < 1e-8 ? (ray.direction.y < 0 ? -1e-8 : 1e-8) : ray.direction.y;
+  const depth = -ray.origin.y / denominator;
+  const ground = (ray.origin + ray.direction * depth).xz;
+  const gradient = max(vec2(length(vec2(dpdx(ground.x), dpdy(ground.x))), length(vec2(dpdx(ground.y), dpdy(ground.y)))), vec2(1e-20));
+  const distance = abs(fract(ground / spacing + 0.5) - 0.5) * spacing / gradient * pixelWidth();
+  const separation = spacing / gradient * pixelWidth();
+  const fade = smoothstep(vec2(2), vec2(6), separation);
+  const field = max(distanceCoverage(distance.x, u.appearance.y) * fade.x, distanceCoverage(distance.y, u.appearance.y) * fade.y);
+  return (u.view3d != u32(2) || depth >= 0.101) && abs(ray.direction.y) >= 1e-8 && (u.decorations & u32(1)) != u32(0) ? field : 0;
+}
+
+/** Only the user trajectory is sampled; its outline is an analytic capsule distance field. */
+function worldStroke(pixel: vec2, first: vec3, second: vec3, u: PlotUniforms, width: f32): f32 {
+  let a = first, b = second;
+  if (u.view3d == u32(2)) {
+    const da = cameraDistance(a, u), db = cameraDistance(b, u);
+    if (da < 0.101 && db < 0.101) return 0;
+    if (da < 0.101) a = mix(first, second, (0.101 - da) / (db - da));
+    if (db < 0.101) b = mix(first, second, (0.101 - da) / (db - da));
+  }
+  return stroke(pixel, project(a, u), project(b, u), width);
 }
 
 /** A generic spatial curve, specialized by the compiler for its named callback.
@@ -194,48 +378,67 @@ export function plot3D(
   const z0 = project(vec3(0, 0, -max(half.x, half.y)), u);
   const z1 = project(vec3(0, 0, max(half.x, half.y)), u);
   let color = vec3(0.965, 0.973, 0.985);
-  // Ground-plane grid is projected by the same camera as curves and axes.
-  for (let index = 0; index <= 8; index++) {
-    const t = f32(index) / 8;
-    const x = mix(u.plotCenter.x - half.x, u.plotCenter.x + half.x, t);
-    const z = mix(-max(half.x, half.y), max(half.x, half.y), t);
-    const a = vec3(x, 0, -max(half.x, half.y)), b = vec3(x, 0, max(half.x, half.y));
-    const c = vec3(u.plotCenter.x - half.x, 0, z), d = vec3(u.plotCenter.x + half.x, 0, z);
-    let coverage = 0;
-    if (inFront(a, u) && inFront(b, u)) coverage = stroke(pixel, project(a, u), project(b, u));
-    if (inFront(c, u) && inFront(d, u)) coverage = max(coverage, stroke(pixel, project(c, u), project(d, u)));
-    color = mix(color, vec3(0.8, 0.82, 0.85), coverage * 0.65);
+  // Tick multiples are anchored in world coordinates. Their projected locations move
+  // with camera zoom/pan; subdividing the current span would cancel that movement.
+  const xStep = niceSpacing(u.plotSpan.x, length(x1 - x0) * 11 / u.appearance.w);
+  const yStep = niceSpacing(u.plotSpan.y, length(y1 - y0) * 11 / u.appearance.w);
+  const depthSpan = max(u.plotSpan.x, u.plotSpan.y);
+  const zStep = niceSpacing(depthSpan, length(z1 - z0) * 11 / u.appearance.w);
+  const lowX = u.plotCenter.x - half.x;
+  const lowY = u.plotCenter.y - half.y;
+  const lowZ = -depthSpan * 0.5;
+  const firstX = ceil(lowX / xStep) * xStep;
+  const firstY = ceil(lowY / yStep) * yStep;
+  const firstZ = ceil(lowZ / zStep) * zStep;
+  const ray = viewRay(uv, u);
+  const grid = groundField(ray, u, vec2(xStep, zStep));
+  let labels = 0;
+  let ticks = 0;
+  for (let index = 0; index < 16; index++) {
+    const x = firstX + f32(index) * xStep;
+    const y = firstY + f32(index) * yStep;
+    const z = firstZ + f32(index) * zStep;
+    if (x <= lowX + u.plotSpan.x) {
+      const world = vec3(x, 0, 0);
+      if (inFront(world, u)) {
+        const at = project(world, u);
+        ticks = max(ticks, stroke(pixel, at - vec2(0, 3), at + vec2(0, 3), u.appearance.x));
+        if ((u.decorations & u32(2)) != u32(0)) labels = max(labels, numberAt(pixel, at - vec2(0, u.appearance.w * 0.7), x, xStep, 0.5, u.appearance.w));
+      }
+    }
+    if (z <= -lowZ) {
+      const world = vec3(0, 0, z);
+      if (inFront(world, u)) {
+        const at = project(world, u);
+        ticks = max(ticks, stroke(pixel, at - vec2(0, 3), at + vec2(0, 3), u.appearance.x));
+        if (abs(z) > zStep * 0.001) if ((u.decorations & u32(2)) != u32(0)) labels = max(labels, numberAt(pixel, at - vec2(0, u.appearance.w * 0.7), z, zStep, 0.5, u.appearance.w));
+      }
+    }
+    if (y <= lowY + u.plotSpan.y) {
+      const world = vec3(0, y, 0);
+      if (inFront(world, u)) {
+        const at = project(world, u);
+        ticks = max(ticks, stroke(pixel, at - vec2(3, 0), at + vec2(3, 0), u.appearance.x));
+        if (abs(y) > yStep * 0.001) if ((u.decorations & u32(2)) != u32(0)) labels = max(labels, numberAt(pixel, at + vec2(-8, u.appearance.w * 0.75), y, yStep, 1, u.appearance.w));
+      }
+    }
   }
-  const xAxis = max(
-    stroke(pixel, x0, x1),
-    glyph(pixel, clamp(x1 + vec2(10, 0), vec2(9), size - vec2(9)), 0),
-  );
-  const yAxis = max(
-    stroke(pixel, y0, y1),
-    glyph(pixel, clamp(y1 + vec2(0, 10), vec2(9), size - vec2(9)), 1),
-  );
-  const zAxis = max(
-    stroke(pixel, z0, z1),
-    glyph(pixel, clamp(z1 + vec2(10, 0), vec2(9), size - vec2(9)), 2),
-  );
+  color = mix(color, vec3(0.8, 0.82, 0.85), ((u.decorations & u32(1)) != u32(0) ? grid * 0.65 : 0));
+  let xAxis = axisField(pixel, vec3(1, 0, 0), ray, u);
+  let yAxis = axisField(pixel, vec3(0, 1, 0), ray, u);
+  let zAxis = axisField(pixel, vec3(0, 0, 1), ray, u);
+  if ((u.decorations & u32(4)) != u32(0)) {
+    const labelX = vec3(u.plotCenter.x + half.x, 0, 0);
+    const labelY = vec3(0, u.plotCenter.y + half.y, 0);
+    const labelZ = vec3(0, 0, -lowZ);
+    if (inFront(labelX, u)) xAxis = max(xAxis, glyph(pixel, clamp(project(labelX, u) + vec2(12, 10), vec2(14), size - vec2(14)), 0, u.appearance.w));
+    if (inFront(labelY, u)) yAxis = max(yAxis, glyph(pixel, clamp(project(labelY, u) + vec2(10, 12), vec2(14), size - vec2(14)), 1, u.appearance.w));
+    if (inFront(labelZ, u)) zAxis = max(zAxis, glyph(pixel, clamp(project(labelZ, u) + vec2(12, 10), vec2(14), size - vec2(14)), 2, u.appearance.w));
+  }
   color = mix(color, vec3(0.67, 0.28, 0.25), xAxis);
   color = mix(color, vec3(0.23, 0.47, 0.3), yAxis);
   color = mix(color, vec3(0.4, 0.35, 0.62), zAxis);
-  // Tick spacing is in data coordinates, including the depth axis.
-  for (let tick = 1; tick < 8; tick++) {
-    const t = f32(tick) / 8;
-    const xp = mix(x0, x1, t);
-    const yp = mix(y0, y1, t);
-    const zp = mix(z0, z1, t);
-    const ticks = max(
-      stroke(pixel, xp - vec2(0, 3), xp + vec2(0, 3)),
-      max(
-        stroke(pixel, yp - vec2(3, 0), yp + vec2(3, 0)),
-        stroke(pixel, zp - vec2(0, 3), zp + vec2(0, 3)),
-      ),
-    );
-    color = mix(color, vec3(0.45), ticks);
-  }
+  color = mix(color, vec3(0.25, 0.29, 0.35), max(ticks, labels));
   let curve = 0;
   let previous = trajectory(bounds.x);
   for (let i = 1; i <= 96; i++) {
@@ -252,14 +455,15 @@ export function plot3D(
     const expected = (previous + next) * 0.5;
     const continuous =
       !jumps || length(middle - expected) <= max(0.000001, length(next - previous) * 0.2);
-    if (valid && continuous && inFront(previous, u) && inFront(next, u)) {
-      curve = max(curve, stroke(pixel, project(previous, u), project(next, u)));
+    if (valid && continuous) {
+      curve = max(curve, worldStroke(pixel, previous, next, u, u.appearance.z));
     }
     previous = next;
   }
   color = mix(color, vec3(0.09, 0.42, 0.92), curve);
+  color = mix(color, vec3(0.25, 0.29, 0.35), labels);
   const selected = trajectory(u.probe);
   const visible = u.probe >= bounds.x && u.probe <= bounds.y && abs(selected.y) < 1e18 && inFront(selected, u);
   return vec4(visible ? pointColor(color, pixel, project(selected, u)) : color, 1);
 }
-`;var s=Object.freeze({"function-plot.shade.ts":e});export{s as plotShaderFiles};
+`;var r=Object.freeze({"function-plot.shade.ts":t,"font.shade.ts":e});export{r as plotShaderFiles};

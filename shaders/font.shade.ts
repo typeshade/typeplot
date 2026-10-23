@@ -1,8 +1,12 @@
 "use typeshade";
 
 declare const glyphAtlas: texture_2d<f32>;
+class FontUniforms { pixelRatio: f32; }
+declare const font: uniform<FontUniforms>;
 
-/** Static IBM Plex glyph coverage; no host text canvas or DOM overlay. */
+export function pixelWidth(): f32 { return 1 / max(font.pixelRatio, 0.0001); }
+
+/** Signed distance IBM Plex glyphs; no host text canvas or DOM overlay. */
 export function glyphIndex(code: i32): i32 {
   if (code >= 32 && code < 256) return code - 32;
   if (code >= 880 && code < 1024) return 224 + code - 880;
@@ -13,17 +17,21 @@ export function glyphIndex(code: i32): i32 {
 }
 
 export function glyphCoverage(p: vec2, code: i32, fontSize: f32): f32 {
-  const q = p * (16 / fontSize);
-  if (q.x < 0 || q.y < 0 || q.x >= 20 || q.y >= 24) return 0;
+  // Sample at texel centers. A distance field preserves outlines under DPR and scaling.
+  const q = p * (24 / fontSize) - vec2(0.5);
+  if (q.x < 0 || q.y < 0 || q.x >= 29 || q.y >= 35) return 0;
   const index = glyphIndex(code);
-  const origin = vec2i((index % 102) * 20, (index / 102) * 24);
+  const origin = vec2i((index % 132) * 30, (index / 132) * 36);
   const base = vec2i(floor(q));
   const t = fract(q);
   const a = textureLoad(glyphAtlas, origin + base, 0).r;
-  const b = textureLoad(glyphAtlas, origin + min(base + vec2i(1, 0), vec2i(19, 23)), 0).r;
-  const c = textureLoad(glyphAtlas, origin + min(base + vec2i(0, 1), vec2i(19, 23)), 0).r;
-  const d = textureLoad(glyphAtlas, origin + min(base + vec2i(1, 1), vec2i(19, 23)), 0).r;
-  return mix(mix(a, b, t.x), mix(c, d, t.x), t.y);
+  const b = textureLoad(glyphAtlas, origin + base + vec2i(1, 0), 0).r;
+  const c = textureLoad(glyphAtlas, origin + base + vec2i(0, 1), 0).r;
+  const d = textureLoad(glyphAtlas, origin + base + vec2i(1, 1), 0).r;
+  const distance = mix(mix(a, b, t.x), mix(c, d, t.x), t.y) - 0.5;
+  // The host supplies only layout scale; explicit footprint also works inside tick branches.
+  const width = max(1.5 / (fontSize * font.pixelRatio), 0.003);
+  return smoothstep(-width, width, distance);
 }
 
 class NumberFormat {
@@ -57,12 +65,12 @@ function numberFormat(input: f32, spacing: f32): NumberFormat {
 }
 
 /** Tick formatting and glyph selection run on the GPU with the grid spacing. */
-export function tickNumber(p: vec2, value: f32, spacing: f32, align: f32): f32 {
+export function tickNumberSized(p: vec2, value: f32, spacing: f32, align: f32, fontSize: f32): f32 {
   const n = numberFormat(value, spacing);
-  const advance = 6.875;
+  const advance = fontSize * 0.625;
   const offset = p + vec2(f32(n.length) * advance * align, 0);
   const column = i32(floor(offset.x / advance));
-  if (column < 0 || column >= n.length || offset.y < 0 || offset.y > 16.5) return 0;
+  if (column < 0 || column >= n.length || offset.y < 0 || offset.y > fontSize * 1.5) return 0;
   let i = column;
   let code: i32 = 32;
   if (n.negative && i == 0) code = 45;
@@ -82,5 +90,9 @@ export function tickNumber(p: vec2, value: f32, spacing: f32, align: f32): f32 {
       code = 48 + i32(floor(n.value / pow(10, f32(n.digits + n.decimals - digit - 1)))) % 10;
     }
   }
-  return glyphCoverage(vec2(offset.x - f32(column) * advance, offset.y), code, 11);
+  return glyphCoverage(vec2(offset.x - f32(column) * advance, offset.y), code, fontSize);
+}
+
+export function tickNumber(p: vec2, value: f32, spacing: f32, align: f32): f32 {
+  return tickNumberSized(p, value, spacing, align, 11);
 }

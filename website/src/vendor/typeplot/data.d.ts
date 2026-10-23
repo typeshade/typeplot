@@ -8,6 +8,11 @@ export interface SeriesOptions {
     readonly color?: string;
     readonly lineWidth?: number;
     readonly lineStyle?: "-" | "--" | ":" | "none";
+    /** Dash coordinate. Auto uses increasing x, otherwise sample index. */
+    readonly parameter?: "auto" | "x" | "index";
+    /** Period in parameter units. Defaults to 1/60 of the parameter domain. */
+    readonly dashPeriod?: number;
+    readonly dashOffset?: number;
     readonly marker?: "o" | "s" | "none";
     /** Marker radius in CSS pixels. */
     readonly markerSize?: number;
