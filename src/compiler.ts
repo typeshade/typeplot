@@ -126,6 +126,24 @@ class VertexOutput { @builtin("position") position: vec4; @location(0) uv: vec2;
   if (errors.length) throw new PlotCompileError(errors);
   if (!result.wgsl || !result.glsl)
     throw new Error("The plot must emit both WGSL and GLSL.");
-  return { version: 1, kind, manifest: packModule(result.module), parameters };
+  const packed = packModule(result.module);
+  const manifest = {
+    ...packed,
+    entries: packed.entries.map((entry) => ({
+      ...entry,
+      ...(entry.line
+        ? {
+            line: {
+              ...entry.line,
+              file: path
+                .relative(path.dirname(userFile), entry.line.file)
+                .split(path.sep)
+                .join("/"),
+            },
+          }
+        : {}),
+    })),
+  };
+  return { version: 1, kind, manifest, parameters };
 }
 export type { PlotProgram, PlotKind } from "./types.js";

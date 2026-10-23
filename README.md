@@ -6,14 +6,57 @@ It uses the TypeShade program runtime on WebGPU, with WebGL2 fallback.
 
 ## Installation
 
+The initial implementation is under review in PR #1. Install the review branch:
+
 ```sh
-npm install https://github.com/typeshade/typeplot.git
+npm install https://github.com/typeshade/typeplot.git#feat/initial-plot-library
 ```
 
 The package includes JavaScript and declarations. TypeScript source in the dependency does
-not need a loader. The initial implementation is under review in PR #1; until it merges,
-install the review branch with `#feat/initial-plot-library` appended to the Git URL.
+not need a loader. After PR #1 merges, the unqualified Git URL installs the main branch.
 The package has not been published to the npm registry.
+
+## Vite
+
+Add the build plugin to `vite.config.ts`:
+
+```ts
+import { defineConfig } from "vite";
+import { typeplot } from "typeplot/vite";
+export default defineConfig({ plugins: [typeplot()] });
+```
+
+A callback file contains only the function:
+
+```ts
+// sine.shade.ts
+"use typeshade";
+export function sample(x: f32): f32 {
+  return sin(x);
+}
+```
+
+Import its compiled plot in the browser:
+
+```ts
+import { createPlot } from "typeplot";
+import sine from "./sine.shade.ts?plot";
+import helix from "./helix.shade.ts?plot=3d";
+
+const plot = await createPlot(document.querySelector("canvas")!, sine, {
+  bounds: { x: [-6.28, 6.28], y: [-1.25, 1.25] },
+});
+```
+
+For parameterized callbacks, set defaults with
+`typeplot({ configure: file => ({ parameters: { exponent: 2 } }) })` for the applicable files.
+For host TypeScript projects, add `/// <reference types="typeplot/client" />` to the project's
+environment declarations. Exclude `**/*.shade.ts` from the host `tsconfig.json`; the plugin
+validates these files with the TypeShade compiler, whose shader types and operators differ
+from host TypeScript. The TypeShade editor extension provides shader diagnostics.
+
+The plugin compiles callback imports during the build and watches their shader dependencies.
+The browser receives a serialized program and the runtime.
 
 ## Scalar functions
 

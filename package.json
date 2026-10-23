@@ -28,6 +28,13 @@
     "./shaders": {
       "types": "./dist/shaders.d.ts",
       "import": "./dist/shaders.js"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "import": "./dist/vite.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts"
     }
   },
   "files": [

@@ -1,5 +1,11 @@
 import { build } from "esbuild";
-import { readFile, mkdir } from "node:fs/promises";
+import {
+  readFile,
+  writeFile,
+  readdir,
+  mkdir,
+  copyFile,
+} from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 await mkdir("dist", { recursive: true });
@@ -24,6 +30,7 @@ await build({
   format: "esm",
   target: "es2022",
   minify: true,
+  legalComments: "linked",
   metafile: true,
 }).then(async (result) => {
   const shipped = Object.entries(
@@ -46,6 +53,7 @@ await build({
   target: "es2022",
   plugins: [sourcePlugin],
   minify: true,
+  legalComments: "linked",
 });
 await build({
   entryPoints: ["src/compiler.ts"],
@@ -57,8 +65,32 @@ await build({
   packages: "bundle",
   plugins: [sourcePlugin],
   minify: true,
+  legalComments: "linked",
   banner: {
     js: "import {createRequire} from 'node:module';import{fileURLToPath}from'node:url';import{dirname}from'node:path';const require=createRequire(import.meta.url);const __filename=fileURLToPath(import.meta.url);const __dirname=dirname(__filename);",
   },
 });
 execFileSync("node_modules/.bin/tsc", [], { stdio: "inherit" });
+
+await build({
+  entryPoints: ["src/vite.ts"],
+  outfile: "dist/vite.js",
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  external: ["./compiler.js"],
+  minify: true,
+  legalComments: "linked",
+});
+
+for (const file of await readdir("dist"))
+  if (file.endsWith(".LEGAL.txt")) {
+    const target = `dist/${file}`;
+    await writeFile(
+      target,
+      (await readFile(target, "utf8")).replace(/[ \t]+$/gm, ""),
+    );
+  }
+
+await copyFile("src/client.d.ts", "dist/client.d.ts");
