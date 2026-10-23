@@ -9,7 +9,7 @@ It uses the TypeShade program runtime on WebGPU, with WebGL2 fallback.
 Install the versioned Git release with npm:
 
 ```sh
-npm install https://github.com/typeshade/typeplot.git#v0.1.0
+npm install https://github.com/typeshade/typeplot.git#v0.1.1
 ```
 
 The package includes JavaScript and declarations. TypeScript source in the dependency does

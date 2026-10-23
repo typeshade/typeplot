@@ -8,7 +8,7 @@ npm package is `typeplot`; the first registry release is pending. A registry loo
 Create a GitHub release and a version tag at the reviewed main commit after its build checks
 pass. The version must match `package.json`. Include compiled JavaScript, declarations and
 shader sources in the committed tree so dependency installation does not need a build step.
-Install a release with `npm install https://github.com/typeshade/typeplot.git#v0.1.0`.
+Install a release with `npm install https://github.com/typeshade/typeplot.git#v0.1.1`.
 
 ## Registry release procedure
 
@@ -23,7 +23,7 @@ Install a release with `npm install https://github.com/typeshade/typeplot.git#v0
 6. Publish the approved version with `npm publish --access public`. Complete npm's
    authentication prompt if required. Publication requires the repository owner's approval.
 7. Confirm the published version with `npm view typeplot version`, then install
-   `typeplot@0.1.0` in a separate consumer project and check its public exports.
+   `typeplot@0.1.1` in a separate consumer project and check its public exports.
 
 Published versions are immutable. Increment the version for later releases. Update site
 consumers from their temporary Git commit dependency to the published package after the

@@ -24,4 +24,4 @@ Low-level interaction and shared shader exports are unchanged, preserving site i
 
 This change adds no test suite. The new example and accessibility behavior have not received
 an additional browser interaction review. The existing v0.1.0 release remains unchanged;
-these improvements are under review for a later release.
+these improvements target the v0.1.1 release.
