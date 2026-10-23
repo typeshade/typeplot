@@ -9,7 +9,7 @@ It uses the TypeShade program runtime on WebGPU, with WebGL2 fallback.
 Install the versioned Git release with npm:
 
 ```sh
-npm install https://github.com/typeshade/typeplot.git#v0.1.0
+npm install https://github.com/typeshade/typeplot.git#v0.1.1
 ```
 
 The package includes JavaScript and declarations. TypeScript source in the dependency does
@@ -18,6 +18,19 @@ not need a loader. The version tag keeps installations on the same release.
 The package has not been published to the npm registry. Once it is published, registry
 installation will use `npm install typeplot`. See the
 [publishing procedure](https://github.com/typeshade/typeplot/blob/main/docs/publishing.md).
+
+## Runnable example
+
+```sh
+npm ci
+npm run build
+npm run dev
+```
+
+Open the local Vite URL to use scalar and spatial plots. The example imports shader callbacks
+through `?plot`; no manual manifest generation is needed. It includes parameter controls,
+keyboard instructions, a 3D toggle, reset and renderer failure messages. Use
+`?backend=webgl2` to select WebGL2 explicitly. Run `npm run build:example` for production output.
 
 ## Vite
 
@@ -170,3 +183,12 @@ fallback. The browser entry contains the runtime; the separate Node compiler ent
 TypeShade and TypeScript. The build rejects a compiler dependency in the browser entry.
 
 TypePlot is derived from the graph module developed for typeshade.dev. See LICENSE and NOTICE.
+
+## Canvas accessibility
+
+Pass `label: "Power function"` to name a plot for assistive technology. Without this option,
+existing `aria-label` and `aria-labelledby` attributes are preserved; otherwise TypePlot
+provides a generic name. Existing roles are preserved, with `img` used as the default.
+Add descriptive fallback content inside the canvas and use `aria-describedby` for keyboard
+instructions or a textual explanation. A canvas label does not replace an accessible table
+or mathematical description of the underlying data. Attributes are restored on destruction.

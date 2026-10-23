@@ -78,6 +78,11 @@ export async function createPlot(
       throw new TypeError("Parametric curves require 3d mode.");
   };
   checkMode(mode);
+  if (
+    options.label !== undefined &&
+    (typeof options.label !== "string" || !options.label.trim())
+  )
+    throw new TypeError("Plot label must be a non-empty string.");
   const bounds = checkedBounds(options.bounds ?? { x: [-1, 1], y: [-1, 1] });
   const initialProbe = finite(
     options.probe ?? bounds.x[0] / 2 + bounds.x[1] / 2,
@@ -117,8 +122,21 @@ export async function createPlot(
     width: canvas.width,
     height: canvas.height,
     style: canvas.getAttribute("style"),
+    label: canvas.getAttribute("aria-label"),
+    labelledby: canvas.getAttribute("aria-labelledby"),
+    role: canvas.getAttribute("role"),
   };
   ACTIVE.add(canvas);
+  if (options.label !== undefined) {
+    canvas.setAttribute("aria-label", options.label);
+    canvas.removeAttribute("aria-labelledby");
+  } else if (!original.label && !original.labelledby) {
+    canvas.setAttribute(
+      "aria-label",
+      program.kind === "scalar" ? "Function plot" : "Spatial trajectory plot",
+    );
+  }
+  if (original.role === null) canvas.setAttribute("role", "img");
   const manifest = program.manifest as Pack;
   let rt: Runtime | undefined;
   let context: GPUCanvasContext | WebGL2RenderingContext | undefined;
@@ -146,6 +164,14 @@ export async function createPlot(
     canvas.height = original.height;
     if (original.style === null) canvas.removeAttribute("style");
     else canvas.setAttribute("style", original.style);
+    for (const [name, value] of [
+      ["aria-label", original.label],
+      ["aria-labelledby", original.labelledby],
+      ["role", original.role],
+    ] as const) {
+      if (value === null) canvas.removeAttribute(name);
+      else canvas.setAttribute(name, value);
+    }
   }
   function destroy(): void {
     if (destroyed) return;

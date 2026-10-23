@@ -1,0 +1,103 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #17213b;
+  background: #fff;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+main {
+  max-width: 920px;
+  margin: 40px auto;
+  padding: 0 24px;
+}
+h1 {
+  margin-bottom: 24px;
+}
+h2 {
+  font-size: 1.2rem;
+  margin: 24px 0 16px;
+}
+p {
+  line-height: 1.65;
+}
+.plots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 32px;
+}
+section {
+  min-width: 0;
+}
+canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid #dce1eb;
+  border-radius: 8px;
+}
+canvas:focus-visible,
+button:focus-visible,
+input:focus-visible {
+  outline: 3px solid #4263eb;
+  outline-offset: 4px;
+}
+fieldset {
+  border: 0;
+  padding: 0;
+  margin: 20px 0;
+}
+legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  clip-path: inset(50%);
+  overflow: hidden;
+}
+.parameter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+}
+input {
+  flex: 1;
+  min-width: 0;
+}
+output {
+  flex: 0 0 5ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+button {
+  font: inherit;
+  padding: 8px 12px;
+  margin: 0 8px 8px 0;
+  border: 1px solid #aab4ca;
+  border-radius: 6px;
+  background: #f7f9ff;
+  color: inherit;
+}
+button[aria-pressed="true"] {
+  background: #dfe7ff;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color: #e2e8fa;
+    background: #101725;
+    color-scheme: dark;
+  }
+  canvas {
+    border-color: #45516a;
+  }
+  button {
+    background: #1c2840;
+    border-color: #66738f;
+  }
+  button[aria-pressed="true"] {
+    background: #334679;
+  }
+}

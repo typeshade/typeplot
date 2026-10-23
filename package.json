@@ -1,6 +1,6 @@
 {
   "name": "typeplot",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "GPU function plots with TypeShade callbacks, WebGPU and WebGL2",
   "type": "module",
   "license": "Apache-2.0",
@@ -49,7 +49,9 @@
     "check": "tsc --noEmit",
     "format": "prettier --write src scripts examples docs README.md package.json tsconfig.json",
     "examples": "node scripts/examples.mjs",
-    "pack": "npm pack"
+    "pack": "npm pack",
+    "dev": "vite --config examples/vite.config.js",
+    "build:example": "tsc --project examples/vite/tsconfig.json && vite build --config examples/vite.config.js"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

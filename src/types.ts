@@ -11,6 +11,8 @@ export interface PlotProgram {
   readonly parameters: Readonly<Record<string, number>>;
 }
 export interface PlotOptions {
+  /** Accessible canvas name. Existing aria-label/aria-labelledby are preserved unless supplied. */
+  readonly label?: string;
   readonly bounds?: PlotBounds;
   readonly backend?: "auto" | "webgpu" | "webgl2";
   readonly mode?: "2d" | "3d";
