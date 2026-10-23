@@ -1,5 +1,5 @@
 "use typeshade";
-import { glyphCoverage, glyphLayers, tickNumberLayers, numberPlate, numberWidth, tickLevels, tickOpacity, pixelWidth } from "./font.shade.ts";
+import { glyphCoverage, glyphLayers, tickNumberLayers, numberPlate, numberWidth, tickLevels, tickOpacity, coarseTickOpacity, pixelWidth } from "./font.shade.ts";
 
 /** Host-controlled viewport, in data units; rotation is yaw/pitch in radians. */
 export class PlotViewport {
@@ -103,7 +103,7 @@ function axes2D(uv: vec2, u: PlotViewport): vec4 {
   for (let level = 0; level < 2; level++) {
     const tickStep = level == 0 ? vec2(xLevels.x, yLevels.x) : vec2(xLevels.y, yLevels.y);
     const nearest = floor(p / tickStep + 0.5) * tickStep;
-    const weights = level == 0 ? vec2(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, yLevels)) : vec2(1);
+    const weights = level == 0 ? vec2(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, yLevels)) : vec2(coarseTickOpacity(nearest.x, xLevels), coarseTickOpacity(nearest.y, yLevels));
     const grid = abs(p - nearest) / span * size;
     axes = max(axes, max(
       distanceCoverage(grid.x, u.appearance.x) * weights.x * (1 - step(4, abs(pixel.y - origin.y))),
@@ -296,16 +296,20 @@ function axisField(pixel: vec2, axis: vec3, ray: ViewRay, u: PlotUniforms): f32 
 
 /** Intersect the camera ray with y=0, then evaluate the world lattice as a distance field. */
 function groundField(ray: ViewRay, u: PlotUniforms, xLevels: vec3, zLevels: vec3): f32 {
-  const spacing = vec2(xLevels.x, zLevels.x);
   const denominator = abs(ray.direction.y) < 1e-8 ? (ray.direction.y < 0 ? -1e-8 : 1e-8) : ray.direction.y;
   const depth = -ray.origin.y / denominator;
   const ground = (ray.origin + ray.direction * depth).xz;
   const gradient = max(vec2(length(vec2(dpdx(ground.x), dpdy(ground.x))), length(vec2(dpdx(ground.y), dpdy(ground.y)))), vec2(1e-20));
-  const distance = abs(fract(ground / spacing + 0.5) - 0.5) * spacing / gradient * pixelWidth();
-  const separation = spacing / gradient * pixelWidth();
-  const fade = smoothstep(vec2(2), vec2(6), separation);
-  const nearest = floor(ground / spacing + 0.5) * spacing;
-  const field = max(distanceCoverage(distance.x, u.appearance.y) * fade.x * tickOpacity(nearest.x, xLevels), distanceCoverage(distance.y, u.appearance.y) * fade.y * tickOpacity(nearest.y, zLevels));
+  let field = 0;
+  for (let level = 0; level < 2; level++) {
+    const spacing = level == 0 ? vec2(xLevels.x, zLevels.x) : vec2(xLevels.y, zLevels.y);
+    const distance = abs(fract(ground / spacing + 0.5) - 0.5) * spacing / gradient * pixelWidth();
+    const separation = spacing / gradient * pixelWidth();
+    const fade = smoothstep(vec2(2), vec2(6), separation);
+    const nearest = floor(ground / spacing + 0.5) * spacing;
+    const weights = level == 0 ? vec2(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, zLevels)) : vec2(coarseTickOpacity(nearest.x, xLevels), coarseTickOpacity(nearest.y, zLevels));
+    field = max(field, max(distanceCoverage(distance.x, u.appearance.y) * fade.x * weights.x, distanceCoverage(distance.y, u.appearance.y) * fade.y * weights.y));
+  }
   return (u.view3d != u32(2) || depth >= 0.101) && abs(ray.direction.y) >= 1e-8 && (u.decorations & u32(1)) != u32(0) ? field * u.decorationOpacity.x : 0;
 }
 
@@ -357,7 +361,7 @@ function spatialTicks(pixel: vec2, axis: vec3, levels: vec3, priority: f32, u: P
       const separation = min(abs(at - before), abs(after - at));
       const box = vec2(width + fontSize, fontSize * 1.8 + 6);
       const fit = smoothstep(0.85, 1.15, max(separation.x / box.x, separation.y / box.y));
-      const visibility = (index < 3 ? tickOpacity(t, levels) : 1) * fit;
+      const visibility = (index < 3 ? tickOpacity(t, levels) : coarseTickOpacity(t, levels)) * fit;
       ticks = max(ticks, stroke(pixel, at - normal * 3, at + normal * 3, u.appearance.x) * visibility);
       const zero = abs(t) <= levels.x * 0.001;
       const originDistance = length(at - project(vec3(0), u));

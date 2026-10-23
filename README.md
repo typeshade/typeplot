@@ -394,7 +394,7 @@ or mathematical description of the underlying data. Attributes are restored on d
 
 ### Adaptive grid and label layout
 
-Ticks use nested world-coordinate decimal lattices. Intermediate ticks fade continuously
+Ticks use overlapping world-coordinate decimal lattices. Intermediate ticks fade continuously
 with zoom while common multiples stay visible. Spatial labels query the infinite projected
 axes, independently of the curve domain. Projected label dimensions control density and
 collision fading; nearly coincident x/z axes give x labels priority. Edge and origin guards

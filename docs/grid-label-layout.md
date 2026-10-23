@@ -2,7 +2,7 @@
 
 ## Coordinate and distance responsibilities
 
-World coordinates define tick identity. A nested 1/2/10 decimal hierarchy adds intermediate
+World coordinates define tick identity. An overlapping 1/2/5/10 decimal hierarchy adds intermediate
 multiples with continuous scale-dependent alpha; common multiples retain full opacity.
 This is a zoom-driven field, not an eased camera or a host-generated tick mesh.
 

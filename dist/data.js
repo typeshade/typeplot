@@ -457,8 +457,8 @@ fn tickLevels(raw: f32) -> vec3<f32> {
   let safe = max(raw, 1e-25);
   let unit = pow(10.0, floor((log2(safe) / log2(10.0))));
   let _gv0 = (safe < (unit * 2.0));
-  let fine = select((unit * 2.0), unit, _gv0);
-  let coarse = select((unit * 10.0), (unit * 2.0), _gv0);
+  let fine = select(select((unit * 5.0), (unit * 2.0), (safe < (unit * 5.0))), unit, _gv0);
+  let coarse = select(select((unit * 10.0), (unit * 5.0), (safe < (unit * 5.0))), (unit * 2.0), _gv0);
   let phase = (log2((safe / fine)) / log2((coarse / fine)));
   return vec3<f32>(fine, coarse, (1.0 - smoothstep(0.0, 1.0, phase)));
 }
@@ -476,6 +476,11 @@ fn numberPlate(p: vec2<f32>, value: f32, spacing: f32, align: f32, size: f32) ->
   let distance = ((length(max(q, vec2<f32>(0.0, 0.0))) + min(max(q.x, q.y), 0.0)) - 3.0);
   let _cse0 = pixelWidth();
   return (1.0 - smoothstep(((-_cse0) * 0.5), (_cse0 * 0.5), distance));
+}
+
+fn coarseTickOpacity(value: f32, levels: vec3<f32>) -> f32 {
+  let multiple = (value / levels.x);
+  return select((1.0 - levels.z), 1.0, (abs((multiple - floor((multiple + 0.5)))) < 0.001));
 }
 
 fn clipPosition(p: vec2<f32>) -> vec4<f32> {
@@ -533,15 +538,14 @@ fn axesFragment(v: Surface) -> @location(0) vec4<f32> {
   let _licm1 = u.span.x;
   let _licm2 = u.lower.y;
   let _licm3 = u.span.y;
-  let _licm4 = vec2<f32>(1.0, 1.0);
-  let _licm5 = (u.layer > 0.5);
-  let _licm6 = u.labelStyle.x;
-  let _licm7 = u.resolution.x;
-  let _licm8 = u.labelStyle.z;
-  let _licm9 = u.labelStyle.w;
-  let _licm10 = (u.labelStyle.x * 1.6);
-  let _licm11 = (u.labelStyle.x * 2.2);
-  let _licm12 = (u.labelStyle.x * 0.75);
+  let _licm4 = (u.layer > 0.5);
+  let _licm5 = u.labelStyle.x;
+  let _licm6 = u.resolution.x;
+  let _licm7 = u.labelStyle.z;
+  let _licm8 = u.labelStyle.w;
+  let _licm9 = (u.labelStyle.x * 1.6);
+  let _licm10 = (u.labelStyle.x * 2.2);
+  let _licm11 = (u.labelStyle.x * 0.75);
   let p = (vec2<f32>(v.uv.x, (1.0 - v.uv.y)) * u.resolution);
   let size = extent();
   let lo = vec2<f32>(76.0, 42.0);
@@ -562,32 +566,32 @@ fn axesFragment(v: Surface) -> @location(0) vec4<f32> {
     let spacing = select(vec2<f32>(xLevels.y, yLevels.y), vec2<f32>(xLevels.x, yLevels.x), _gv0);
     let nearest = (floor(((value / spacing) + 0.5)) * spacing);
     let tick = (lo + (vec2<f32>(((nearest.x - _licm0) / _licm1), (1.0 - ((nearest.y - _licm2) / _licm3))) * size));
-    let weights = select(_licm4, vec2<f32>(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, yLevels)), _gv0);
+    let weights = select(vec2<f32>(coarseTickOpacity(nearest.x, xLevels), coarseTickOpacity(nearest.y, yLevels)), vec2<f32>(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, yLevels)), _gv0);
     let _gv1 = vec2<f32>(tick.x, hi.y);
     let _gv2 = vec2<f32>(lo.x, tick.y);
     grid = max(grid, max((line(p, vec2<f32>(tick.x, lo.y), _gv1, 0.5) * weights.x), (line(p, _gv2, vec2<f32>(hi.x, tick.y), 0.5) * weights.y)));
-    if (_licm5) {
+    if (_licm4) {
       if (((tick.x >= (lo.x - 0.01)) && (tick.x <= (hi.x + 0.01)))) {
         coverage = max(coverage, (line(p, _gv1, vec2<f32>(tick.x, (hi.y + 5.0)), 0.5) * weights.x));
         let n = select(nearest.x, pow(10.0, nearest.x), _cse0);
         let step = select(xLevels.x, max((n * (pow(10.0, xLevels.x) - 1.0)), 1e-30), _cse0);
-        let width = numberWidth(n, step, _licm6);
+        let width = numberWidth(n, step, _licm5);
         let _lc2 = (width * 0.5);
-        let room = min(((tick.x - _lc2) - 4.0), (((_licm7 - tick.x) - _lc2) - 4.0));
+        let room = min(((tick.x - _lc2) - 4.0), (((_licm6 - tick.x) - _lc2) - 4.0));
         let fit = smoothstep((width + 6.0), (width + 14.0), ((spacing.x / _licm1) * size.x));
         let opacity = ((weights.x * fit) * smoothstep(0.0, 5.0, room));
         let local = (p - vec2<f32>(tick.x, (hi.y + 6.0)));
-        labels = max(labels, (vec3<f32>(tickNumberLayers(local, n, step, 0.5, _licm6, _licm8), (numberPlate(local, n, step, 0.5, _licm6) * _licm9)) * opacity));
+        labels = max(labels, (vec3<f32>(tickNumberLayers(local, n, step, 0.5, _licm5, _licm7), (numberPlate(local, n, step, 0.5, _licm5) * _licm8)) * opacity));
       }
       if (((tick.y >= (lo.y - 0.01)) && (tick.y <= (hi.y + 0.01)))) {
         coverage = max(coverage, (line(p, vec2<f32>((lo.x - 5.0), tick.y), _gv2, 0.5) * weights.y));
         let n_1 = select(nearest.y, pow(10.0, nearest.y), _cse1);
         let step_1 = select(yLevels.x, max((n_1 * (pow(10.0, yLevels.x) - 1.0)), 1e-30), _cse1);
-        let width_1 = numberWidth(n_1, step_1, _licm6);
-        let fit_1 = smoothstep(_licm10, _licm11, ((spacing.y / _licm3) * size.y));
+        let width_1 = numberWidth(n_1, step_1, _licm5);
+        let fit_1 = smoothstep(_licm9, _licm10, ((spacing.y / _licm3) * size.y));
         let opacity_1 = ((weights.y * fit_1) * smoothstep(0.0, 5.0, ((lo.x - 13.0) - width_1)));
-        let local_1 = (p - vec2<f32>((lo.x - 9.0), (tick.y - _licm12)));
-        labels = max(labels, (vec3<f32>(tickNumberLayers(local_1, n_1, step_1, 1.0, _licm6, _licm8), (numberPlate(local_1, n_1, step_1, 1.0, _licm6) * _licm9)) * opacity_1));
+        let local_1 = (p - vec2<f32>((lo.x - 9.0), (tick.y - _licm11)));
+        labels = max(labels, (vec3<f32>(tickNumberLayers(local_1, n_1, step_1, 1.0, _licm5, _licm7), (numberPlate(local_1, n_1, step_1, 1.0, _licm5) * _licm8)) * opacity_1));
       }
     }
   }
@@ -600,7 +604,7 @@ fn axesFragment(v: Surface) -> @location(0) vec4<f32> {
   if ((((((u.legend.z > 0.0) && (p.x >= u.legend.x)) && (p.y >= u.legend.y)) && (p.x <= (u.legend.x + u.legend.z))) && (p.y <= (u.legend.y + u.legend.w)))) {
     color = vec4<f32>(1.0, 1.0, 1.0, 0.96);
   }
-  if (((u.focus > 0.0) && (min(min(p.x, p.y), min((_licm7 - p.x), (u.resolution.y - p.y))) < 2.0))) {
+  if (((u.focus > 0.0) && (min(min(p.x, p.y), min((_licm6 - p.x), (u.resolution.y - p.y))) < 2.0))) {
     color = vec4<f32>(0.09, 0.42, 0.92, 1.0);
   }
   return color;
@@ -1067,8 +1071,8 @@ vec3 tickLevels(float raw) {
   float safe = max(raw, 1e-25);
   float unit = pow(10.0, floor((log2(safe) / log2(10.0))));
   bool _gv0 = (safe < (unit * 2.0));
-  float fine = (_gv0 ? unit : (unit * 2.0));
-  float coarse = (_gv0 ? (unit * 2.0) : (unit * 10.0));
+  float fine = (_gv0 ? unit : ((safe < (unit * 5.0)) ? (unit * 2.0) : (unit * 5.0)));
+  float coarse = (_gv0 ? (unit * 2.0) : ((safe < (unit * 5.0)) ? (unit * 5.0) : (unit * 10.0)));
   float phase = (log2((safe / fine)) / log2((coarse / fine)));
   return vec3(fine, coarse, (1.0 - smoothstep(0.0, 1.0, phase)));
 }
@@ -1086,6 +1090,11 @@ float numberPlate(vec2 p, float value, float spacing, float align, float size) {
   float distance = ((length(max(q, vec2(0.0, 0.0))) + min(max(q.x, q.y), 0.0)) - 3.0);
   float _cse0 = pixelWidth();
   return (1.0 - smoothstep(((-_cse0) * 0.5), (_cse0 * 0.5), distance));
+}
+
+float coarseTickOpacity(float value, vec3 levels) {
+  float multiple = (value / levels.x);
+  return ((abs((multiple - floor((multiple + 0.5)))) < 0.001) ? 1.0 : (1.0 - levels.z));
 }
 
 vec2 extent() {
@@ -1126,15 +1135,14 @@ vec4 axesFragment_impl(Surface v) {
   float _licm1 = u.span.x;
   float _licm2 = u.lower.y;
   float _licm3 = u.span.y;
-  vec2 _licm4 = vec2(1.0, 1.0);
-  bool _licm5 = (u.layer > 0.5);
-  float _licm6 = u.labelStyle.x;
-  float _licm7 = u.resolution.x;
-  float _licm8 = u.labelStyle.z;
-  float _licm9 = u.labelStyle.w;
-  float _licm10 = (u.labelStyle.x * 1.6);
-  float _licm11 = (u.labelStyle.x * 2.2);
-  float _licm12 = (u.labelStyle.x * 0.75);
+  bool _licm4 = (u.layer > 0.5);
+  float _licm5 = u.labelStyle.x;
+  float _licm6 = u.resolution.x;
+  float _licm7 = u.labelStyle.z;
+  float _licm8 = u.labelStyle.w;
+  float _licm9 = (u.labelStyle.x * 1.6);
+  float _licm10 = (u.labelStyle.x * 2.2);
+  float _licm11 = (u.labelStyle.x * 0.75);
   vec2 p = (vec2(v.uv.x, (1.0 - v.uv.y)) * u.resolution);
   vec2 size = extent();
   vec2 lo = vec2(76.0, 42.0);
@@ -1155,32 +1163,32 @@ vec4 axesFragment_impl(Surface v) {
     vec2 spacing = (_gv0 ? vec2(xLevels.x, yLevels.x) : vec2(xLevels.y, yLevels.y));
     vec2 nearest = (floor(((value / spacing) + 0.5)) * spacing);
     vec2 tick = (lo + (vec2(((nearest.x - _licm0) / _licm1), (1.0 - ((nearest.y - _licm2) / _licm3))) * size));
-    vec2 weights = (_gv0 ? vec2(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, yLevels)) : _licm4);
+    vec2 weights = (_gv0 ? vec2(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, yLevels)) : vec2(coarseTickOpacity(nearest.x, xLevels), coarseTickOpacity(nearest.y, yLevels)));
     vec2 _gv1 = vec2(tick.x, hi.y);
     vec2 _gv2 = vec2(lo.x, tick.y);
     grid = max(grid, max((line(p, vec2(tick.x, lo.y), _gv1, 0.5) * weights.x), (line(p, _gv2, vec2(hi.x, tick.y), 0.5) * weights.y)));
-    if (_licm5) {
+    if (_licm4) {
       if (((tick.x >= (lo.x - 0.01)) && (tick.x <= (hi.x + 0.01)))) {
         coverage = max(coverage, (line(p, _gv1, vec2(tick.x, (hi.y + 5.0)), 0.5) * weights.x));
         float n = (_cse0 ? pow(10.0, nearest.x) : nearest.x);
         float step = (_cse0 ? max((n * (pow(10.0, xLevels.x) - 1.0)), 1e-30) : xLevels.x);
-        float width = numberWidth(n, step, _licm6);
+        float width = numberWidth(n, step, _licm5);
         float _lc2 = (width * 0.5);
-        float room = min(((tick.x - _lc2) - 4.0), (((_licm7 - tick.x) - _lc2) - 4.0));
+        float room = min(((tick.x - _lc2) - 4.0), (((_licm6 - tick.x) - _lc2) - 4.0));
         float fit = smoothstep((width + 6.0), (width + 14.0), ((spacing.x / _licm1) * size.x));
         float opacity = ((weights.x * fit) * smoothstep(0.0, 5.0, room));
         vec2 local = (p - vec2(tick.x, (hi.y + 6.0)));
-        labels = max(labels, (vec3(tickNumberLayers(local, n, step, 0.5, _licm6, _licm8), (numberPlate(local, n, step, 0.5, _licm6) * _licm9)) * opacity));
+        labels = max(labels, (vec3(tickNumberLayers(local, n, step, 0.5, _licm5, _licm7), (numberPlate(local, n, step, 0.5, _licm5) * _licm8)) * opacity));
       }
       if (((tick.y >= (lo.y - 0.01)) && (tick.y <= (hi.y + 0.01)))) {
         coverage = max(coverage, (line(p, vec2((lo.x - 5.0), tick.y), _gv2, 0.5) * weights.y));
         float n_1 = (_cse1 ? pow(10.0, nearest.y) : nearest.y);
         float step_1 = (_cse1 ? max((n_1 * (pow(10.0, yLevels.x) - 1.0)), 1e-30) : yLevels.x);
-        float width_1 = numberWidth(n_1, step_1, _licm6);
-        float fit_1 = smoothstep(_licm10, _licm11, ((spacing.y / _licm3) * size.y));
+        float width_1 = numberWidth(n_1, step_1, _licm5);
+        float fit_1 = smoothstep(_licm9, _licm10, ((spacing.y / _licm3) * size.y));
         float opacity_1 = ((weights.y * fit_1) * smoothstep(0.0, 5.0, ((lo.x - 13.0) - width_1)));
-        vec2 local_1 = (p - vec2((lo.x - 9.0), (tick.y - _licm12)));
-        labels = max(labels, (vec3(tickNumberLayers(local_1, n_1, step_1, 1.0, _licm6, _licm8), (numberPlate(local_1, n_1, step_1, 1.0, _licm6) * _licm9)) * opacity_1));
+        vec2 local_1 = (p - vec2((lo.x - 9.0), (tick.y - _licm11)));
+        labels = max(labels, (vec3(tickNumberLayers(local_1, n_1, step_1, 1.0, _licm5, _licm7), (numberPlate(local_1, n_1, step_1, 1.0, _licm5) * _licm8)) * opacity_1));
       }
     }
   }
@@ -1193,7 +1201,7 @@ vec4 axesFragment_impl(Surface v) {
   if ((((((u.legend.z > 0.0) && (p.x >= u.legend.x)) && (p.y >= u.legend.y)) && (p.x <= (u.legend.x + u.legend.z))) && (p.y <= (u.legend.y + u.legend.w)))) {
     color = vec4(1.0, 1.0, 1.0, 0.96);
   }
-  if (((u.focus > 0.0) && (min(min(p.x, p.y), min((_licm7 - p.x), (u.resolution.y - p.y))) < 2.0))) {
+  if (((u.focus > 0.0) && (min(min(p.x, p.y), min((_licm6 - p.x), (u.resolution.y - p.y))) < 2.0))) {
     color = vec4(0.09, 0.42, 0.92, 1.0);
   }
   return color;

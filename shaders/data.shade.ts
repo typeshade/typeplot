@@ -1,5 +1,5 @@
 "use typeshade";
-import { glyphCoverage, glyphLayers, tickNumberLayers, numberPlate, numberWidth, tickLevels, tickOpacity, pixelWidth } from "./font.shade.ts";
+import { glyphCoverage, glyphLayers, tickNumberLayers, numberPlate, numberWidth, tickLevels, tickOpacity, coarseTickOpacity, pixelWidth } from "./font.shade.ts";
 
 class DataUniforms {
   resolution: vec2;
@@ -91,7 +91,7 @@ function dataTickLevels(lower: f32, span: f32, pixels: f32, logarithmic: f32, ho
     const spacing = level == 0 ? vec2(xLevels.x, yLevels.x) : vec2(xLevels.y, yLevels.y);
     const nearest = floor(value / spacing + 0.5) * spacing;
     const tick = lo + vec2((nearest.x - u.lower.x) / u.span.x, 1 - (nearest.y - u.lower.y) / u.span.y) * size;
-    const weights = level == 0 ? vec2(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, yLevels)) : vec2(1);
+    const weights = level == 0 ? vec2(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, yLevels)) : vec2(coarseTickOpacity(nearest.x, xLevels), coarseTickOpacity(nearest.y, yLevels));
     grid = max(grid, max(line(p, vec2(tick.x, lo.y), vec2(tick.x, hi.y), 0.5) * weights.x, line(p, vec2(lo.x, tick.y), vec2(hi.x, tick.y), 0.5) * weights.y));
     if (u.layer > 0.5) {
       if (tick.x >= lo.x - 0.01 && tick.x <= hi.x + 0.01) {

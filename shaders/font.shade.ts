@@ -151,13 +151,13 @@ export function numberWidth(value: f32, spacing: f32, size: f32): f32 {
   return f32(numberFormat(value, spacing).length) * size * 0.625;
 }
 
-/** Nested decimal lattices: shared ticks retain full opacity at every LOD boundary.
+/** Hierarchical decimal lattices: shared ticks retain full opacity at every LOD boundary.
  * Intermediate ticks fade as a continuous function of scale, without camera lag. */
 export function tickLevels(raw: f32): vec3 {
   const safe = max(raw, 1e-25);
   const unit = pow(10, floor(log2(safe) / log2(10)));
-  const fine = safe < unit * 2 ? unit : unit * 2;
-  const coarse = safe < unit * 2 ? unit * 2 : unit * 10;
+  const fine = safe < unit * 2 ? unit : safe < unit * 5 ? unit * 2 : unit * 5;
+  const coarse = safe < unit * 2 ? unit * 2 : safe < unit * 5 ? unit * 5 : unit * 10;
   const phase = log2(safe / fine) / log2(coarse / fine);
   return vec3(fine, coarse, 1 - smoothstep(0, 1, phase));
 }
@@ -175,4 +175,10 @@ export function numberPlate(p: vec2, value: f32, spacing: f32, align: f32, size:
   const q = abs(p - center) - half + vec2(3);
   const distance = length(max(q, vec2(0))) + min(max(q.x, q.y), 0) - 3;
   return 1 - smoothstep(-pixelWidth() * 0.5, pixelWidth() * 0.5, distance);
+}
+
+/** At non-nested 2/5 transitions only shared multiples remain fully opaque. */
+export function coarseTickOpacity(value: f32, levels: vec3): f32 {
+  const multiple = value / levels.x;
+  return abs(multiple - floor(multiple + 0.5)) < 0.001 ? 1 : 1 - levels.z;
 }
