@@ -6,22 +6,18 @@ It uses the TypeShade program runtime on WebGPU, with WebGL2 fallback.
 
 ## Installation
 
-The intended registry installation is:
+Install the versioned Git release with npm:
 
 ```sh
-npm install typeplot
-```
-
-The first release has not been published yet. Until publication, install the review branch
-from PR #1:
-
-```sh
-npm install https://github.com/typeshade/typeplot.git#feat/initial-plot-library
+npm install https://github.com/typeshade/typeplot.git#v0.1.0
 ```
 
 The package includes JavaScript and declarations. TypeScript source in the dependency does
-not need a loader. After PR #1 merges, the unqualified Git URL installs the main branch.
-See [Publishing](docs/publishing.md) for the registry release procedure.
+not need a loader. The version tag keeps installations on the same release.
+
+The package has not been published to the npm registry. Once it is published, registry
+installation will use `npm install typeplot`. See the
+[publishing procedure](https://github.com/typeshade/typeplot/blob/main/docs/publishing.md).
 
 ## Vite
 

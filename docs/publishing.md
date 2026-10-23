@@ -1,9 +1,16 @@
 # Publishing
 
-TypePlot is distributed as the public npm package `typeplot`. The first registry release
-is pending. A registry lookup returning 404 does not reserve the package name.
+TypePlot releases can be installed from versioned Git tags with npm. The intended public
+npm package is `typeplot`; the first registry release is pending. A registry lookup returning 404 does not reserve the package name.
 
-## Release procedure
+## Git releases
+
+Create a GitHub release and a version tag at the reviewed main commit after its build checks
+pass. The version must match `package.json`. Include compiled JavaScript, declarations and
+shader sources in the committed tree so dependency installation does not need a build step.
+Install a release with `npm install https://github.com/typeshade/typeplot.git#v0.1.0`.
+
+## Registry release procedure
 
 1. Merge the reviewed library pull request after its current build checks pass.
 2. Check out the approved main commit and run `npm ci`.
