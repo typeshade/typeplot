@@ -21,7 +21,10 @@ renderer must not invent observations by extrapolating finite arrays.
 General spatial callbacks use an independent parameter domain, frozen at creation and
 editable with setDomain. Camera zoom/pan affects only the view. A configurable candidate
 search locates parameter intervals, then local projected closest-point iterations evaluate
-the callback itself. The three nearest candidates are refined to reduce missed branches.
+the callback itself. Every projected interval within a sampled-bending guard is queried;
+there is no global top-three midpoint ranking. Each interval's two halves get
+perspective-correct parameter seeds, actual-callback refinement and shared endpoint
+coverage. Near-plane crossings are clipped in parameter space using actual callbacks.
 No segment SDF or uploaded path mesh defines the final curve. This remains a bounded
 numerical approximation, with configurable samples and refinements; high-frequency or
 very complex callbacks can need additional samples and are not claimed to have an exact
@@ -58,3 +61,17 @@ Index-coordinate data uses a projected data-envelope estimate for automatic dens
 
 Playground switches retain intrinsic width inside grid fields instead of stretching to
 the full input column width, on desktop and mobile.
+
+## Projected interval continuity correction
+
+The former top-three midpoint ranking produced gaps even with solid strokes. A long or
+curved interval can pass close to a fragment while its midpoint is farther away than the
+midpoints of unrelated intervals. Discarding it changes the selected distance abruptly
+across pixels. AA cannot repair this missing interval; it only filters the supplied field.
+
+The renderer now inspects every interval within a projection-aware bending guard. Chords
+only seed/cull the numerical query; final coverage always uses actual callback positions.
+Screen fractions are mapped back to parameters using homogeneous w, shared interval
+endpoints remain in the result, and near-plane clipping bisects actual callback positions.
+No sampled polyline is introduced as a rendering primitive. The guard remains numerical,
+not a certified enclosure for arbitrary high-frequency callbacks.

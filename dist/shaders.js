@@ -542,38 +542,89 @@ function refineTrajectory(trajectory: SpaceCurve, pixel: vec2, candidate: vec4, 
   return all(abs(world) < vec3(1e18)) && continuous && inFront(world, u) ? length(pixel - project(world, u)) : 1e20;
 }
 
-/** Bounded candidate search for an arbitrary spatial callback. The three nearest
- * candidates are refined against the mathematical callback; no path is constructed. */
+/** Projected chord distance is a search bound only; it never supplies coverage. */
+function intervalChordDistance(pixel: vec2, a: vec2, b: vec2): f32 {
+  const delta = b - a;
+  const along = clamp(dot(pixel - a, delta) / max(dot(delta, delta), 1e-20), 0, 1);
+  return length(pixel - a - along * delta);
+}
+
+/** Query one actual callback interval, keeping its boundary points in the result. */
+function intervalDistance(trajectory: SpaceCurve, pixel: vec2, low: f32, high: f32, u: PlotUniforms, jumps: bool): f32 {
+  let start = low, end = high;
+  let a = trajectory(start), b = trajectory(end);
+  const frontA = inFront(a, u), frontB = inFront(b, u);
+  if (!(all(abs(a) < vec3(1e18)) && all(abs(b) < vec3(1e18))) || (!frontA && !frontB)) return 1e20;
+  if (frontA != frontB) {
+    // Clip the parameter against actual callback evaluations, rather than a
+    // world-space chord which can put the seed behind the near plane.
+    let left = start, right = end;
+    for (let i = 0; i < 12; i++) {
+      const middle = (left + right) * 0.5;
+      if (inFront(trajectory(middle), u) == frontA) left = middle;
+      else right = middle;
+    }
+    if (frontA) end = left;
+    else start = right;
+    a = trajectory(start);
+    b = trajectory(end);
+  }
+  const ha = homogeneous(a, u, false), hb = homogeneous(b, u, false);
+  const pa = ha.xy / ha.z, pb = hb.xy / hb.z;
+  const delta = pb - pa;
+  const screenFraction = clamp(dot(pixel - pa, delta) / max(dot(delta, delta), 1e-20), 0, 1);
+  // Undo perspective interpolation. A screen midpoint is not generally the
+  // midpoint of the callback's parameter interval.
+  const fraction = screenFraction * ha.z / max(mix(hb.z, ha.z, screenFraction), 1e-20);
+  const seed = mix(start, end, fraction);
+  const candidate = vec4(0, seed, start, end);
+  const refined = refineTrajectory(trajectory, pixel, candidate, u, jumps);
+  // Shared interval endpoints make changing the search partition continuous.
+  // Apply the same jump rejection as refinement to avoid inventing connections.
+  const middle = trajectory((start + end) * 0.5);
+  const continuous = !jumps || length(middle - (a + b) * 0.5) <= max(1e-6, length(b - a) * 0.2);
+  return continuous ? min(refined, min(length(pixel - pa), length(pixel - pb))) : 1e20;
+}
+
+/** Inspect every projected interval that can cover this fragment. Ranking a
+ * fixed number of midpoint samples drops valid branches at folds/crossings.
+ * Bounds use sampled bending as a numerical guard, not a proof for an arbitrary
+ * callback; quality still determines how much detail the search can resolve. */
 function trajectoryDistance(trajectory: SpaceCurve, pixel: vec2, u: PlotUniforms, bounds: vec2, jumps: bool): f32 {
-  let first = vec4(1e30, 0, 0, 0), second = first, third = first;
   const requested = f32(u.curveQuality.x);
   const range = bounds.y - bounds.x;
   const count = i32(min(512, u.curvePattern.x == 0 ? requested : max(requested, ceil(range / u.curvePattern.y * 4))));
   const stepSize = range / f32(count);
+  let distance = 1e20;
   for (let i = 0; i < count; i++) {
     let low = bounds.x + f32(i) * stepSize;
-    let high = low + stepSize;
+    let high = min(bounds.y, low + stepSize);
     let t = (low + high) * 0.5;
     if (u.curvePattern.x != 0) {
       const period = u.curvePattern.y;
       const center = (floor((t + u.curvePattern.z) / period) + 0.5) * period - u.curvePattern.z;
       low = max(low, center - period * u.curvePattern.w * 0.5);
       high = min(high, center + period * u.curvePattern.w * 0.5);
-      t = clamp(t, low, max(low, high));
+      t = (low + high) * 0.5;
     }
-    const world = trajectory(t);
-    if (high >= low && all(abs(world) < vec3(1e18)) && inFront(world, u)) {
-      const delta = project(world, u) - pixel;
-      const candidate = vec4(dot(delta, delta), t, low, high);
-      if (candidate.x < first.x) { third = second; second = first; first = candidate; }
-      else if (candidate.x < second.x) { third = second; second = candidate; }
-      else if (candidate.x < third.x) third = candidate;
+    if (high >= low) {
+      const a = trajectory(low), middle = trajectory(t), b = trajectory(high);
+      const finite = all(abs(a) < vec3(1e18)) && all(abs(middle) < vec3(1e18)) && all(abs(b) < vec3(1e18));
+      if (finite) {
+        let possible = true;
+        if (inFront(a, u) && inFront(middle, u) && inFront(b, u)) {
+          const pa = project(a, u), pm = project(middle, u), pb = project(b, u);
+          const bending = intervalChordDistance(pm, pa, pb);
+          const guard = bending * 4 + u.appearance.z * 0.5 + pixelWidth() * 2;
+          possible = min(intervalChordDistance(pixel, pa, pm), intervalChordDistance(pixel, pm, pb)) <= guard;
+        }
+        if (possible) {
+          distance = min(distance, intervalDistance(trajectory, pixel, low, t, u, jumps));
+          distance = min(distance, intervalDistance(trajectory, pixel, t, high, u, jumps));
+        }
+      }
     }
   }
-  let distance = 1e20;
-  if (first.x < 1e30) distance = min(distance, refineTrajectory(trajectory, pixel, first, u, jumps));
-  if (second.x < 1e30) distance = min(distance, refineTrajectory(trajectory, pixel, second, u, jumps));
-  if (third.x < 1e30) distance = min(distance, refineTrajectory(trajectory, pixel, third, u, jumps));
   return distance;
 }
 
