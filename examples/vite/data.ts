@@ -65,8 +65,13 @@ try {
       x.map((value) => Math.sin(value + phase)),
     );
   };
-  status.textContent =
-    "Canvas 2D · arrays and JavaScript callbacks · no shader compilation or GPU required";
+  void fig.ready
+    .then(() => {
+      status.textContent = `TypeShade · ${fig!.backend}`;
+    })
+    .catch((error) => {
+      status.textContent = String(error);
+    });
 } catch (error) {
   fig?.destroy();
   status.textContent = error instanceof Error ? error.message : String(error);

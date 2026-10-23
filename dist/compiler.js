@@ -739,7 +739,9 @@ function axes2D(uv: vec2, u: PlotViewport): f32 {
   axes = max(axes, ticks);
   axes = max(axes, glyph(pixel, vec2(size.x - 12, clamp(origin.y + 30, 40, size.y - 40)), 0));
   axes = max(axes, glyph(pixel, vec2(clamp(origin.x + 14, 28, size.x - 28), size.y - 40), 1));
-  return axes;
+  // The same data-space ticks define the grid; no host-generated line geometry.
+  const backgroundGrid = max(1 - smoothstep(0.35, 1.1, grid.x), 1 - smoothstep(0.35, 1.1, grid.y));
+  return max(axes, backgroundGrid * 0.2);
 }
 
 function curveCoverage(p: vec2, value: f32, span: vec2, size: vec2, thickness: f32): f32 {
@@ -809,7 +811,7 @@ export function plot2D(sample: ScalarCurve, uv: vec2, u: PlotUniforms, jumps: bo
   return vec4(pointColor(color, pixel, selected), 1);
 }
 
-/** Orthographic camera; x/y are scaled independently to the current data window. */
+/** Projective camera. view3d: 0 = 2D, 1 = orthographic, 2 = perspective. */
 function project(p: vec3, u: PlotUniforms): vec2 {
   const span = max(u.plotSpan, vec2(0.00001));
   const q = vec3((p.xy - u.plotCenter) / span, p.z / max(span.x, span.y));
@@ -818,7 +820,19 @@ function project(p: vec3, u: PlotUniforms): vec2 {
   const horizontal = q.x * cos(yaw) + q.z * sin(yaw);
   const depth = -q.x * sin(yaw) + q.z * cos(yaw);
   const vertical = q.y * cos(pitch) - depth * sin(pitch);
-  return (vec2(horizontal, vertical) * 0.78 + 0.5) * plotSize(u.resolution);
+  const cameraDepth = q.y * sin(pitch) + depth * cos(pitch);
+  const size = plotSize(u.resolution);
+  const distance = u.view3d == u32(2) ? max(0.1, 3 - cameraDepth) : 3;
+  const focal = 1 / tan(0.3926990817);
+  return (vec2(horizontal / (size.x / size.y), vertical) * (focal / distance) + 0.5) * size;
+}
+
+/** Omit segments behind the perspective near plane instead of mirroring them. */
+function inFront(p: vec3, u: PlotUniforms): bool {
+  if (u.view3d != u32(2)) return true;
+  const q = vec3((p.xy - u.plotCenter) / max(u.plotSpan, vec2(0.00001)), p.z / max(u.plotSpan.x, u.plotSpan.y));
+  const depth = -q.x * sin(u.plotRotation.x) + q.z * cos(u.plotRotation.x);
+  return 3 - (q.y * sin(u.plotRotation.y) + depth * cos(u.plotRotation.y)) > 0.1;
 }
 
 /** A generic spatial curve, specialized by the compiler for its named callback.
@@ -840,6 +854,18 @@ export function plot3D(
   const z0 = project(vec3(0, 0, -max(half.x, half.y)), u);
   const z1 = project(vec3(0, 0, max(half.x, half.y)), u);
   let color = vec3(0.965, 0.973, 0.985);
+  // Ground-plane grid is projected by the same camera as curves and axes.
+  for (let index = 0; index <= 8; index++) {
+    const t = f32(index) / 8;
+    const x = mix(u.plotCenter.x - half.x, u.plotCenter.x + half.x, t);
+    const z = mix(-max(half.x, half.y), max(half.x, half.y), t);
+    const a = vec3(x, 0, -max(half.x, half.y)), b = vec3(x, 0, max(half.x, half.y));
+    const c = vec3(u.plotCenter.x - half.x, 0, z), d = vec3(u.plotCenter.x + half.x, 0, z);
+    let coverage = 0;
+    if (inFront(a, u) && inFront(b, u)) coverage = stroke(pixel, project(a, u), project(b, u));
+    if (inFront(c, u) && inFront(d, u)) coverage = max(coverage, stroke(pixel, project(c, u), project(d, u)));
+    color = mix(color, vec3(0.8, 0.82, 0.85), coverage * 0.65);
+  }
   const xAxis = max(
     stroke(pixel, x0, x1),
     glyph(pixel, clamp(x1 + vec2(10, 0), vec2(9), size - vec2(9)), 0),
@@ -886,19 +912,20 @@ export function plot3D(
     const expected = (previous + next) * 0.5;
     const continuous =
       !jumps || length(middle - expected) <= max(0.000001, length(next - previous) * 0.2);
-    if (valid && continuous) {
+    if (valid && continuous && inFront(previous, u) && inFront(next, u)) {
       curve = max(curve, stroke(pixel, project(previous, u), project(next, u)));
     }
     previous = next;
   }
   color = mix(color, vec3(0.09, 0.42, 0.92), curve);
   const selected = trajectory(u.probe);
-  const visible = u.probe >= bounds.x && u.probe <= bounds.y && abs(selected.y) < 1e18;
+  const visible = u.probe >= bounds.x && u.probe <= bounds.y && abs(selected.y) < 1e18 && inFront(selected, u);
   return vec4(visible ? pointColor(color, pixel, project(selected, u)) : color, 1);
 }
 `;var CPe=class extends Error{constructor(l){super(l.map(f=>`${f.fileName??"shader"}:${f.line}:${f.character}: ${f.message}`).join(`
 `));this.diagnostics=l;this.name="PlotCompileError"}},$Ht=/^[A-Za-z_$][\w$]*$/,BHt=new Set(["resolution","plotCenter","plotSpan","plotRotation","plotBlend","probe","view3d"]);function Xgn(i,s={}){let l=s.entry??"sample",f=s.kind??"scalar";if(!$Ht.test(l))throw new TypeError("entry must be a TypeScript identifier.");if(f!=="scalar"&&f!=="parametric")throw new TypeError("kind must be scalar or parametric.");let _=Object.fromEntries(Object.entries(s.parameters??{}));for(let[ht,ct]of Object.entries(_)){if(!/^[A-Za-z_]\w*$/.test(ht)||BHt.has(ht))throw new TypeError(`Invalid plot parameter: ${ht}`);if(!Number.isFinite(ct)||Math.abs(ct)>3402823466e29)throw new RangeError(`${ht} must be a finite f32 value.`)}let h=cw.resolve(s.fileName??"curve.shade.ts"),v=cw.join(cw.dirname(h),"__typeplot-shared.shade.ts"),w=cw.join(cw.dirname(h),"__typeplot-entry.shade.ts");if([v,w].includes(h))throw new TypeError("fileName uses a reserved TypePlot file name.");let E=Object.keys(_),O=["t",...E.map(ht=>`u.${ht}`)].join(", "),L=f==="scalar"?`function sample(t: f32): f32 { return callback(${O}); }
-function trajectory(t: f32): vec3 { return vec3(t, sample(t), 0.); }`:`function trajectory(t: f32): vec3 { return callback(${O}); }`,U=s.discontinuous===!0,M=f==="scalar"?`const flat = plot2D(sample, uv, u, ${U});
+function trajectory(t: f32): vec3 { return vec3(t, sample(t), 0.); }`:`function trajectory(t: f32): vec3 { return callback(${O}); }`,U=s.discontinuous===!0,M=f==="scalar"?`if (u.plotBlend >= 1.) { return plot3D(trajectory, uv, u, bounds, ${U}); }
+  const flat = plot2D(sample, uv, u, ${U});
   if (u.plotBlend <= 0.) { return flat; }
   return mix(flat, plot3D(trajectory, uv, u, bounds, ${U}), clamp(u.plotBlend, 0., 1.));`:`return plot3D(trajectory, uv, u, bounds, ${U});`,oe=`"use typeshade";
 import { ${l} as callback } from ${JSON.stringify("./"+cw.basename(h))};
@@ -915,5 +942,5 @@ class VertexOutput { @builtin("position") position: vec4; @location(0) uv: vec2;
   const bounds = vec2(u.plotCenter.x - u.plotSpan.x * 0.5, u.plotCenter.x + u.plotSpan.x * 0.5);
   ${M}
 }
-`,ae=new Map(Object.entries(s.files??{}).map(([ht,ct])=>[cw.resolve(cw.dirname(h),ht),ct]));ae.set(h,i),ae.set(v,But);let de=TPe(oe,{fileName:w,readDocument:ht=>{let ct=ae.get(ht)??s.readDocument?.(ht);if(ct!==void 0)return ct;try{return LHt(ht,"utf8")}catch{return}}}),De=de.diagnostics.filter(ht=>ht.category==="error");if(De.length)throw new CPe(De);if(!de.wgsl||!de.glsl)throw new Error("The plot must emit both WGSL and GLSL.");let $e=kPe(de.module),Ze={...$e,entries:$e.entries.map(ht=>({...ht,...ht.line?{line:{...ht.line,file:cw.relative(cw.dirname(h),ht.line.file).split(cw.sep).join("/")}}:{}}))};return{version:1,kind:f,manifest:Ze,parameters:_}}export{CPe as PlotCompileError,Xgn as compilePlot};
+`,ae=new Map(Object.entries(s.files??{}).map(([ht,ct])=>[cw.resolve(cw.dirname(h),ht),ct]));ae.set(h,i),ae.set(v,But);let de=TPe(oe,{fileName:w,readDocument:ht=>{let ct=ae.get(ht)??s.readDocument?.(ht);if(ct!==void 0)return ct;try{return LHt(ht,"utf8")}catch{return}}}),De=de.diagnostics.filter(ht=>ht.category==="error");if(De.length)throw new CPe(De);if(!de.wgsl||!de.glsl)throw new Error("The plot must emit both WGSL and GLSL.");let $e=kPe(de.module),Ze={...$e,entries:$e.entries.map(ht=>({...ht,...ht.line?{line:{...ht.line,file:cw.relative(cw.dirname(h),ht.line.file).split(cw.sep).join("/")}}:{}}))};return{version:1,kind:f,manifest:Ze,parameters:_,camera:"projective"}}export{CPe as PlotCompileError,Xgn as compilePlot};
 /*! For license information please see compiler.js.LEGAL.txt */

@@ -1,4 +1,5 @@
 export type PlotKind = "scalar" | "parametric";
+export type PlotProjection = "perspective" | "orthographic";
 export interface PlotBounds {
     readonly x: readonly [number, number];
     readonly y: readonly [number, number];
@@ -9,6 +10,8 @@ export interface PlotProgram {
     readonly kind: PlotKind;
     readonly manifest: unknown;
     readonly parameters: Readonly<Record<string, number>>;
+    /** Programs compiled with the projective camera support both projection modes. */
+    readonly camera?: "projective";
 }
 export interface PlotOptions {
     /** Accessible canvas name. Existing aria-label/aria-labelledby are preserved unless supplied. */
@@ -16,6 +19,7 @@ export interface PlotOptions {
     readonly bounds?: PlotBounds;
     readonly backend?: "auto" | "webgpu" | "webgl2";
     readonly mode?: "2d" | "3d";
+    readonly projection?: PlotProjection;
     readonly probe?: number;
     readonly parameters?: Readonly<Record<string, number>>;
     readonly pixelRatio?: number;
@@ -24,7 +28,9 @@ export interface PlotOptions {
 }
 export interface Plot {
     readonly backend: "webgpu" | "webgl2";
+    readonly projection: PlotProjection;
     setMode(mode: "2d" | "3d"): void;
+    setProjection(projection: PlotProjection): void;
     setProbe(value: number): void;
     setParameters(values: Readonly<Record<string, number>>): void;
     bounds(): PlotBounds;

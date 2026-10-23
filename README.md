@@ -31,8 +31,9 @@ installation will use `npm install typeplot`. See the
 
 ## Plot data directly
 
-Draw arrays, typed arrays or ordinary JavaScript callbacks without a shader, build plugin
-or GPU. TypePlot creates a responsive figure, chooses axis limits and cycles series colors:
+Draw arrays, typed arrays or ordinary JavaScript callbacks without writing shaders or adding
+a build plugin. TypePlot uses its precompiled TypeShade shaders on WebGPU or WebGL2 for all
+plot graphics, including grids, axes, ticks, text and series:
 
 ```ts
 import { plot, linspace } from "typeplot";
@@ -48,13 +49,18 @@ const fig = plot(x, Math.sin, {
 
 // A single array uses its indices as x coordinates.
 const other = plot([3, 1, 4, 1, 5]);
+await fig.ready;
 // Remove each figure when its view unmounts.
 other.destroy();
 fig.destroy();
 ```
 
 For applications that only plot data, the same API is available from `typeplot/data`.
-This smaller browser entry has no GPU runtime or compiler dependency. It renders with Canvas 2D.
+Both browser entries contain the TypeShade runtime and precompiled shaders, without the compiler.
+JavaScript callbacks are sampled on the host; all visible chart graphics are rendered by TypeShade.
+Figure handles are created synchronously. Await `fig.ready` for backend initialization and the first
+complete frame, and handle rejection or pass `onError`. `fig.backend` reports the actual backend.
+WebGPU and WebGL2 are supported; there is no Canvas 2D fallback.
 The package can be imported on the server, but figures must be created in a mounted browser view.
 
 ### Multiple series and subplots
@@ -127,7 +133,8 @@ are also omitted on log axes. Log limits must be positive and all explicit limit
 Adding/removing/updating a series refits automatic ranges; label, grid and legend changes
 preserve the current pan/zoom view. Histograms include the rightmost endpoint in the last bin
 and density normalizes the total bar area to one; recreate a histogram to change its bins.
-PNG exports redraw all subplots at the requested density, independent of the on-screen size,
+PNG exports redraw all subplots through the same TypeShade shaders at the requested density,
+then read back the GPU texture and encode its pixels without a host drawing context. Output is independent of the on-screen size,
 with a 16 megapixel and 16384 pixel per-dimension limit. Figure dimensions are CSS pixels.
 Exports support PNG; this API does not implement all matplotlib chart types or options.
 Provide an adjacent description or data table when access to individual values is needed.
@@ -246,7 +253,9 @@ export function sample(t: f32): vec3 {
 ```
 
 Compile with `{ kind: 'parametric' }`. The x bounds supply the parameter interval, and x/y
-bounds supply camera normalization. Spatial plots use an orthographic camera and open in 3D.
+bounds supply camera normalization. Spatial plots open in 3D with perspective projection. Pass `projection: "orthographic"`
+for parallel projection, or call `plot.setProjection("orthographic")`. Two-dimensional plots
+always use orthographic projection. Switching mode preserves the selected 3D projection.
 The current renderer uses a bounded polyline; it does not draw implicit surfaces or meshes.
 
 ## GPU function API
@@ -259,11 +268,15 @@ must guard their mathematical domain; returning a magnitude of at least `1e18` o
 `discontinuous: true` suppresses segment connections across detected jumps.
 
 `createPlot(canvas, program, options)` accepts bounds, backend (`auto`, `webgpu`, `webgl2`),
-mode, probe, parameter values, pixel ratio, interaction enablement and an error callback.
-The returned plot provides `setMode`, `setProbe`, `setParameters`, `bounds`, `reset`, `redraw`
+mode, projection (`perspective` or `orthographic`), probe, parameter values, pixel ratio,
+interaction enablement and an error callback. `plot.projection` reports the effective projection.
+Programs compiled before this camera feature retain orthographic rendering; recompile them
+to enable perspective projection.
+The returned plot provides `setMode`, `setProjection`, `setProbe`, `setParameters`, `bounds`, `reset`, `redraw`
 and `destroy`. Unknown parameter names and non-finite values are rejected.
 
-Wheel input zooms around the cursor. Dragging pans a scalar plot or orbits a 3D plot.
+Wheel input zooms around the cursor. Dragging tracks the pointer directly to pan a scalar plot or orbit a 3D plot. Rendering
+is coalesced to animation frames; dragging and wheel input do not restart eased transitions.
 Arrow keys move the view, `+`/`-` zoom, and Home resets the camera. `reset()` restores the
 initial plot settings. Reduced motion applies camera changes immediately. Idle plots do
 not keep an animation loop running.

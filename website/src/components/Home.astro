@@ -18,7 +18,7 @@ const base = ko ? "/ko" : "";
     <div class="home-code">
       <CodeBlock title={ko ? "두 곡선, 하나의 Figure" : "Two curves. One figure."} file="signals.ts" code={signalCode} />
       <div class="home-chart"><DataPreview client:visible locale={locale} /></div>
-      <p class="fine-print">{ko ? "실제 TypePlot · Canvas 2D · 사인과 코사인, x = 0…2π, 진폭 −1…1" : "Real TypePlot · Canvas 2D · sine and cosine, x = 0…2π, amplitude −1…1"}</p>
+      <p class="fine-print">{ko ? "실제 TypePlot · TypeShade · 사인과 코사인, x = 0…2π, 진폭 −1…1" : "Real TypePlot · TypeShade · sine and cosine, x = 0…2π, amplitude −1…1"}</p>
     </div>
   </section>
   <section class="home-path" aria-labelledby="workflow-title">
@@ -38,5 +38,5 @@ const base = ko ? "/ko" : "";
       <a href={`${base}/examples/`}><span><strong>{ko ? "그래프 예제" : "Chart examples"}</strong><small>{ko ? "선, 산점도, 막대와 히스토그램을 살펴봅니다." : "Lines, scatter, bars and histograms, with source."}</small></span><b aria-hidden="true">↗</b></a>
     </div>
   </section>
-  <section class="home-status" aria-labelledby="gpu-title"><div><p class="eyebrow">TypeShade + TypePlot</p><h2 id="gpu-title">{ko ? "함수는 GPU에서도 그립니다." : "Functions have a GPU path, too."}</h2><p>{ko ? "이름 있는 TypeShade 콜백을 빌드 때 컴파일하고, WebGPU와 WebGL2로 스칼라 함수와 공간 곡선을 표시합니다. 배열을 그리는 Canvas 2D 경로와는 별도의 API입니다." : "Compile named TypeShade callbacks at build time. Render scalar functions and spatial trajectories with WebGPU and WebGL2. This is a separate API from Canvas 2D data figures."}</p></div><a class="button button-quiet" href={`${base}/guide/gpu/`}>{ko ? "GPU 가이드" : "Read the GPU guide"} ↗</a></section>
+  <section class="home-status" aria-labelledby="gpu-title"><div><p class="eyebrow">TypeShade + TypePlot</p><h2 id="gpu-title">{ko ? "함수는 GPU에서도 그립니다." : "Functions have a GPU path, too."}</h2><p>{ko ? "이름 있는 TypeShade 콜백을 빌드 때 컴파일하고, WebGPU와 WebGL2로 스칼라 함수와 공간 곡선을 표시합니다. 데이터 그래프도 같은 TypeShade 렌더링 기반을 사용합니다." : "Compile named TypeShade callbacks at build time. Render scalar functions and spatial trajectories with WebGPU and WebGL2. Data figures use the same TypeShade rendering foundation."}</p></div><a class="button button-quiet" href={`${base}/guide/gpu/`}>{ko ? "GPU 가이드" : "Read the GPU guide"} ↗</a></section>
 </div>

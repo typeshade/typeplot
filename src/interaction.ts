@@ -84,11 +84,11 @@ export function createPlotInteraction(
     if (progress < 1 && !destroyed) frame = win.requestAnimationFrame(tick);
   }
 
-  function change() {
+  function change(immediate = false) {
     if (destroyed) return;
     if (frame) win.cancelAnimationFrame(frame);
     frame = 0;
-    if (motion.matches) {
+    if (motion.matches || immediate) {
       assign(target);
       onChange();
     } else {
@@ -107,7 +107,7 @@ export function createPlotInteraction(
     );
   }
 
-  function zoom(factor: number, anchor: Pair = [0.5, 0.5]) {
+  function zoom(factor: number, anchor: Pair = [0.5, 0.5], immediate = false) {
     for (let axis = 0; axis < 2; axis++) {
       const before = target.span[axis];
       const after = clamp(
@@ -123,7 +123,7 @@ export function createPlotInteraction(
       }
       target.span[axis] = after;
     }
-    change();
+    change(immediate);
   }
 
   function wheel(event: WheelEvent) {
@@ -136,11 +136,14 @@ export function createPlotInteraction(
       clamp((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1),
       clamp(1 - (event.clientY - rect.top) / Math.max(rect.height, 1), 0, 1),
     ];
-    zoom(Math.exp(clamp(event.deltaY * units * 0.002, -1, 1)), anchor);
+    zoom(Math.exp(clamp(event.deltaY * units * 0.002, -1, 1)), anchor, true);
   }
 
   function down(event: PointerEvent) {
     if (pointer || event.button !== 0 || !event.isPrimary) return;
+    target = copy(current);
+    target.blend[0] = threeD ? 1 : 0;
+    change(true);
     pointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
     canvas.setPointerCapture(event.pointerId);
     canvas.focus({ preventScroll: true });
@@ -172,7 +175,7 @@ export function createPlotInteraction(
       target.center[0] = limitCenter(0, target.center[0] - dx * target.span[0]);
       target.center[1] = limitCenter(1, target.center[1] + dy * target.span[1]);
     }
-    change();
+    change(true);
   }
 
   function up(event: PointerEvent) {

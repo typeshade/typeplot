@@ -140,7 +140,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "Inputs and current limits",
-          text: "The data API renders with Canvas 2D, without a shader compiler. GPU function plotting is a separate path.",
+          text: "The data API uses precompiled TypeShade shaders on WebGPU or WebGL2. Grids, axes, tick numbers, text and series are GPU-rendered. JavaScript callbacks supply sampled data; they are not compiled into shader code.",
           items: [
             "x and y must have equal lengths. Arrays and typed arrays are supported.",
             "NaN and infinity make line gaps and are omitted from bounds.",
@@ -158,7 +158,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
       sections: [
         {
           title: "Separate compilation from rendering",
-          text: "A .shade.ts callback is compiled on the build machine. The browser receives a serialized program and the runtime. The compiler and TypeScript are not included in the browser entry. Ordinary JavaScript callbacks in the data API use Canvas 2D instead.",
+          text: "A .shade.ts callback is compiled on the build machine. The browser receives a serialized program and the runtime. The compiler and TypeScript are not included in the browser entry. Ordinary JavaScript callbacks supply host-sampled data to the precompiled TypeShade data renderer.",
         },
         {
           title: "Configure Vite",
@@ -172,7 +172,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "Render a spatial curve",
-          text: "A parametric callback returns vec3. Its first argument is the curve parameter. The x bounds supply its parameter interval; x/y bounds normalize the camera. Spatial plots use a bounded polyline and open in 3D.",
+          text: "A parametric callback returns vec3. Its first argument is the curve parameter. The x bounds supply its parameter interval; x/y bounds normalize the camera. Spatial plots use a bounded polyline and open in 3D with perspective projection. Orthographic projection is also available; 2D always uses orthographic projection.",
           code: helixCode,
         },
         {
@@ -195,7 +195,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
       sections: [
         {
           title: "Data figures",
-          text: "Import from typeplot or typeplot/data. The latter excludes the GPU runtime. Figure creation is synchronous and requires a browser document.",
+          text: "Import from typeplot or typeplot/data. Both include the TypeShade runtime without the compiler. The figure handle is synchronous; await fig.ready for the first complete GPU frame and handle renderer failures.",
           api: chartApi,
         },
         {
@@ -225,7 +225,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
             ],
             [
               "plot.setMode / setProbe / bounds",
-              "Switch scalar 2D/3D view, set the probe, or read current bounds.",
+              "Switch 2D/3D mode, select perspective/orthographic projection, set the probe or read bounds.",
             ],
             [
               "plot.reset / redraw / destroy",
@@ -261,7 +261,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "Current scope",
-          text: "Data figures use Canvas 2D. TypeShade functions use WebGPU or WebGL2. This site makes no hardware performance claim and does not present browser output as a GPU benchmark. The current renderer does not implement implicit surfaces, meshes, date/category axes, or full matplotlib compatibility.",
+          text: "Both data figures and function plots use TypeShade-generated WebGPU or WebGL2 shaders. This site makes no hardware performance claim and does not present browser output as a GPU benchmark. The current renderer does not implement implicit surfaces, meshes, date/category axes, or full matplotlib compatibility.",
         },
       ],
     },
@@ -295,7 +295,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "입력 규칙과 현재 범위",
-          text: "데이터 API는 셰이더 컴파일러 없이 Canvas 2D로 그립니다. GPU 함수 그래프는 별도의 경로를 사용합니다.",
+          text: "데이터 API는 미리 컴파일한 TypeShade 셰이더를 WebGPU 또는 WebGL2로 실행합니다. 그리드·축·눈금 숫자·텍스트·계열을 모두 GPU에서 그립니다. 일반 JavaScript 콜백은 호스트에서 표본 데이터를 만들며 셰이더로 컴파일하지 않습니다.",
           items: [
             "x와 y의 길이는 같아야 합니다. 배열과 typed array를 지원합니다.",
             "NaN과 무한대는 선을 끊으며, 자동 축 범위 계산에서 제외합니다.",
@@ -313,7 +313,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
       sections: [
         {
           title: "컴파일과 렌더링 분리",
-          text: ".shade.ts 콜백은 빌드 환경에서 컴파일합니다. 브라우저에는 직렬화된 프로그램과 런타임을 전달합니다. 브라우저 진입점에는 컴파일러와 TypeScript가 포함되지 않습니다. 데이터 API에 전달하는 일반 JavaScript 함수는 Canvas 2D로 실행합니다.",
+          text: ".shade.ts 콜백은 빌드 환경에서 컴파일합니다. 브라우저에는 직렬화된 프로그램과 런타임을 전달합니다. 브라우저 진입점에는 컴파일러와 TypeScript가 포함되지 않습니다. 일반 JavaScript 콜백의 표본 데이터도 미리 컴파일한 TypeShade 데이터 렌더러로 그립니다.",
         },
         {
           title: "Vite 설정",
@@ -327,7 +327,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "공간 곡선 표시",
-          text: "매개변수 곡선 콜백은 vec3를 반환합니다. 첫 인수는 곡선의 매개변수입니다. x 범위는 매개변수 구간을 정하며, x/y 범위는 카메라 정규화에 사용합니다. 공간 그래프는 제한된 수의 선분으로 그리며 3D로 시작합니다.",
+          text: "매개변수 곡선 콜백은 vec3를 반환합니다. 첫 인수는 곡선의 매개변수입니다. x 범위는 매개변수 구간을 정하며, x/y 범위는 카메라 정규화에 사용합니다. 공간 그래프는 제한된 수의 선분으로 그리며 Perspective 투영의 3D로 시작합니다. 3D에서는 Orthographic으로 전환할 수 있습니다. 2D는 항상 Orthographic을 사용합니다.",
           code: helixCode,
         },
         {
@@ -350,7 +350,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
       sections: [
         {
           title: "데이터 Figure",
-          text: "typeplot 또는 typeplot/data에서 가져옵니다. 후자는 GPU 런타임을 포함하지 않습니다. Figure는 동기적으로 생성하며 브라우저 document가 필요합니다.",
+          text: "typeplot 또는 typeplot/data에서 가져옵니다. 두 진입점 모두 컴파일러 없이 TypeShade 런타임을 포함합니다. Figure 핸들은 동기적으로 생성합니다. 첫 GPU 프레임은 fig.ready를 기다리고 초기화 오류를 처리하십시오.",
           api: chartApiKo,
         },
         {
@@ -380,7 +380,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
             ],
             [
               "plot.setMode / setProbe / bounds",
-              "스칼라 그래프의 2D/3D 모드, 프로브, 현재 범위를 관리합니다.",
+              "2D/3D 모드, Perspective/Orthographic 투영, 프로브와 현재 범위를 관리합니다.",
             ],
             [
               "plot.reset / redraw / destroy",
@@ -416,7 +416,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "현재 지원 범위",
-          text: "데이터 Figure는 Canvas 2D, TypeShade 함수는 WebGPU 또는 WebGL2로 실행합니다. 이 사이트는 하드웨어 성능을 주장하거나 브라우저 출력을 GPU 벤치마크로 제시하지 않습니다. 암시적 곡면, 메시, 날짜·범주형 축, 전체 matplotlib 호환은 구현하지 않았습니다.",
+          text: "데이터 Figure와 함수 그래프 모두 TypeShade로 생성한 WebGPU 또는 WebGL2 셰이더로 그립니다. 이 사이트는 하드웨어 성능을 주장하거나 브라우저 출력을 GPU 벤치마크로 제시하지 않습니다. 암시적 곡면, 메시, 날짜·범주형 축, 전체 matplotlib 호환은 구현하지 않았습니다.",
         },
       ],
     },

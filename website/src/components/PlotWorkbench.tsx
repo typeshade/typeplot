@@ -2,11 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import { Button, ConfigProvider, Select, Slider, Switch, theme } from "antd";
 import Prism from "prismjs";
 import "prismjs/components/prism-typescript";
-import { subplots, linspace, type Figure } from "../vendor/typeplot/data.js";
+import {
+  subplots,
+  linspace,
+  type Figure,
+  type Series,
+} from "../vendor/typeplot/data.js";
 import {
   createPlot,
   type Plot,
   type PlotProgram,
+  type PlotProjection,
 } from "../vendor/typeplot/index.js";
 import power from "../vendor/typeplot/curve.js";
 import helix from "../vendor/typeplot/helix.js";
@@ -21,6 +27,7 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
   const [exponent, setExponent] = useState(2);
   const [backend, setBackend] = useState<Backend>("auto");
   const [threeD, setThreeD] = useState(false);
+  const [projection, setProjection] = useState<PlotProjection>("perspective");
   const [dark, setDark] = useState(false);
   const [status, setStatus] = useState(
     ko ? "그래프를 준비하고 있습니다…" : "Preparing the plot…",
@@ -29,7 +36,13 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const mount = useRef<HTMLDivElement>(null);
-  const active = useRef<{ figure?: Figure; gpu?: Plot }>({});
+  const active = useRef<{
+    figure?: Figure;
+    gpu?: Plot;
+    signal?: { x: Float64Array; lines: Series[] };
+  }>({});
+  const desired = useRef({ exponent, threeD, projection });
+  desired.current = { exponent, threeD, projection };
   const gpu = preset === "power" || preset === "helix";
   useEffect(() => {
     const update = () =>
@@ -43,6 +56,7 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
     if (!target) return;
     let disposed = false;
     let fig: Figure | undefined, plot: Plot | undefined;
+    let signal: { x: Float64Array; lines: Series[] } | undefined;
     setError("");
     setReady(false);
     setStatus(ko ? "렌더러를 준비하고 있습니다…" : "Preparing the renderer…");
@@ -62,16 +76,21 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
           width: 900,
           height: 440,
           toolbar: false,
+          backend,
+          onError: fail,
         });
         fig = result.fig;
         const ax = result.axes[0];
         if (preset === "signals") {
           const x = linspace(0, Math.PI * 2, 200);
-          ax.plot(x, (v) => Math.sin(v * frequency), { label: "Sine" });
-          ax.plot(x, (v) => Math.cos(v * frequency), {
+          const sine = ax.plot(x, (v) => Math.sin(v * frequency), {
+            label: "Sine",
+          });
+          const cosine = ax.plot(x, (v) => Math.cos(v * frequency), {
             label: "Cosine",
             lineStyle: "--",
           });
+          signal = { x, lines: [sine, cosine] };
           ax.set({
             xLabel: "Angle (radians)",
             yLabel: "Amplitude",
@@ -107,9 +126,17 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
           ax.histogram(values, { bins: 20, density: true, color: "#ff7f0e" });
           ax.set({ xLabel: "Value", yLabel: "Density" });
         }
-        active.current = { figure: fig };
-        setReady(true);
-        setStatus("Canvas 2D");
+        active.current = { figure: fig, signal };
+        void fig.ready
+          .then(() => {
+            if (!disposed) {
+              setReady(true);
+              setStatus(
+                `TypeShade · ${fig!.backend === "webgpu" ? "WebGPU" : "WebGL2"}`,
+              );
+            }
+          })
+          .catch(fail);
       } catch (error) {
         fig?.destroy();
         fail(error);
@@ -133,6 +160,7 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
               : { x: [-6.28, 6.28], y: [-1.25, 1.25] },
           backend,
           mode: preset === "helix" || threeD ? "3d" : "2d",
+          projection: preset === "helix" || threeD ? projection : undefined,
           label:
             preset === "power"
               ? ko
@@ -151,6 +179,12 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
             return;
           }
           plot = result;
+          const current = desired.current;
+          result.setMode(preset === "helix" || current.threeD ? "3d" : "2d");
+          if (preset === "helix" || current.threeD)
+            result.setProjection(current.projection);
+          if (preset === "power")
+            result.setParameters({ exponent: current.exponent });
           active.current = { gpu: result };
           setReady(true);
           setStatus(result.backend === "webgpu" ? "WebGPU" : "WebGL2");
@@ -164,7 +198,26 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
       active.current = {};
       target.replaceChildren();
     };
-  }, [preset, frequency, exponent, backend, threeD, ko, gpu]);
+  }, [preset, backend, ko, gpu]);
+  useEffect(() => {
+    const signal = active.current.signal;
+    if (!signal) return;
+    signal.lines[0].setData(
+      signal.x,
+      signal.x.map((v) => Math.sin(v * frequency)),
+    );
+    signal.lines[1].setData(
+      signal.x,
+      signal.x.map((v) => Math.cos(v * frequency)),
+    );
+  }, [frequency, ready]);
+  useEffect(() => {
+    const plot = active.current.gpu;
+    if (!plot) return;
+    plot.setMode(preset === "helix" || threeD ? "3d" : "2d");
+    if (preset === "helix" || threeD) plot.setProjection(projection);
+    if (preset === "power") plot.setParameters({ exponent });
+  }, [preset, exponent, threeD, projection, ready]);
   async function save() {
     if (!active.current.figure) return;
     setSaving(true);
@@ -178,7 +231,14 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
       setSaving(false);
     }
   }
-  const code = exampleCode(preset, frequency, exponent, backend, threeD);
+  const code = exampleCode(
+    preset,
+    frequency,
+    exponent,
+    backend,
+    threeD,
+    projection,
+  );
   const descriptions: Record<Preset, string> = ko
     ? {
         signals:
@@ -285,7 +345,7 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
               </div>
             </>
           )}
-          {gpu && (
+          {
             <div className="plot-field">
               <label htmlFor="backend">{ko ? "백엔드" : "Backend"}</label>
               <Select
@@ -299,13 +359,34 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
                 ]}
               />
             </div>
+          }
+          {gpu && (preset === "helix" || threeD) && (
+            <div className="plot-field">
+              <label htmlFor="projection">{ko ? "투영" : "Projection"}</label>
+              <Select
+                id="projection"
+                value={projection}
+                onChange={setProjection}
+                options={[
+                  { value: "perspective", label: "Perspective" },
+                  { value: "orthographic", label: "Orthographic" },
+                ]}
+              />
+            </div>
           )}
           <div className="plot-actions">
             <Button
               disabled={!ready}
               onClick={() => {
                 active.current.figure?.axes.forEach((ax) => ax.reset());
-                active.current.gpu?.reset();
+                const plot = active.current.gpu;
+                if (plot) {
+                  plot.reset();
+                  plot.setMode(preset === "helix" || threeD ? "3d" : "2d");
+                  if (preset === "helix" || threeD)
+                    plot.setProjection(projection);
+                  if (preset === "power") plot.setParameters({ exponent });
+                }
               }}
             >
               {ko ? "뷰 초기화" : "Reset view"}

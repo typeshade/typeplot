@@ -11,7 +11,7 @@ and 14px below 560px. Sidebar navigation becomes a horizontal row on mobile.
 
 Lead with real TypePlot code and a working chart. Continue into the data-to-figure workflow,
 actual chart examples, guides, and source. Avoid stock images, decorative gradients, invented
-measurements, and generic feature-card grids. Explain Canvas 2D and GPU functions accurately.
+measurements, and generic feature-card grids. Use real TypeShade graphics for data and function plots. Never substitute a Canvas 2D or SVG renderer.
 
 Use a shared documentation shell with navigation, highlighted code, related-page links,
 canonical and alternate-language metadata. Korean copy uses 합쇼체 and retains API identifiers.

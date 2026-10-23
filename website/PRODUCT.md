@@ -7,10 +7,11 @@ The site follows TypeNN's website rules: Astro static pages, React islands, Tail
 Ant Design v5, IBM Plex fonts, English at `/` and separately authored Korean at `/ko/`.
 Deploy only at `plot.typeshade.dev` using Cloudflare Worker static assets.
 
-The data API plots arrays and ordinary JavaScript functions with Canvas 2D. TypeShade scalar
+The data API renders arrays and host-sampled JavaScript functions through precompiled TypeShade shaders.
+All grids, axes, ticks, text and series are shader-generated. TypeShade scalar
 and parametric callbacks compile at build time and render through WebGPU or WebGL2. Keep
 these paths explicit: ordinary JavaScript callbacks are not compiled shaders. Do not claim
-full matplotlib compatibility, automatic GPU acceleration for arrays, or fabricated benchmarks.
+full matplotlib compatibility, compilation of ordinary JavaScript callbacks, or fabricated benchmarks.
 
 Use the repository README, source, declarations, and named shader examples as evidence.
 Data APIs are currently unreleased. Pin installations to the recorded runtime source commit;

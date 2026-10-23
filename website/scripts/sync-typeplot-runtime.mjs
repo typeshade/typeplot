@@ -18,6 +18,7 @@ for (const name of [
   "index.d.ts",
   "data.d.ts",
   "types.d.ts",
+  "gpu-renderer.d.ts",
 ]) {
   await copyFile(resolve(root, "dist", name), resolve(target, name));
 }
@@ -40,6 +41,7 @@ for (const name of [
   "index.d.ts",
   "data.d.ts",
   "types.d.ts",
+  "gpu-renderer.d.ts",
   "curve.js",
   "helix.js",
 ])

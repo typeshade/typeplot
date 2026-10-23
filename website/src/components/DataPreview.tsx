@@ -59,7 +59,15 @@ export default function DataPreview({
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
     }
-    return () => fig.destroy();
+    let disposed = false;
+    void fig.ready.catch((error) => {
+      if (!disposed)
+        setError(error instanceof Error ? error.message : String(error));
+    });
+    return () => {
+      disposed = true;
+      fig.destroy();
+    };
   }, [kind]);
   return (
     <div>

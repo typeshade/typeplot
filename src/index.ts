@@ -1,6 +1,12 @@
 import { createRuntime, type Pack, type Runtime } from "typeshade/runtime";
 import { createPlotInteraction } from "./interaction.js";
-import type { Plot, PlotBounds, PlotOptions, PlotProgram } from "./types.js";
+import type {
+  Plot,
+  PlotBounds,
+  PlotOptions,
+  PlotProgram,
+  PlotProjection,
+} from "./types.js";
 import { plot as plotData } from "./data.js";
 import type { Figure, NumericData, QuickPlotOptions } from "./data.js";
 
@@ -24,6 +30,7 @@ export type {
   PlotKind,
   PlotOptions,
   PlotProgram,
+  PlotProjection,
 } from "./types.js";
 
 const ACTIVE = new WeakSet<HTMLCanvasElement>();
@@ -94,6 +101,23 @@ export async function createPlot(
       throw new TypeError("Parametric curves require 3d mode.");
   };
   checkMode(mode);
+  let projection: PlotProjection =
+    options.projection ??
+    (program.camera === "projective" ? "perspective" : "orthographic");
+  const checkProjection = (value: PlotProjection): void => {
+    if (value !== "perspective" && value !== "orthographic")
+      throw new TypeError("Projection must be perspective or orthographic.");
+    if (value === "perspective" && program.camera !== "projective")
+      throw new Error(
+        "Recompile this TypePlot program to enable perspective projection.",
+      );
+  };
+  checkProjection(projection);
+  if (mode === "2d" && options.projection === "perspective")
+    throw new TypeError(
+      "2D plots use orthographic projection. Switch to 3d first.",
+    );
+  const initialProjection = projection;
   if (
     options.label !== undefined &&
     (typeof options.label !== "string" || !options.label.trim())
@@ -161,6 +185,7 @@ export async function createPlot(
   let destroyed = false;
   let dirty = false;
   let drawing: Promise<void> | null = null;
+  let scheduled = 0;
   const report = (error: unknown): void => {
     const value = error instanceof Error ? error : new Error(String(error));
     if (options.onError) {
@@ -172,7 +197,11 @@ export async function createPlot(
     } else console.error("[typeplot]", value);
   };
   const requestDraw = (): void => {
-    if (!destroyed) void redraw().catch(report);
+    if (!destroyed && !scheduled)
+      scheduled = win.requestAnimationFrame(() => {
+        scheduled = 0;
+        void redraw().catch(report);
+      });
   };
 
   function restoreCanvas(): void {
@@ -194,6 +223,7 @@ export async function createPlot(
     destroyed = true;
     ACTIVE.delete(canvas);
     dirty = false;
+    if (scheduled) win!.cancelAnimationFrame(scheduled);
     observer?.disconnect();
     win!.removeEventListener("resize", requestDraw);
     controller?.destroy();
@@ -311,7 +341,7 @@ export async function createPlot(
         plotRotation: controller!.value("plotRotation"),
         plotBlend: controller!.value("plotBlend")![0],
         probe,
-        view3d: mode === "3d" ? 1 : 0,
+        view3d: mode === "3d" ? (projection === "perspective" ? 2 : 1) : 0,
       };
       const frame = runtime.frame();
       frame.pass({ color: [target] }, (pass) =>
@@ -328,6 +358,9 @@ export async function createPlot(
     await redraw();
     return {
       backend: runtime.tier,
+      get projection() {
+        return mode === "2d" ? "orthographic" : projection;
+      },
       setMode(value) {
         alive();
         checkMode(value);
@@ -338,6 +371,16 @@ export async function createPlot(
       setProbe(value) {
         alive();
         probe = finite(value, "probe");
+        requestDraw();
+      },
+      setProjection(value) {
+        alive();
+        checkProjection(value);
+        if (mode === "2d" && value === "perspective")
+          throw new TypeError(
+            "2D plots use orthographic projection. Switch to 3d first.",
+          );
+        projection = value;
         requestDraw();
       },
       setParameters(values) {
@@ -355,6 +398,7 @@ export async function createPlot(
         probe = initialProbe;
         Object.assign(parameters, initialParameters);
         mode = initialMode;
+        projection = initialProjection;
         controller!.setMode(mode === "3d");
         controller!.reset();
         requestDraw();

@@ -44,6 +44,7 @@ export function exampleCode(
   exponent = 2,
   backend = "auto",
   threeD = false,
+  projection: "perspective" | "orthographic" = "perspective",
 ): string {
   if (preset === "signals")
     return signalCode
@@ -60,12 +61,12 @@ export function exampleCode(
       .replace("exponent: 2", `exponent: ${exponent}`)
       .replace(
         "parameters: {",
-        `backend: "${backend}",\n  mode: "${threeD ? "3d" : "2d"}",\n  parameters: {`,
+        `backend: "${backend}",\n  mode: "${threeD ? "3d" : "2d"}",\n  projection: "${threeD ? projection : "orthographic"}",\n  parameters: {`,
       );
   if (preset === "helix")
     return helixCode.replace(
       "bounds: {",
-      `backend: "${backend}",\n  bounds: {`,
+      `backend: "${backend}",\n  projection: "${projection}",\n  bounds: {`,
     );
   const head = `import { subplots${preset === "scatter" ? ", linspace" : ""} } from "typeplot";\n\nconst { fig, axes: [ax] } = subplots();\n`;
   if (preset === "scatter")

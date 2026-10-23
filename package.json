@@ -46,7 +46,8 @@
     "shaders",
     "README.md",
     "LICENSE",
-    "NOTICE"
+    "NOTICE",
+    "assets/LICENSE-IBM-Plex.txt"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",

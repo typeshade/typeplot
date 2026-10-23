@@ -1,4 +1,6 @@
 import { createPlotInteraction } from "./interaction.js";
+import { GpuRenderer, type RenderAxes, type Scene } from "./gpu-renderer.js";
+import { encodePng } from "./png.js";
 
 /** Arrays and typed arrays are accepted; values are copied on insertion. */
 export type NumericData = ArrayLike<number>;
@@ -35,6 +37,8 @@ export interface AxesOptions {
   readonly legend?: boolean;
 }
 export interface FigureOptions {
+  readonly backend?: "auto" | "webgpu" | "webgl2";
+  readonly onError?: (error: Error) => void;
   /** Element or selector to append to. Defaults to document.body. */
   readonly target?: HTMLElement | string;
   /** Figure size in CSS pixels, independent of display density. */
@@ -103,6 +107,10 @@ function numeric(data: NumericData, name: string): number[] {
       throw new TypeError(
         `${name} must contain numbers. Use NaN for missing values.`,
       );
+    if (Number.isFinite(value) && Math.abs(value) > 3.402823466e38)
+      throw new RangeError(
+        `${name} exceeds the finite f32 range used by TypeShade.`,
+      );
     return value;
   });
 }
@@ -150,36 +158,6 @@ function style(
     throw new TypeError("color must be a CSS color.");
   return result;
 }
-function ticks(
-  min: number,
-  max: number,
-  scale: AxisScale,
-  count: number,
-): number[] {
-  const raw = (max - min) / count;
-  const unit = 10 ** Math.floor(Math.log10(raw));
-  const fraction = raw / unit;
-  const step =
-    scale === "log" && max - min >= 1
-      ? Math.max(1, Math.ceil(raw))
-      : [1, 2, 2.5, 5, 10].find((n) => n >= fraction)! * unit;
-  if (!(step > 0) || !Number.isFinite(step)) return [];
-  const result: number[] = [];
-  for (
-    let i = Math.ceil(min / step);
-    i <= Math.floor(max / step) && result.length < 100;
-    i++
-  )
-    result.push(i * step);
-  return result;
-}
-function tickLabel(value: number): string {
-  if (value === 0) return "0";
-  if (Math.abs(value) >= 1e5 || Math.abs(value) < 1e-3)
-    return value.toExponential(1).replace(".0e", "e");
-  return Number(value.toPrecision(6)).toString();
-}
-
 /** An independently updateable artist. NaN/Infinity split lines and are omitted from bounds. */
 export class Series {
   /** @internal */
@@ -233,32 +211,26 @@ export class Series {
 /** One subplot, with independent limits, labels, color cycle and interaction. */
 export class Axes {
   readonly canvas: HTMLCanvasElement;
-  private readonly ctx: CanvasRenderingContext2D;
   private readonly controller: ReturnType<typeof createPlotInteraction>;
   private readonly artists: Series[] = [];
   private settings: AxesOptions = {};
   private colorIndex = 0;
   private disposed = false;
-  private frame = 0;
   /** @internal */
   constructor(
     readonly figure: Figure,
     readonly index: number,
   ) {
     const doc = figure.element.ownerDocument;
-    const win = doc.defaultView!;
     this.canvas = doc.createElement("canvas");
     this.canvas.style.cssText =
-      "display:block;width:100%;height:100%;min-width:0;min-height:0";
+      "display:block;width:100%;height:100%;min-width:0;min-height:0;background:transparent";
     this.canvas.setAttribute("role", "img");
     this.canvas.setAttribute("aria-label", `Subplot ${index + 1}`);
     this.canvas.title =
       "Drag to pan; scroll to zoom; arrow keys to move; +/− to zoom; Home to reset.";
     this.canvas.textContent =
       "Chart. Provide a data table or description alongside this figure for access to the underlying values.";
-    const ctx = this.canvas.getContext("2d");
-    if (!ctx) throw new Error("Canvas 2D rendering is unavailable.");
-    this.ctx = ctx;
     this.controller = createPlotInteraction(
       this.canvas,
       { x: [0, 1], y: [0, 1] },
@@ -276,11 +248,6 @@ export class Axes {
     );
     this.canvas.addEventListener("focus", this.redraw);
     this.canvas.addEventListener("blur", this.redraw);
-    // Drawing is deferred so multiple synchronous plot/set calls paint once.
-    this.frame = win.requestAnimationFrame(() => {
-      this.frame = 0;
-      this.draw();
-    });
   }
   /** @internal */
   assertAlive(): void {
@@ -563,6 +530,9 @@ export class Axes {
       hi += pad;
       ranges[axis] = [lo, hi];
     }
+    for (const axis of [ranges.x, ranges.y])
+      if ((axis[1] - axis[0]) * 1e6 > 3.402823466e38)
+        throw new RangeError("Plot range exceeds the f32 interaction range.");
     this.controller.setBounds(ranges);
     this.updateLabel();
   }
@@ -580,220 +550,21 @@ export class Axes {
     );
   }
   readonly redraw = (): void => {
-    if (this.disposed || this.frame) return;
-    this.frame = this.canvas.ownerDocument.defaultView!.requestAnimationFrame(
-      () => {
-        this.frame = 0;
-        this.draw();
-      },
-    );
+    if (!this.disposed) this.figure.redraw();
   };
-  /** @internal Render synchronously for resize and export. */
-  draw(
-    ctx = this.ctx,
-    width = this.canvas.getBoundingClientRect().width,
-    height = this.canvas.getBoundingClientRect().height,
-  ): void {
-    if (this.disposed || width <= 0 || height <= 0) return;
-    if (ctx === this.ctx) {
-      const ratio = this.figure.pixelRatio;
-      const w = Math.max(1, Math.round(width * ratio)),
-        h = Math.max(1, Math.round(height * ratio));
-      if (this.canvas.width !== w) this.canvas.width = w;
-      if (this.canvas.height !== h) this.canvas.height = h;
-      ctx.setTransform(
-        this.canvas.width / width,
-        0,
-        0,
-        this.canvas.height / height,
-        0,
-        0,
-      );
-    }
-    ctx.save();
-    ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = this.figure.options.background ?? "#ffffff";
-    ctx.fillRect(0, 0, width, height);
-    ctx.font = "12px system-ui, sans-serif";
-    const left = PAD.left,
-      top = PAD.top,
-      w = Math.max(1, width - left - PAD.right),
-      h = Math.max(1, height - top - PAD.bottom);
-    const view = this.controller.bounds();
-    const sx = this.settings.xScale ?? "linear",
-      sy = this.settings.yScale ?? "linear";
-    const px = (v: number) =>
-      left + ((scaleValue(v, sx) - view.x[0]) / (view.x[1] - view.x[0])) * w;
-    const py = (v: number) =>
-      top + h - ((scaleValue(v, sy) - view.y[0]) / (view.y[1] - view.y[0])) * h;
-    ctx.lineWidth = 1;
-    for (const axis of ["x", "y"] as const) {
-      const range = view[axis],
-        scale = axis === "x" ? sx : sy;
-      for (const tick of ticks(
-        range[0],
-        range[1],
-        scale,
-        Math.max(2, Math.floor((axis === "x" ? w : h) / 80)),
-      )) {
-        const value = unscale(tick, scale),
-          pos = axis === "x" ? px(value) : py(value);
-        if (!Number.isFinite(pos) || !Number.isFinite(value)) continue;
-        if (this.settings.grid) {
-          ctx.strokeStyle = "#e5e7eb";
-          ctx.beginPath();
-          if (axis === "x") {
-            ctx.moveTo(pos, top);
-            ctx.lineTo(pos, top + h);
-          } else {
-            ctx.moveTo(left, pos);
-            ctx.lineTo(left + w, pos);
-          }
-          ctx.stroke();
-        }
-        ctx.strokeStyle = "#64748b";
-        ctx.fillStyle = "#334155";
-        ctx.beginPath();
-        if (axis === "x") {
-          ctx.moveTo(pos, top + h);
-          ctx.lineTo(pos, top + h + 5);
-          ctx.textAlign = "center";
-          ctx.textBaseline = "top";
-          ctx.fillText(tickLabel(value), pos, top + h + 9);
-        } else {
-          ctx.moveTo(left - 5, pos);
-          ctx.lineTo(left, pos);
-          ctx.textAlign = "right";
-          ctx.textBaseline = "middle";
-          ctx.fillText(tickLabel(value), left - 9, pos);
-        }
-        ctx.stroke();
-      }
-    }
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(left, top, w, h);
-    ctx.clip();
-    for (const series of this.artists) {
-      const s = series.style;
-      ctx.strokeStyle = s.color;
-      ctx.fillStyle = s.color;
-      ctx.globalAlpha = s.alpha;
-      ctx.lineWidth = s.lineWidth;
-      ctx.setLineDash(
-        s.lineStyle === "--" ? [7, 4] : s.lineStyle === ":" ? [2, 3] : [],
-      );
-      if (series.kind === "line" && s.lineStyle !== "none") {
-        ctx.beginPath();
-        let connected = false;
-        for (let i = 0; i < series.data.x.length; i++) {
-          const x = px(series.data.x[i]),
-            y = py(series.data.y[i]);
-          if (!Number.isFinite(x) || !Number.isFinite(y)) {
-            connected = false;
-            continue;
-          }
-          if (connected) ctx.lineTo(x, y);
-          else ctx.moveTo(x, y);
-          connected = true;
-        }
-        ctx.stroke();
-      }
-      for (let i = 0; i < series.data.x.length; i++) {
-        const x = px(series.data.x[i]),
-          y = py(series.data.y[i]);
-        if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-        if (series.kind === "bar") {
-          const a = px(series.edges?.[i] ?? series.data.x[i] - s.width / 2),
-            b = px(series.edges?.[i + 1] ?? series.data.x[i] + s.width / 2);
-          const baseline = sy === "log" ? top + h : py(0);
-          if (Number.isFinite(a) && Number.isFinite(b))
-            ctx.fillRect(
-              a,
-              Math.min(y, baseline),
-              b - a,
-              Math.abs(baseline - y),
-            );
-        } else if (
-          s.marker !== "none" &&
-          x >= left - s.markerSize &&
-          x <= left + w + s.markerSize &&
-          y >= top - s.markerSize &&
-          y <= top + h + s.markerSize
-        ) {
-          ctx.beginPath();
-          if (s.marker === "s")
-            ctx.rect(
-              x - s.markerSize,
-              y - s.markerSize,
-              s.markerSize * 2,
-              s.markerSize * 2,
-            );
-          else ctx.arc(x, y, s.markerSize, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-    }
-    ctx.restore();
-    ctx.strokeStyle = "#64748b";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(left, top, w, h);
-    ctx.fillStyle = "#0f172a";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = "600 14px system-ui, sans-serif";
-    if (this.settings.title)
-      ctx.fillText(this.settings.title, left + w / 2, 20, w);
-    ctx.font = "13px system-ui, sans-serif";
-    if (this.settings.xLabel)
-      ctx.fillText(this.settings.xLabel, left + w / 2, height - 14, w);
-    if (this.settings.yLabel) {
-      ctx.save();
-      ctx.translate(16, top + h / 2);
-      ctx.rotate(-Math.PI / 2);
-      ctx.fillText(this.settings.yLabel, 0, 0, h);
-      ctx.restore();
-    }
-    const labeled = this.artists.filter(
-      (s) => s.style.label && !s.style.label.startsWith("_"),
-    );
-    if (this.settings.legend && labeled.length && w > 64) {
-      ctx.font = "12px system-ui, sans-serif";
-      const bw = Math.min(
-          w - 16,
-          Math.max(
-            ...labeled.map((s) => ctx.measureText(s.style.label).width),
-          ) + 48,
-        ),
-        bh = labeled.length * 22 + 12;
-      const bx = left + w - bw - 8,
-        by = top + 8;
-      ctx.fillStyle = "rgba(255,255,255,0.94)";
-      ctx.fillRect(bx, by, bw, bh);
-      ctx.strokeStyle = "#cbd5e1";
-      ctx.strokeRect(bx, by, bw, bh);
-      labeled.forEach((s, i) => {
-        const y = by + 17 + i * 22;
-        ctx.fillStyle = s.style.color;
-        ctx.fillRect(bx + 10, y - 2, 20, 4);
-        ctx.fillStyle = "#0f172a";
-        ctx.textAlign = "left";
-        ctx.fillText(s.style.label, bx + 38, y, Math.max(1, bw - 44));
-      });
-    }
-    if (ctx === this.ctx && this.canvas.matches(":focus-visible")) {
-      ctx.strokeStyle = "#2563eb";
-      ctx.lineWidth = 3;
-      ctx.strokeRect(2, 2, width - 4, height - 4);
-    }
-    ctx.restore();
+  /** @internal GPU input only; axes/grid/ticks/glyphs are generated by the shaders. */
+  snapshot(): RenderAxes {
+    return {
+      bounds: this.controller.bounds(),
+      settings: this.settings,
+      series: this.artists,
+      focused: this.canvas.matches(":focus-visible"),
+    };
   }
   /** @internal */
   destroy(): void {
     if (this.disposed) return;
     this.disposed = true;
-    const win = this.canvas.ownerDocument.defaultView!;
-    if (this.frame) win.cancelAnimationFrame(this.frame);
     this.controller.destroy();
     this.canvas.removeEventListener("focus", this.redraw);
     this.canvas.removeEventListener("blur", this.redraw);
@@ -813,6 +584,32 @@ export class Figure {
   private disposed = false;
   private readonly rows: number;
   private readonly cols: number;
+  private readonly surface: HTMLCanvasElement;
+  private readonly stage: HTMLDivElement;
+  private renderer?: GpuRenderer;
+  private frame = 0;
+  private dirty = false;
+  private drawing: Promise<void> | null = null;
+  /** Resolves after backend initialization and the first complete TypeShade frame. */
+  readonly ready: Promise<void>;
+  get backend(): "webgpu" | "webgl2" | undefined {
+    return this.renderer?.backend;
+  }
+  private report = (error: unknown): void => {
+    if (this.disposed) return;
+    const value = error instanceof Error ? error : new Error(String(error));
+    this.element.setAttribute("data-error", value.message);
+    if (this.options.onError) {
+      try {
+        this.options.onError(value);
+      } catch (callbackError) {
+        console.error("[typeplot] onError failed", callbackError);
+      }
+    } else
+      this.element.dispatchEvent(
+        new CustomEvent("typeploterror", { detail: value, bubbles: true }),
+      );
+  };
   /** @internal Use figure() or subplots(). */
   constructor(rows: number, cols: number, options: FigureOptions = {}) {
     if (
@@ -861,17 +658,30 @@ export class Figure {
     this.element.style.cssText = `overflow:auto;width:min(100%, ${width}px);font:13px system-ui,sans-serif;color:#0f172a;background:${options.background ?? "#ffffff"}`;
     this.element.setAttribute("role", "group");
     this.element.setAttribute("aria-label", options.title || "TypePlot figure");
-    if (options.title) {
-      const title = doc.createElement("div");
-      title.textContent = options.title;
-      title.style.cssText = "font-weight:600;text-align:center;padding:12px";
-      this.element.appendChild(title);
-    }
+    const titleHeight = options.title ? 42 : 0;
+    this.stage = doc.createElement("div");
+    this.stage.style.cssText = `position:relative;width:100%;min-width:${Math.min(width, 280 * cols)}px;aspect-ratio:${width}/${height + titleHeight}`;
+    this.surface = doc.createElement("canvas");
+    this.surface.style.cssText =
+      "position:absolute;inset:0;width:100%;height:100%;pointer-events:none";
+    this.surface.setAttribute("aria-hidden", "true");
+    this.stage.appendChild(this.surface);
     const grid = doc.createElement("div");
-    grid.style.cssText = `display:grid;min-width:${Math.min(width, 280 * cols)}px;grid-template-columns:repeat(${cols},minmax(0,1fr));grid-template-rows:repeat(${rows},minmax(0,1fr));aspect-ratio:${width}/${height};width:100%`;
-    this.element.appendChild(grid);
+    grid.style.cssText = `position:absolute;inset:${(titleHeight / (height + titleHeight)) * 100}% 0 0;display:grid;grid-template-columns:repeat(${cols},minmax(0,1fr));grid-template-rows:repeat(${rows},minmax(0,1fr))`;
+    this.stage.appendChild(grid);
+    this.element.appendChild(this.stage);
     const axes: Axes[] = [];
     this.axes = axes;
+    this.ready = Promise.resolve().then(async () => {
+      const renderer = await GpuRenderer.create(this.surface, options.backend);
+      if (this.disposed) {
+        renderer.destroy();
+        throw new Error("This figure has been destroyed.");
+      }
+      this.renderer = renderer;
+      await this.paint();
+    });
+    void this.ready.catch(this.report);
     try {
       for (let i = 0; i < rows * cols; i++) {
         const ax = new Axes(this, i);
@@ -914,54 +724,67 @@ export class Figure {
     }
   }
   readonly redraw = (): void => {
-    if (!this.disposed) this.axes.forEach((ax) => ax.redraw());
+    if (this.disposed) return;
+    this.dirty = true;
+    if (!this.frame)
+      this.frame = this.win.requestAnimationFrame(() => {
+        this.frame = 0;
+        if (this.renderer) void this.paint().catch(this.report);
+      });
   };
-  /** Export the current views as PNG, including the figure title and every subplot. */
+  private snapshot(width: number, height: number): Scene {
+    return {
+      width,
+      height,
+      rows: this.rows,
+      cols: this.cols,
+      titleHeight: this.options.title
+        ? (height * 42) / (this.options.height! + 42)
+        : 0,
+      title: this.options.title,
+      background: this.options.background,
+      axes: this.axes.map((ax) => ax.snapshot()),
+    };
+  }
+  private paint(): Promise<void> {
+    if (this.disposed || !this.renderer) return Promise.resolve();
+    this.dirty = true;
+    if (!this.drawing)
+      this.drawing = (async () => {
+        while (this.dirty && !this.disposed) {
+          this.dirty = false;
+          const rect = this.stage.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0)
+            await this.renderer!.render(
+              this.snapshot(rect.width, rect.height),
+              this.pixelRatio,
+            );
+        }
+      })().finally(() => {
+        this.drawing = null;
+      });
+    return this.drawing;
+  }
+  /** Redraw all subplots through TypeShade and encode read-back GPU pixels as PNG. */
   async toBlob(options: SaveFigureOptions = {}): Promise<Blob> {
     if (this.disposed) throw new Error("This figure has been destroyed.");
+    await this.ready;
     const ratio = positive(options.pixelRatio ?? this.pixelRatio, "pixelRatio");
     const width = this.options.width!,
-      height = this.options.height!,
-      titleHeight = this.options.title ? 42 : 0;
-    const w = Math.ceil(width * ratio),
-      h = Math.ceil((height + titleHeight) * ratio);
-    if (w * h > 16_777_216 || Math.max(w, h) > 16384)
+      height = this.options.height! + (this.options.title ? 42 : 0);
+    if (
+      Math.ceil(width * ratio) * Math.ceil(height * ratio) > 16_777_216 ||
+      Math.max(width, height) * ratio > 16384
+    )
       throw new RangeError(
-        "PNG export exceeds the 16 megapixel or 16384 pixel dimension limit. Reduce pixelRatio or figure size.",
+        "PNG export exceeds the 16 megapixel or 16384 pixel dimension limit.",
       );
-    const canvas = this.element.ownerDocument.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Canvas 2D rendering is unavailable.");
-    ctx.scale(ratio, ratio);
-    ctx.fillStyle = this.options.background ?? "#ffffff";
-    ctx.fillRect(0, 0, width, height + titleHeight);
-    if (this.options.title) {
-      ctx.fillStyle = "#0f172a";
-      ctx.font = "600 16px system-ui,sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(this.options.title, width / 2, titleHeight / 2, width - 24);
-    }
-    this.axes.forEach((ax, i) => {
-      ctx.save();
-      ctx.translate(
-        ((i % this.cols) * width) / this.cols,
-        titleHeight + (Math.floor(i / this.cols) * height) / this.rows,
-      );
-      ax.draw(ctx, width / this.cols, height / this.rows);
-      ctx.restore();
-    });
-    return new Promise((resolve, reject) =>
-      canvas.toBlob(
-        (blob) =>
-          blob
-            ? resolve(blob)
-            : reject(new Error("Unable to encode the figure as PNG.")),
-        "image/png",
-      ),
+    if (this.disposed) throw new Error("This figure has been destroyed.");
+    const pixels = await this.renderer!.pixels(
+      this.snapshot(width, height),
+      ratio,
     );
+    return encodePng(pixels.bytes, pixels.width, pixels.height);
   }
   async saveImage(
     filename = "typeplot.png",
@@ -988,6 +811,8 @@ export class Figure {
     if (this.disposed) return;
     this.disposed = true;
     this.observer?.disconnect();
+    if (this.frame) this.win.cancelAnimationFrame(this.frame);
+    this.renderer?.destroy();
     this.win.removeEventListener("resize", this.redraw);
     this.axes.forEach((ax) => ax.destroy());
     this.element.remove();

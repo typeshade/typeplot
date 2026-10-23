@@ -22,11 +22,24 @@ const sourcePlugin = {
     }));
   },
 };
+await mkdir(".build", { recursive: true });
+await build({
+  entryPoints: ["scripts/compile-data.mjs"],
+  outfile: ".build/compile-data.mjs",
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  banner: {
+    js: "import{createRequire}from'node:module';import{fileURLToPath}from'node:url';import{dirname}from'node:path';const require=createRequire(import.meta.url);const __filename=fileURLToPath(import.meta.url);const __dirname=dirname(__filename);",
+  },
+});
+await import(path.resolve(".build/compile-data.mjs"));
 await build({
   entryPoints: ["src/index.ts"],
   outfile: "dist/index.js",
   bundle: true,
   platform: "browser",
+  loader: { ".png": "dataurl" },
   format: "esm",
   target: "es2022",
   minify: true,
@@ -49,6 +62,7 @@ await build({
   outdir: "dist",
   bundle: true,
   platform: "browser",
+  loader: { ".png": "dataurl" },
   format: "esm",
   target: "es2022",
   plugins: [sourcePlugin],

@@ -86,7 +86,7 @@ export function compilePlot(
   const jumps = options.discontinuous === true;
   const fragment =
     kind === "scalar"
-      ? `const flat = plot2D(sample, uv, u, ${jumps});\n  if (u.plotBlend <= 0.) { return flat; }\n  return mix(flat, plot3D(trajectory, uv, u, bounds, ${jumps}), clamp(u.plotBlend, 0., 1.));`
+      ? `if (u.plotBlend >= 1.) { return plot3D(trajectory, uv, u, bounds, ${jumps}); }\n  const flat = plot2D(sample, uv, u, ${jumps});\n  if (u.plotBlend <= 0.) { return flat; }\n  return mix(flat, plot3D(trajectory, uv, u, bounds, ${jumps}), clamp(u.plotBlend, 0., 1.));`
       : `return plot3D(trajectory, uv, u, bounds, ${jumps});`;
   const wrapper = `"use typeshade";
 import { ${entry} as callback } from ${JSON.stringify("./" + path.basename(userFile))};
@@ -144,6 +144,6 @@ class VertexOutput { @builtin("position") position: vec4; @location(0) uv: vec2;
         : {}),
     })),
   };
-  return { version: 1, kind, manifest, parameters };
+  return { version: 1, kind, manifest, parameters, camera: "projective" };
 }
 export type { PlotProgram, PlotKind } from "./types.js";
