@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  /><title>TypePlot examples</title>
+  <link rel="icon" href="data:," />
+  <style>
+    body {
+      font: 16px system-ui;
+      max-width: 960px;
+      margin: 32px auto;
+      padding: 16px;
+      color: #17213b;
+    }
+    section {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+    }
+    figure {
+      margin: 0;
+      max-width: 100%;
+    }
+    canvas {
+      display: block;
+      width: min(400px, 85vw);
+      height: min(400px, 85vw);
+      border: 1px solid #dce1eb;
+      border-radius: 8px;
+    }
+    label {
+      display: block;
+      margin: 16px 0;
+    }
+    output {
+      display: inline-block;
+      width: 5ch;
+      text-align: right;
+      font: 14px monospace;
+    }
+    p {
+      line-height: 1.6;
+    }
+    button {
+      padding: 6px 12px;
+    }
+  </style>
+  <h1>TypePlot</h1>
+  <p>
+    TypeShade callbacks rendered on WebGPU or WebGL2. Wheel to zoom; drag to pan
+    or orbit. Keyboard: arrows, +/-, Home.
+  </p>
+  <section>
+    <figure>
+      <canvas id="curve" aria-label="Power curve"></canvas>
+      <figcaption>Scalar callback</figcaption>
+      <label
+        >Exponent
+        <input
+          id="exponent"
+          type="range"
+          min="0.25"
+          max="5"
+          step="0.01"
+          value="2"
+        /><output id="value">2</output></label
+      ><button id="mode">3D view</button><button id="reset">Reset</button>
+    </figure>
+    <figure>
+      <canvas id="helix" aria-label="Spatial helix"></canvas>
+      <figcaption>x/y/z trajectory callback</figcaption>
+    </figure>
+  </section>
+  <p id="backend" role="status"></p>
+  <script type="module">
+    import { createPlot } from "../dist/index.js";
+    import curveProgram from "./generated/curve.js";
+    import helixProgram from "./generated/helix.js";
+    const backend =
+      new URLSearchParams(location.search).get("backend") ?? "auto";
+    const curve = await createPlot(
+      document.querySelector("#curve"),
+      curveProgram,
+      { bounds: { x: [0, 1], y: [0, 1] }, probe: 0.5, backend },
+    );
+    const helix = await createPlot(
+      document.querySelector("#helix"),
+      helixProgram,
+      { bounds: { x: [-6.28, 6.28], y: [-1.25, 1.25] }, backend },
+    );
+    document.querySelector("#backend").textContent =
+      `Renderer: ${curve.backend}`;
+    document.querySelector("#exponent").oninput = (e) => {
+      curve.setParameters({ exponent: Number(e.target.value) });
+      document.querySelector("#value").textContent = Number(e.target.value)
+        .toFixed(2)
+        .replace(/0+$/, "")
+        .replace(/\.$/, "");
+    };
+    let three = false;
+    document.querySelector("#mode").onclick = () => {
+      three = !three;
+      curve.setMode(three ? "3d" : "2d");
+    };
+    document.querySelector("#reset").onclick = () => {
+      curve.reset();
+      three = false;
+      document.querySelector("#exponent").value = "2";
+      document.querySelector("#value").textContent = "2";
+    };
+    window.plots = { curve, helix };
+  </script>
+</html>

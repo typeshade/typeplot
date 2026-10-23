@@ -7,3 +7,9 @@ using the existing TypeShade runtime. Ship plain JavaScript and declarations for
 Keep the compiler out of the browser entry. Include 2D and genuine x/y/z examples.
 
 Implementation in progress. Npm publication is outside this change.
+
+The initial browser and compiler APIs are implemented. Four browser reviews passed:
+WebGPU/WebGL2 at 1440/390 px, including parameter updates, pan/zoom, 3D view, reset,
+invalid-input rejection and destruction. Browser evidence is in /workspace/shared/typeplot.
+The browser bundle imports no compiler; the build checks emitted dependencies.
+Low-level shader/interaction exports support integration into existing rendering hosts.
