@@ -193,6 +193,15 @@ export function createPlotInteraction(
     zoom(Math.exp(clamp(event.deltaY * units * 0.002, -1, 1)), anchor, true);
   }
 
+  function inputTime(event: Event): number {
+    const now = win.performance.now();
+    // Use input timestamps so a busy render cannot turn a short tap into a hold.
+    return Number.isFinite(event.timeStamp) &&
+      Math.abs(event.timeStamp - now) < 60000
+      ? event.timeStamp
+      : now;
+  }
+
   function touchGeometry(): { center: Pair; distance: number } {
     const [a, b] = [...touches.values()];
     return {
@@ -220,7 +229,7 @@ export function createPlotInteraction(
       tap = {
         id: event.pointerId,
         position: [event.clientX, event.clientY],
-        started: win.performance.now(),
+        started: inputTime(event),
         moved: false,
       };
     }
@@ -415,12 +424,13 @@ export function createPlotInteraction(
     const now = win.performance.now();
     if (touch && tap?.id === event.pointerId) {
       const candidate = tap;
+      const tapTime = inputTime(event);
       tap = null;
-      if (!candidate.moved && now - candidate.started <= 250) {
+      if (!candidate.moved && tapTime - candidate.started <= 250) {
         if (
           options.doubleClickReset !== false &&
           lastTap &&
-          now - lastTap.time <= 300 &&
+          tapTime - lastTap.time <= 300 &&
           Math.hypot(
             event.clientX - lastTap.position[0],
             event.clientY - lastTap.position[1],
@@ -431,7 +441,7 @@ export function createPlotInteraction(
           reset();
           return;
         }
-        lastTap = { position: [event.clientX, event.clientY], time: now };
+        lastTap = { position: [event.clientX, event.clientY], time: tapTime };
       } else lastTap = null;
     }
     if (
