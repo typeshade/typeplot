@@ -460,3 +460,11 @@ Data axes can opt into an HTML legend with `ax.legend("html")` or
 `ax.set({ legend: "html" })`. `true` retains the default GPU legend and `false` hides it.
 HTML labels use textContent, track series metadata and resize with their subplot. PNG
 export renders the corresponding legend on the GPU, independently of DOM controls.
+
+
+On touchscreens, one finger pans a 2D plot or orbits a 3D plot. Two fingers pinch to zoom
+and move together to pan, without rotating the 3D camera. Zoom anchors to the gesture
+centroid (the focus plane in perspective). Switching between one and two fingers rebases
+input without a camera jump. Touch cancellation clears the gesture. Double-tap restores
+the home camera and follows `doubleClickReset`; released single-finger drags retain the
+existing inertia/reduced-motion behavior. The page remains scrollable outside the plot.

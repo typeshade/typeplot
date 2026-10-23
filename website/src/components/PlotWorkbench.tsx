@@ -714,8 +714,8 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
         )}
         <p id="plot-help" className="plot-help">
           {ko
-            ? "왼쪽 드래그로 이동하거나 회전하고, 오른쪽 드래그로 이동하며, 스크롤로 확대합니다. 놓으면 관성으로 감속하며 더블 클릭으로 뷰를 초기화합니다. 그래프에 초점을 맞추면 방향키, +/−, Home, Escape를 사용할 수 있습니다. PNG 저장은 데이터 예제에서 지원합니다."
-            : "Left-drag to pan or orbit. Right-drag to pan. Scroll to zoom. Focus the plot for arrow keys, +/− and Home. PNG export is available for data examples."}
+            ? "터치에서는 한 손가락으로 이동·회전하고 두 손가락으로 확대·이동하며 두 번 탭하면 초기화합니다. 왼쪽 드래그로 이동하거나 회전하고, 오른쪽 드래그로 이동하며, 스크롤로 확대합니다. 놓으면 관성으로 감속하며 더블 클릭으로 뷰를 초기화합니다. 그래프에 초점을 맞추면 방향키, +/−, Home, Escape를 사용할 수 있습니다. PNG 저장은 데이터 예제에서 지원합니다."
+            : "On touchscreens, drag with one finger, pinch/pan with two, and double-tap to reset. Left-drag to pan or orbit. Right-drag to pan. Scroll to zoom. Focus the plot for arrow keys, +/− and Home. PNG export is available for data examples."}
         </p>
       </div>
       <p className="plot-details">{descriptions[preset]}</p>

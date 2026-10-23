@@ -78,6 +78,16 @@ export function createPlotInteraction(
     time: number;
     velocity: Pair;
   } | null = null;
+  const touches = new Map<number, Pair>();
+  let gesture: { center: Pair; distance: number } | null = null;
+  let tap: {
+    id: number;
+    position: Pair;
+    started: number;
+    moved: boolean;
+  } | null = null;
+  let lastTap: { position: Pair; time: number } | null = null;
+  let touchResetAt = -Infinity;
   let momentum: {
     velocity: Pair;
     pan: boolean;
@@ -137,7 +147,12 @@ export function createPlotInteraction(
     );
   }
 
-  function zoom(factor: number, anchor: Pair = [0.5, 0.5], immediate = false) {
+  function zoom(
+    factor: number,
+    anchor: Pair = [0.5, 0.5],
+    immediate = false,
+    notify = true,
+  ) {
     for (let axis = 0; axis < 2; axis++) {
       const before = target.span[axis];
       const after = clamp(
@@ -159,7 +174,7 @@ export function createPlotInteraction(
       }
       target.span[axis] = after;
     }
-    change(immediate);
+    if (notify) change(immediate);
   }
 
   function wheel(event: WheelEvent) {
@@ -178,11 +193,42 @@ export function createPlotInteraction(
     zoom(Math.exp(clamp(event.deltaY * units * 0.002, -1, 1)), anchor, true);
   }
 
+  function touchGeometry(): { center: Pair; distance: number } {
+    const [a, b] = [...touches.values()];
+    return {
+      center: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2],
+      distance: Math.max(2, Math.hypot(a[0] - b[0], a[1] - b[1])),
+    };
+  }
+
   function down(event: PointerEvent) {
+    if (event.pointerType !== "touch" && touches.size) return;
+    if (event.pointerType === "touch") {
+      if (touches.size >= 2 || (pointer && !touches.size)) return;
+      touches.set(event.pointerId, [event.clientX, event.clientY]);
+      if (touches.size === 2) {
+        pointer = null;
+        tap = null;
+        lastTap = null;
+        target = copy(current);
+        change(true);
+        gesture = touchGeometry();
+        canvas.setPointerCapture(event.pointerId);
+        event.preventDefault();
+        return;
+      }
+      tap = {
+        id: event.pointerId,
+        position: [event.clientX, event.clientY],
+        started: win.performance.now(),
+        moved: false,
+      };
+    }
+
     if (
       pointer ||
       (event.button !== 0 && event.button !== 2) ||
-      !event.isPrimary
+      (event.pointerType !== "touch" && !event.isPrimary)
     )
       return;
     target = copy(current);
@@ -207,6 +253,45 @@ export function createPlotInteraction(
   }
 
   function move(event: PointerEvent) {
+    if (event.pointerType === "touch" && touches.has(event.pointerId)) {
+      touches.set(event.pointerId, [event.clientX, event.clientY]);
+      if (
+        tap &&
+        Math.hypot(
+          event.clientX - tap.position[0],
+          event.clientY - tap.position[1],
+        ) > 8
+      ) {
+        tap.moved = true;
+        lastTap = null;
+      }
+      if (gesture && touches.size === 2) {
+        const next = touchGeometry(),
+          rect = viewport();
+        const anchor: Pair = [
+          clamp(
+            (gesture.center[0] - rect.left) / Math.max(rect.width, 1),
+            0,
+            1,
+          ),
+          clamp(
+            1 - (gesture.center[1] - rect.top) / Math.max(rect.height, 1),
+            0,
+            1,
+          ),
+        ];
+        zoom(gesture.distance / next.distance, anchor, true, false);
+        dragBy(
+          (next.center[0] - gesture.center[0]) / Math.max(rect.width, 1),
+          (next.center[1] - gesture.center[1]) / Math.max(rect.height, 1),
+          true,
+        );
+        gesture = next;
+        change(true);
+        event.preventDefault();
+        return;
+      }
+    }
     if (pointer?.id !== event.pointerId) return;
     const rect = viewport();
     const dx = clamp(
@@ -286,12 +371,69 @@ export function createPlotInteraction(
   }
 
   function up(event: PointerEvent) {
+    const touch = touches.has(event.pointerId);
+    if (touch) {
+      touches.delete(event.pointerId);
+      if (event.type !== "pointerup") {
+        pointer = null;
+        gesture = null;
+        tap = null;
+        lastTap = null;
+        for (const id of [...touches.keys()]) {
+          touches.delete(id);
+          if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+        }
+        if (canvas.hasPointerCapture(event.pointerId))
+          canvas.releasePointerCapture(event.pointerId);
+        return;
+      }
+      if (gesture) {
+        gesture = null;
+        tap = null;
+        lastTap = null;
+        const remaining = [...touches.entries()][0];
+        pointer = remaining
+          ? {
+              id: remaining[0],
+              x: remaining[1][0],
+              y: remaining[1][1],
+              pan: false,
+              time: win.performance.now(),
+              velocity: [0, 0],
+            }
+          : null;
+        if (canvas.hasPointerCapture(event.pointerId))
+          canvas.releasePointerCapture(event.pointerId);
+        return;
+      }
+    }
     if (pointer?.id !== event.pointerId) return;
     const released = pointer;
     pointer = null;
     if (canvas.hasPointerCapture(event.pointerId))
       canvas.releasePointerCapture(event.pointerId);
     const now = win.performance.now();
+    if (touch && tap?.id === event.pointerId) {
+      const candidate = tap;
+      tap = null;
+      if (!candidate.moved && now - candidate.started <= 250) {
+        if (
+          options.doubleClickReset !== false &&
+          lastTap &&
+          now - lastTap.time <= 300 &&
+          Math.hypot(
+            event.clientX - lastTap.position[0],
+            event.clientY - lastTap.position[1],
+          ) <= 24
+        ) {
+          lastTap = null;
+          touchResetAt = now;
+          reset();
+          return;
+        }
+        lastTap = { position: [event.clientX, event.clientY], time: now };
+      } else lastTap = null;
+    }
     if (
       event.type === "pointerup" &&
       options.inertia !== false &&
@@ -317,7 +459,12 @@ export function createPlotInteraction(
   }
 
   function doubleClick(event: MouseEvent) {
-    if (event.button !== 0 || options.doubleClickReset === false) return;
+    if (
+      event.button !== 0 ||
+      options.doubleClickReset === false ||
+      win.performance.now() - touchResetAt < 400
+    )
+      return;
     reset();
     event.preventDefault();
   }
@@ -440,9 +587,17 @@ export function createPlotInteraction(
       destroyed = true;
       if (frame) win.cancelAnimationFrame(frame);
       momentum = null;
-      if (pointer && canvas.hasPointerCapture(pointer.id))
-        canvas.releasePointerCapture(pointer.id);
+      const captured = new Set([
+        ...touches.keys(),
+        ...(pointer ? [pointer.id] : []),
+      ]);
+      touches.clear();
       pointer = null;
+      gesture = null;
+      tap = null;
+      lastTap = null;
+      for (const id of captured)
+        if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
       canvas.removeEventListener("wheel", wheel);
       canvas.removeEventListener("pointerdown", down);
       canvas.removeEventListener("pointermove", move);
