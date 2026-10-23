@@ -1,6 +1,22 @@
 import { createRuntime, type Pack, type Runtime } from "typeshade/runtime";
 import { createPlotInteraction } from "./interaction.js";
 import type { Plot, PlotBounds, PlotOptions, PlotProgram } from "./types.js";
+import { plot as plotData } from "./data.js";
+import type { Figure, NumericData, QuickPlotOptions } from "./data.js";
+
+export { figure, subplots, linspace, Figure, Axes, Series } from "./data.js";
+export type {
+  NumericData,
+  AxisScale,
+  AxisLimits,
+  SeriesOptions,
+  BarOptions,
+  HistogramOptions,
+  AxesOptions,
+  FigureOptions,
+  QuickPlotOptions,
+  SaveFigureOptions,
+} from "./data.js";
 
 export type {
   Plot,
@@ -352,5 +368,43 @@ export async function createPlot(
   }
 }
 
-/** Short form of createPlot. */
-export const plot = createPlot;
+/** Plot data directly, or mount a compiled GPU program using the original canvas form. */
+export function plot(
+  canvas: HTMLCanvasElement,
+  program: PlotProgram,
+  options?: PlotOptions,
+): Promise<Plot>;
+export function plot(y: NumericData, options?: QuickPlotOptions): Figure;
+export function plot(
+  x: NumericData,
+  y: NumericData | ((x: number) => number),
+  options?: QuickPlotOptions,
+): Figure;
+export function plot(
+  target: HTMLCanvasElement | NumericData,
+  dataOrOptions?:
+    PlotProgram | NumericData | ((x: number) => number) | QuickPlotOptions,
+  options?: PlotOptions | QuickPlotOptions,
+): Promise<Plot> | Figure {
+  if (
+    target &&
+    typeof (target as HTMLCanvasElement).getContext === "function"
+  ) {
+    return createPlot(
+      target as HTMLCanvasElement,
+      dataOrOptions as PlotProgram,
+      options as PlotOptions,
+    );
+  }
+  if (
+    typeof dataOrOptions === "function" ||
+    (dataOrOptions && "length" in dataOrOptions)
+  ) {
+    return plotData(
+      target as NumericData,
+      dataOrOptions as NumericData | ((x: number) => number),
+      options as QuickPlotOptions,
+    );
+  }
+  return plotData(target as NumericData, dataOrOptions as QuickPlotOptions);
+}

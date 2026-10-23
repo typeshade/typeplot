@@ -45,7 +45,7 @@ await build({
     throw new Error(`Compiler leaked into browser entry: ${leaked.join(", ")}`);
 });
 await build({
-  entryPoints: ["src/interaction.ts", "src/shaders.ts"],
+  entryPoints: ["src/interaction.ts", "src/shaders.ts", "src/data.ts"],
   outdir: "dist",
   bundle: true,
   platform: "browser",

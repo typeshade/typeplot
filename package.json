@@ -25,6 +25,10 @@
       "types": "./dist/interaction.d.ts",
       "import": "./dist/interaction.js"
     },
+    "./data": {
+      "types": "./dist/data.d.ts",
+      "import": "./dist/data.js"
+    },
     "./shaders": {
       "types": "./dist/shaders.d.ts",
       "import": "./dist/shaders.js"

@@ -1,5 +1,33 @@
 # TypePlot usability improvements
 
+## Data plotting (next release)
+
+TypePlot now accepts arrays, typed arrays and JavaScript callbacks through `plot(y)` and
+`plot(x, yOrFunction)`. The synchronous data API creates its own responsive Canvas 2D figure,
+with automatic ranges, a per-axes color cycle, line styles, markers and missing-value gaps.
+It is exported from both `typeplot` and the smaller `typeplot/data` browser entry.
+
+`figure` and `subplots` provide independent axes for multiple lines, scatter plots, numeric
+bars and histograms. Axis labels, titles, grids, legends, fixed limits and logarithmic scales
+use TypeScript-style names such as `xLabel`, `lineWidth`, `setXLimits` and `saveImage`.
+Data changes refit automatic ranges while retaining explicit limits. Presentation changes
+retain the current view. `Series.setData` and `remove` support incremental updates.
+
+Each axes reuses the existing interaction controller, with the plot viewport accounted for
+when anchoring zoom and panning. Figures include reset and PNG download controls, with
+`toBlob` for applications that own their save workflow. PNG export redraws every subplot
+at the requested pixel density. Destroying a figure releases its observers, event listeners,
+and pending animation frames. The original compiled GPU `plot(canvas, program, options)`
+and `createPlot` APIs remain available.
+
+The Vite example shows four data charts, including a log-scaled scatter plot and an update
+button, independently of GPU startup. The README documents lifecycle, input validation,
+histogram normalization, accessibility and the current PNG-only export limitation.
+
+Validation: `npm run build`, `npm run build:example`, `npm run examples`,
+`git diff --check` and `npm pack --dry-run`. No tests were added or run, following the
+repository maintenance instructions. Browser interaction and visual review remain pending.
+
 ## Implemented
 
 - Runnable Vite application: `npm run dev` imports real scalar and spatial callbacks through

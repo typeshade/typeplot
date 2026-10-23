@@ -23,6 +23,8 @@ export function createPlotInteraction(
   initialBounds: PlotBounds,
   onChange: () => void,
   enabled = true,
+  viewport: () => Pick<DOMRect, "left" | "top" | "width" | "height"> = () =>
+    canvas.getBoundingClientRect(),
 ) {
   const win = canvas.ownerDocument.defaultView!;
   for (const axis of [initialBounds.x, initialBounds.y]) {
@@ -127,7 +129,7 @@ export function createPlotInteraction(
   function wheel(event: WheelEvent) {
     if (!Number.isFinite(event.deltaY)) return;
     event.preventDefault();
-    const rect = canvas.getBoundingClientRect();
+    const rect = viewport();
     const units =
       event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1;
     const anchor: Pair = [
@@ -152,7 +154,7 @@ export function createPlotInteraction(
 
   function move(event: PointerEvent) {
     if (pointer?.id !== event.pointerId) return;
-    const rect = canvas.getBoundingClientRect();
+    const rect = viewport();
     const dx = clamp(
       (event.clientX - pointer.x) / Math.max(rect.width, 1),
       -1,
@@ -250,6 +252,32 @@ export function createPlotInteraction(
       change();
     },
     reset,
+    /** Replace the home view and display it immediately. */
+    setBounds(bounds: PlotBounds) {
+      if (destroyed) return;
+      for (const axis of [bounds.x, bounds.y]) {
+        const span = axis[1] - axis[0];
+        if (
+          !axis.every(Number.isFinite) ||
+          !(span > 0) ||
+          !Number.isFinite(span * 1e6)
+        )
+          throw new RangeError(
+            "Plot bounds must be finite and increasing within the supported range.",
+          );
+      }
+      original.center = [
+        bounds.x[0] / 2 + bounds.x[1] / 2,
+        bounds.y[0] / 2 + bounds.y[1] / 2,
+      ];
+      original.span = [bounds.x[1] - bounds.x[0], bounds.y[1] - bounds.y[0]];
+      if (frame) win.cancelAnimationFrame(frame);
+      frame = 0;
+      target = copy(original);
+      target.blend[0] = threeD ? 1 : 0;
+      assign(target);
+      onChange();
+    },
     bounds(): { x: Pair; y: Pair } {
       return {
         x: [

@@ -1,8 +1,9 @@
 # TypePlot
 
-GPU function plots authored with TypeShade. TypePlot renders scalar functions and parametric
-x/y/z trajectories with axes, ticks, pan, zoom, orbit and reduced-motion transitions.
-It uses the TypeShade program runtime on WebGPU, with WebGL2 fallback.
+Plot arrays and JavaScript functions with automatic axes, multiple series, subplots and PNG
+export. For GPU function plots, TypePlot renders TypeShade scalar functions and parametric
+x/y/z trajectories with WebGPU and WebGL2 fallback. Both APIs support interactive navigation
+and reduced-motion preferences.
 
 ## Installation
 
@@ -15,9 +16,115 @@ npm install https://github.com/typeshade/typeplot.git#v0.1.1
 The package includes JavaScript and declarations. TypeScript source in the dependency does
 not need a loader. The version tag keeps installations on the same release.
 
+The data plotting API described below targets the next release. The existing v0.1.1 tag
+contains the GPU function API; install a Git commit containing these changes to use the new data API.
+
 The package has not been published to the npm registry. Once it is published, registry
 installation will use `npm install typeplot`. See the
 [publishing procedure](https://github.com/typeshade/typeplot/blob/main/docs/publishing.md).
+
+## Plot data directly
+
+Draw arrays, typed arrays or ordinary JavaScript callbacks without a shader, build plugin
+or GPU. TypePlot creates a responsive figure, chooses axis limits and cycles series colors:
+
+```ts
+import { plot, linspace } from "typeplot";
+
+const x = linspace(0, 2 * Math.PI, 200);
+const fig = plot(x, Math.sin, {
+  target: "#chart", // Omit to append to document.body.
+  title: "Sine wave",
+  xLabel: "Angle (radians)",
+  yLabel: "Amplitude",
+  grid: true,
+});
+
+// A single array uses its indices as x coordinates.
+const other = plot([3, 1, 4, 1, 5]);
+// Remove each figure when its view unmounts.
+other.destroy();
+fig.destroy();
+```
+
+For applications that only plot data, the same API is available from `typeplot/data`.
+This smaller browser entry has no GPU runtime or compiler dependency. It renders with Canvas 2D.
+The package can be imported on the server, but figures must be created in a mounted browser view.
+
+### Multiple series and subplots
+
+```ts
+import { subplots, linspace } from "typeplot/data";
+
+const {
+  fig,
+  axes: [curves, distribution],
+} = subplots(1, 2, {
+  target: "#chart",
+  width: 1000,
+  height: 400,
+  title: "Measurements",
+});
+const x = linspace(0, 2 * Math.PI, 200);
+const sine = curves.plot(x, Math.sin, { label: "Sine" });
+curves.plot(x, Math.cos, { label: "Cosine", lineStyle: "--" });
+curves.set({ title: "Signals", xLabel: "Time", yLabel: "Value", grid: true });
+curves.legend();
+distribution.histogram([1, 2, 2, 3, 3, 3, 4], { bins: 4 });
+distribution.setTitle("Distribution");
+
+// Update an existing series. Limits refit unless explicitly fixed.
+sine.setData(
+  x,
+  x.map((value) => Math.sin(value + 0.5)),
+);
+curves.setXLimits(0, Math.PI);
+// curves.autoscale() returns both axes to automatic limits.
+
+await fig.saveImage("measurements.png", { pixelRatio: 2 });
+// Or use await fig.toBlob() for a PNG without initiating a download.
+fig.destroy();
+```
+
+Axes are always returned as a flat, row-major array, including a single subplot. Each axes
+owns its color cycle, limits and interaction. There is no global current-figure state.
+Figures include Reset view and Save PNG buttons; pass `toolbar: false` to omit them.
+On narrow screens, multi-column figures scroll horizontally to keep their axes legible.
+
+### Data plotting API
+
+| Call                                                                                | Behavior                                                                  |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `plot(y, options?)` / `plot(x, yOrFunction, options?)`                              | Create and return a single-axes `Figure`.                                 |
+| `figure(options?)`                                                                  | Create an empty figure; draw with `fig.axes[0]`.                          |
+| `subplots(rows?, cols?, options?)`                                                  | Return `{ fig, axes }` with independent subplots.                         |
+| `ax.plot(y, options?)` / `ax.plot(x, yOrFunction, options?)`                        | Add a line and return its `Series`.                                       |
+| `ax.scatter(x, y, options?)`                                                        | Add markers.                                                              |
+| `ax.bar(x, heights, { width?, ...style }?)`                                         | Add bars at numeric x coordinates.                                        |
+| `ax.histogram(values, { bins?, density?, ...style }?)`                              | Return `{ counts, bins, series }`. Bins may be a count or explicit edges. |
+| `ax.set({ title, xLabel, yLabel, xLimits, yLimits, xScale, yScale, grid, legend })` | Set presentation and ranges together.                                     |
+| `ax.setTitle(text)` / `setXLabel(text)` / `setYLabel(text)`                         | Set individual labels.                                                    |
+| `ax.setXLimits(min, max)` / `setYLimits(min, max)`                                  | Fix axis limits, including when data changes.                             |
+| `ax.setXScale("log")` / `setYScale("log")`                                          | Select linear or base-10 logarithmic coordinates.                         |
+| `ax.grid(visible?)` / `ax.legend(visible?)`                                         | Toggle grid or labeled-series legend; default `true`.                     |
+| `ax.autoscale()` / `ax.reset()` / `ax.clear()`                                      | Refit ranges, restore the home view, or remove series and settings.       |
+| `series.setData(y)` / `series.setData(x, y)` / `series.remove()`                    | Update or remove one line, scatter series or bar series.                  |
+| `fig.saveImage(filename?, options?)` / `fig.toBlob(options?)`                       | Download a PNG or return a PNG Blob.                                      |
+| `fig.destroy()`                                                                     | Release observers, listeners and animation frames, and remove the figure. |
+| `linspace(start, stop, count = 50)`                                                 | Return a `Float64Array`, including both endpoints.                        |
+
+Series options include `label`, CSS `color`, `lineWidth`, `lineStyle` (`"-"`, `"--"`, `":"`,
+`"none"`), `marker` (`"o"`, `"s"`, `"none"`), `markerSize` in CSS pixels, and `alpha`.
+Array lengths must match. Data is copied so later input mutations do not silently change a
+chart. `NaN` and infinity create line gaps and are omitted from bounds; non-positive values
+are also omitted on log axes. Log limits must be positive and all explicit limits increasing.
+Adding/removing/updating a series refits automatic ranges; label, grid and legend changes
+preserve the current pan/zoom view. Histograms include the rightmost endpoint in the last bin
+and density normalizes the total bar area to one; recreate a histogram to change its bins.
+PNG exports redraw all subplots at the requested density, independent of the on-screen size,
+with a 16 megapixel and 16384 pixel per-dimension limit. Figure dimensions are CSS pixels.
+Exports support PNG; this API does not implement all matplotlib chart types or options.
+Provide an adjacent description or data table when access to individual values is needed.
 
 ## Runnable example
 
@@ -27,7 +134,7 @@ npm run build
 npm run dev
 ```
 
-Open the local Vite URL to use scalar and spatial plots. The example imports shader callbacks
+Open the local Vite URL to use data charts alongside scalar and spatial plots. The example imports shader callbacks
 through `?plot`; no manual manifest generation is needed. It includes parameter controls,
 keyboard instructions, a 3D toggle, reset and renderer failure messages. Use
 `?backend=webgl2` to select WebGL2 explicitly. Run `npm run build:example` for production output.
@@ -136,7 +243,7 @@ Compile with `{ kind: 'parametric' }`. The x bounds supply the parameter interva
 bounds supply camera normalization. Spatial plots use an orthographic camera and open in 3D.
 The current renderer uses a bounded polyline; it does not draw implicit surfaces or meshes.
 
-## API
+## GPU function API
 
 `compilePlot(source, options)` accepts `entry` (default `sample`), `kind` (`scalar` or
 `parametric`), `fileName`, `files`, `readDocument`, `parameters` and `discontinuous`.

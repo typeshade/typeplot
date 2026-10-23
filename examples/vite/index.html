@@ -9,7 +9,22 @@
   <body>
     <main>
       <h1>TypePlot</h1>
-      <p>Function plots compiled from TypeShade callbacks with Vite.</p>
+      <p>
+        Plot everyday data directly, or render TypeShade functions on the GPU.
+      </p>
+      <section aria-labelledby="data-heading">
+        <h2 id="data-heading">Everyday plotting</h2>
+        <p>
+          Arrays, multiple curves, automatic limits, legends and subplots. Each
+          subplot supports the keyboard and pointer controls described below.
+        </p>
+        <p id="data-status" role="status">Creating data plots…</p>
+        <div id="data-plots"></div>
+        <button id="update-data" type="button" disabled>
+          Update sine data
+        </button>
+      </section>
+      <h2>GPU function plots</h2>
       <p id="help">
         Drag to pan or orbit. Scroll to zoom. With a plot focused, use arrow
         keys, +, − and Home.
@@ -51,6 +66,7 @@
         </section>
       </div>
     </main>
+    <script type="module" src="./data.ts"></script>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>
