@@ -5,6 +5,12 @@ export. For GPU function plots, TypePlot renders TypeShade scalar functions and 
 x/y/z trajectories with WebGPU and WebGL2 fallback. Both APIs support interactive navigation
 and reduced-motion preferences.
 
+## Website
+
+Documentation, interactive examples, and the browser playground are available at
+[plot.typeshade.dev](https://plot.typeshade.dev), with Korean pages under `/ko/`.
+The website follows the TypeNN site conventions; see [website/README.md](website/README.md).
+
 ## Installation
 
 Install the versioned Git release with npm:

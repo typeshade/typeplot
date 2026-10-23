@@ -1,0 +1,22 @@
+---
+import SiteLayout from "../layouts/SiteLayout.astro";
+import Home from "../components/Home.astro";
+import Documentation from "../components/Documentation.astro";
+import PlotWorkbench from "../components/PlotWorkbench";
+import { pages, type Locale, type PageKey } from "../content/pages";
+export function getStaticPaths() {
+  const definitions = [{path:"",page:"home"},{path:"guide",page:"guide"},{path:"guide/gpu",page:"gpu"},{path:"api",page:"api"},{path:"playground",page:"playground"},{path:"examples",page:"examples"}];
+  return (["en","ko"] as const).flatMap(locale => definitions.map(item => ({ params: { path: `${locale === "ko" ? "ko/" : ""}${item.path}`.replace(/\/$/, "") || undefined }, props: { locale, page: item.page } })));
+}
+const { locale, page } = Astro.props as { locale: Locale; page: PageKey | "home" | "playground" };
+const ko = locale === "ko";
+const title = page === "home" ? (ko ? "TypePlot — TypeScript로 그리는 그래프" : "TypePlot — Plotting in TypeScript") : page === "playground" ? (ko ? "직접 실행 — TypePlot" : "Playground — TypePlot") : `${pages[locale][page].title} — TypePlot`;
+const description = page === "home" ? (ko ? "배열과 함수를 그래프로 그립니다. 실제 예제, 영문·한국어 문서, TypeShade GPU 함수 시각화를 살펴봅니다." : "Plot arrays and functions in the browser. Explore real examples, bilingual guides and TypeShade GPU function plots.") : page === "playground" ? (ko ? "실제 TypePlot으로 여섯 가지 그래프를 실행하고, 뷰를 조절하고, PNG로 저장합니다." : "Run six real TypePlot examples, explore the view and save data charts to PNG.") : pages[locale][page].description;
+---
+<SiteLayout locale={locale} active={page} title={title} description={description}>
+  {page === "home" ? <Home locale={locale} /> : page === "playground" ? <article class="playground-page">
+    <header class="page-heading"><p class="eyebrow">{ko ? "브라우저에서 실행" : "Run it in your browser"}</p><h1>{ko ? "직접 실행" : "Playground"}</h1><p class="lead">{description}</p></header>
+    <PlotWorkbench locale={locale} client:load />
+    <noscript><p class="note">{ko ? "실행 예제에는 JavaScript가 필요합니다. 시작 가이드와 API 문서는 JavaScript 없이도 읽을 수 있습니다." : "The playground requires JavaScript. Guides and API documentation remain readable without it."}</p></noscript>
+  </article> : <Documentation locale={locale} page={page} />}
+</SiteLayout>

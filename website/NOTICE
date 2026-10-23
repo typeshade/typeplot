@@ -1,0 +1,7 @@
+TypePlot website
+Copyright contributors to TypePlot and TypeNN.
+
+The shared site visual system and CodeBlock component are derived from the TypeNN website
+(typeshade/typenn), licensed under Apache-2.0. See the repository LICENSE.
+IBM Plex fonts are distributed under the SIL Open Font License in public/fonts/LICENSE-IBM-Plex.txt.
+The vendored TypePlot browser runtime retains its LICENSE and NOTICE in src/vendor/typeplot/.

@@ -1,0 +1,42 @@
+---
+import CodeBlock from "./CodeBlock.astro";
+import DataPreview from "./DataPreview";
+import { signalCode } from "../content/samples";
+const { locale } = Astro.props as { locale: "en" | "ko" };
+const ko = locale === "ko";
+const base = ko ? "/ko" : "";
+---
+<div class="home-content">
+  <section class="home-intro">
+    <div class="home-copy">
+      <p class="eyebrow">{ko ? "TypeScript를 위한 그래프 라이브러리" : "A plotting library for TypeScript"}</p>
+      <h1>{ko ? "데이터를 코드로." : "From data to plot."}<br /><span>{ko ? "그래프를 브라우저로." : "Right in the browser."}</span></h1>
+      <p class="lead">{ko ? "배열과 함수를 전달하면 축과 곡선이 나타납니다. 여러 그래프를 구성하고, 뷰를 조절하고, 결과를 저장하십시오." : "Pass an array or a function. Get axes, curves and a view you can explore. Compose figures, refine the details and save the result."}</p>
+      <div class="action-row"><a class="button button-primary" href={`${base}/playground/`}>{ko ? "직접 그려보기" : "Try the playground"} <span aria-hidden="true">→</span></a><a class="button button-quiet" href={`${base}/guide/`}>{ko ? "시작 가이드" : "Get started"}</a></div>
+      <p class="release-note">{ko ? "데이터 API는 릴리스 전입니다. 가이드에서 이 사이트와 같은 소스 버전을 설치할 수 있습니다." : "The data API is pre-release. The guide pins the same runtime used on this site."}</p>
+    </div>
+    <div class="home-code">
+      <CodeBlock title={ko ? "두 곡선, 하나의 Figure" : "Two curves. One figure."} file="signals.ts" code={signalCode} />
+      <div class="home-chart"><DataPreview client:visible locale={locale} /></div>
+      <p class="fine-print">{ko ? "실제 TypePlot · Canvas 2D · 사인과 코사인, x = 0…2π, 진폭 −1…1" : "Real TypePlot · Canvas 2D · sine and cosine, x = 0…2π, amplitude −1…1"}</p>
+    </div>
+  </section>
+  <section class="home-path" aria-labelledby="workflow-title">
+    <div class="section-heading-row"><div><p class="eyebrow">{ko ? "데이터에서 Figure까지" : "From values to a figure"}</p><h2 id="workflow-title">{ko ? "작게 시작하고, 필요한 만큼 구성합니다." : "Start with a line. Build the figure you need."}</h2></div><a class="text-link" href={`${base}/api/`}>{ko ? "API 살펴보기" : "Explore the API"} ↗</a></div>
+    <div class="path-strip">
+      <article><span class="path-index">01</span><h3>{ko ? "전달" : "Pass your data"}</h3><p>{ko ? "배열, typed array, JavaScript 함수를 바로 사용합니다. 첫 그래프의 범위와 색은 자동으로 결정합니다." : "Use arrays, typed arrays or JavaScript callbacks. Automatic ranges and colors handle the first plot."}</p><code>plot(x, y)</code></article>
+      <article><span class="path-index">02</span><h3>{ko ? "구성" : "Compose the view"}</h3><p>{ko ? "같은 축에 계열을 추가하거나 서브플롯으로 나눕니다. 제목, 범례, 로그 축을 설정합니다." : "Layer series on the same axes or split them into subplots. Add labels, legends and log scales."}</p><code>subplots(2, 2)</code></article>
+      <article><span class="path-index">03</span><h3>{ko ? "탐색과 저장" : "Explore and save"}</h3><p>{ko ? "마우스와 키보드로 뷰를 조절합니다. 새 데이터로 갱신하고 PNG로 내보냅니다." : "Pan and zoom with the pointer or keyboard. Update the data, then export the figure to PNG."}</p><code>await fig.saveImage("plot.png")</code></article>
+    </div>
+  </section>
+  <section class="home-learning" aria-labelledby="learn-title">
+    <div class="learning-copy"><p class="eyebrow">{ko ? "다음 단계" : "Keep exploring"}</p><h2 id="learn-title">{ko ? "그림을 보고, 코드를 읽고, 직접 바꿔봅니다." : "See the plot. Read the code. Make it yours."}</h2><p>{ko ? "작은 실행 예제에서 시작해 가이드, API 참조, 전체 소스로 이어갑니다." : "Follow a small runnable example into the guides, practical reference and complete source."}</p></div>
+    <div class="learning-links">
+      <a href={`${base}/guide/`}><span><strong>{ko ? "첫 그래프" : "Your first plot"}</strong><small>{ko ? "설치부터 갱신과 리소스 해제까지" : "Install, draw, update and release resources."}</small></span><b aria-hidden="true">↗</b></a>
+      <a href={`${base}/playground/`}><span><strong>{ko ? "직접 실행" : "Playground"}</strong><small>{ko ? "실제 라이브러리로 여섯 가지 예제를 실행합니다." : "Run six examples with the actual library."}</small></span><b aria-hidden="true">↗</b></a>
+      <a href={`${base}/guide/gpu/`}><span><strong>{ko ? "GPU 함수" : "GPU functions"}</strong><small>{ko ? "TypeShade 콜백을 WebGPU 또는 WebGL2로 실행합니다." : "Run TypeShade callbacks through WebGPU or WebGL2."}</small></span><b aria-hidden="true">↗</b></a>
+      <a href={`${base}/examples/`}><span><strong>{ko ? "그래프 예제" : "Chart examples"}</strong><small>{ko ? "선, 산점도, 막대와 히스토그램을 살펴봅니다." : "Lines, scatter, bars and histograms, with source."}</small></span><b aria-hidden="true">↗</b></a>
+    </div>
+  </section>
+  <section class="home-status" aria-labelledby="gpu-title"><div><p class="eyebrow">TypeShade + TypePlot</p><h2 id="gpu-title">{ko ? "함수는 GPU에서도 그립니다." : "Functions have a GPU path, too."}</h2><p>{ko ? "이름 있는 TypeShade 콜백을 빌드 때 컴파일하고, WebGPU와 WebGL2로 스칼라 함수와 공간 곡선을 표시합니다. 배열을 그리는 Canvas 2D 경로와는 별도의 API입니다." : "Compile named TypeShade callbacks at build time. Render scalar functions and spatial trajectories with WebGPU and WebGL2. This is a separate API from Canvas 2D data figures."}</p></div><a class="button button-quiet" href={`${base}/guide/gpu/`}>{ko ? "GPU 가이드" : "Read the GPU guide"} ↗</a></section>
+</div>

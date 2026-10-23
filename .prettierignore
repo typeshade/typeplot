@@ -1,3 +1,4 @@
 dist
 node_modules
 examples/generated
+website/src/vendor/typeplot

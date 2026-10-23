@@ -8,7 +8,8 @@
     "build": "astro build",
     "prebuild": "npm run sync:typeplot",
     "preview": "astro preview",
-    "sync:typeplot": "node scripts/sync-typeplot-runtime.mjs"
+    "sync:typeplot": "node scripts/sync-typeplot-runtime.mjs",
+    "check": "tsc --noEmit"
   },
   "dependencies": {
     "@astrojs/react": "^7.0.1",

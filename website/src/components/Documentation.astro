@@ -1,0 +1,27 @@
+---
+import CodeBlock from "./CodeBlock.astro";
+import DataPreview from "./DataPreview";
+import { pages, type Locale, type PageKey } from "../content/pages";
+import version from "../vendor/typeplot/version.json";
+const { locale, page } = Astro.props as { locale: Locale; page: PageKey };
+const ko = locale === "ko";
+const base = ko ? "/ko" : "";
+const content = pages[locale][page];
+const gallery = [{ kind:"signals", en:"Sine and cosine", ko:"사인과 코사인" },{kind:"scatter",en:"Log-scale scatter",ko:"로그 산점도"},{kind:"bars",en:"Numeric bars",ko:"숫자 좌표 막대"},{kind:"histogram",en:"Normalized histogram",ko:"정규화 히스토그램"}] as const;
+---
+<article class="docs-article">
+  <nav class="breadcrumbs" aria-label={ko ? "현재 위치" : "Breadcrumb"}><a href={`${base}/`}>TypePlot</a><span aria-hidden="true">/</span><span>{content.title}</span></nav>
+  <header class="page-heading"><h1>{content.title}</h1><p class="lead">{content.description}</p></header>
+  {content.sections.map((section, i) => <section class="doc-section" aria-labelledby={`section-${i}`}>
+    <h2 id={`section-${i}`}>{section.title}</h2><p>{section.text}</p>
+    {section.items && <ul>{section.items.map(item => <li>{item}</li>)}</ul>}
+    {section.code && <CodeBlock title={section.title} file={section.lang === "sh" ? "Terminal" : "example.ts"} code={section.code} lang={section.lang ?? "ts"} />}
+    {section.api && <ul class="api-list">{section.api.map(([name,desc]) => <li><code>{name}</code><span>{desc}</span></li>)}</ul>}
+    {page === "examples" && i === 0 && <div class="plot-gallery">{gallery.map(item => <figure><figcaption>{ko ? item.ko : item.en}</figcaption><div class="plot-mount"><DataPreview kind={item.kind} locale={locale} client:visible /></div></figure>)}</div>}
+  </section>)}
+  <div class="note"><strong>{ko ? "이 문서의 근거" : "Source for this reference"}</strong><span>{ko ? "실제 런타임과 선언 파일에서 확인한 기능을 설명합니다." : "Capabilities are based on the shipped runtime and declarations."} <a class="inline-link" href={`${version.source}/tree/${version.commit}`}>{version.commit.slice(0,12)} ↗</a></span></div>
+  <nav class="next-links" aria-label={ko ? "관련 페이지" : "Related pages"}>
+    <a href={`${base}/playground/`}><span><strong>{ko ? "직접 실행" : "Try the playground"}</strong><small>{ko ? "매개변수를 바꾸고 결과를 확인합니다." : "Change parameters and inspect the result."}</small></span><b aria-hidden="true">→</b></a>
+    <a href={`${base}${page === "api" ? "/guide/" : "/api/"}`}><span><strong>{ko ? (page === "api" ? "시작 가이드" : "API 참조") : (page === "api" ? "Get started" : "API reference")}</strong><small>{ko ? "실제 코드로 다음 단계를 진행합니다." : "Continue with real code and lifecycle guidance."}</small></span><b aria-hidden="true">→</b></a>
+  </nav>
+</article>

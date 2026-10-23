@@ -1,0 +1,10 @@
+TypePlot
+Copyright 2026 Seungup Noh
+
+Includes the TypeShade program runtime and plotting code originally developed for
+https://github.com/typeshade/typeshade.github.io, licensed under Apache-2.0.
+TypeShade
+Copyright 2026 Seungup Noh
+
+The compiler distribution includes TypeScript, Copyright Microsoft Corporation,
+licensed under the Apache License, Version 2.0.
