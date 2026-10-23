@@ -59,5 +59,9 @@
     "typescript": "^5.9.3",
     "typeshade": "https://github.com/typeshade/typeshade.git#91c2fe31de045ebf0e5f2c333ac98b95cc460280",
     "vite": "^6.4.5"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }
