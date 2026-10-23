@@ -205,7 +205,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "Style and axes options",
-          text: "Series styles use label, color, lineWidth, lineStyle, marker, markerSize and alpha. Procedural dashes repeat in parameter coordinates: parameter selects auto/x/index, dashPeriod sets the period, and dashOffset shifts it. Without an explicit dashPeriod, automatic density coarsens the parameter period by powers of two when zoomed out so rounded ends stay separated. Explicit periods retain fixed parameter spacing. Line styles are -, --, : and none. Markers are o, s and none. Axes can have linear or log xScale/yScale, fixed xLimits/yLimits, titles, labels, grids and legends.",
+          text: "Series styles use label, color, lineWidth, lineStyle, marker, markerSize and alpha. Procedural dashes repeat in parameter coordinates: parameter selects auto/x/index, dashPeriod sets the period, and dashOffset shifts it. Without an explicit dashPeriod, automatic density adjusts the parameter period by powers of two in both zoom directions: magnification keeps visible gaps, and minification keeps rounded ends separated. Explicit periods retain fixed parameter spacing. Line styles are -, --, : and none. Markers are o, s and none. Axes can have linear or log xScale/yScale, fixed xLimits/yLimits, titles, labels, grids and legends.",
           code: `ax.plot(x, y, {\n  label: "Measurements", color: "#1677ff",\n  lineWidth: 2, lineStyle: "--", marker: "o", markerSize: 3,\n});\nax.set({ xScale: "log", xLimits: [1, 100], grid: true });`,
         },
         {
@@ -373,7 +373,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "계열 스타일과 축 옵션",
-          text: "계열에는 label, color, lineWidth, lineStyle, marker, markerSize, alpha를 지정합니다. 절차형 대시는 곡선 매개변수 좌표에서 반복하며 parameter(auto/x/index), dashPeriod, dashOffset으로 기준·주기·위상을 조절합니다. dashPeriod를 생략하면 축소할 때 매개변수 주기를 2배 단위로 늘려 둥근 끝이 겹치지 않도록 합니다. 명시한 주기는 고정됩니다. 선 종류는 -, --, :, none이며, 마커는 o, s, none입니다. xScale/yScale은 linear 또는 log이고 xLimits/yLimits로 범위를 고정합니다.",
+          text: "계열에는 label, color, lineWidth, lineStyle, marker, markerSize, alpha를 지정합니다. 절차형 대시는 곡선 매개변수 좌표에서 반복하며 parameter(auto/x/index), dashPeriod, dashOffset으로 기준·주기·위상을 조절합니다. dashPeriod를 생략하면 확대·축소에 맞춰 매개변수 주기를 2배 단위로 조절합니다. 확대할 때도 간격을 유지하고 축소할 때 둥근 끝이 겹치지 않도록 합니다. 명시한 주기는 고정됩니다. 선 종류는 -, --, :, none이며, 마커는 o, s, none입니다. xScale/yScale은 linear 또는 log이고 xLimits/yLimits로 범위를 고정합니다.",
           code: `ax.plot(x, y, {\n  label: "Measurements", color: "#1677ff",\n  lineWidth: 2, lineStyle: "--", marker: "o", markerSize: 3,\n});\nax.set({ xScale: "log", xLimits: [1, 100], grid: true });`,
         },
         {

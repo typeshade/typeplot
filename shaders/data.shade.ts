@@ -117,22 +117,38 @@ function boxDistance(p: vec2, a: vec2, b: vec2): f32 {
   return length(max(q, vec2(0))) + min(max(q.x, q.y), 0);
 }
 
-/** Automatic parameter-space LOD keeps round dash caps separated when zoomed out.
+/** Automatic parameter-space LOD keeps patterns legible while zooming in or out.
  * The coordinate and phase origin remain mathematical parameters; no arc lengths
  * are accumulated. Explicit periods preserve their fixed parameter spacing. */
 function visibleDashPeriod(): f32 {
-  if (s.automatic == u32(0)) return s.period;
+  if (s.dash <= 0 || s.automatic == u32(0)) return s.period;
   let rate = 0;
   if (s.xParameter != u32(0)) {
     rate = u.span.x / extent().x;
-    if (u.logarithmic.x > 0) rate *= max(s.dataBounds.z, 1e-30) * log(10);
+    if (u.logarithmic.x > 0) {
+      // Use the visible data interval, not a distant full-dataset maximum.
+      const visibleMaximum = min(s.dataBounds.z, pow(10, u.lower.x + u.span.x));
+      rate *= max(visibleMaximum, 1e-30) * log(10);
+      if (s.ordered != u32(0) && s.count >= u32(2)) {
+        // Measure the actual projected source interval. Sparse samples interpolate
+        // their parameter across the log-projected chord, not the analytic x field.
+        const right = min(s.count - u32(1), max(u32(1), lowerBound(visibleMaximum)));
+        const a = sampleAt(right - u32(1)), b = sampleAt(right);
+        const logSpan = (log2(b.x) - log2(a.x)) / log2(10);
+        if (a.w > 0 && b.w > 0 && logSpan > 1e-20)
+          rate = abs(b.z - a.z) / logSpan * u.span.x / extent().x;
+      }
+    }
   } else {
     const projected = abs(pixelPoint(s.dataBounds.zw) - pixelPoint(s.dataBounds.xy));
     rate = s.parameterRange / max(max(projected.x, projected.y), 1e-20);
   }
   const pixelPeriod = s.dash > 1.5 ? max(5, s.width * 2.5) : max(8, s.width * 4);
-  const level = max(0, ceil(log2(max(rate * pixelPeriod / s.period, 1))));
-  return s.period * pow(2, level);
+  if (!(rate > 0)) return s.period;
+  // Signed levels refine as well as coarsen. A zero floor would let one
+  // magnified on-band fill the viewport and make a dashed line appear solid.
+  const level = ceil(log2(max(rate * pixelPeriod / s.period, 1e-20)));
+  return max(s.period * pow(2, level), 1e-30);
 }
 
 function pathDistance(p: vec2, a: vec2, b: vec2, parameters: vec2, period: f32): f32 {

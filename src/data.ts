@@ -14,7 +14,7 @@ export interface SeriesOptions {
   /** Dash coordinate. Auto uses increasing x, otherwise sample index. */
   readonly parameter?: "auto" | "x" | "index";
   /** Fixed period in parameter units. If omitted, automatic density starts at
-   * 1/60 of the domain and coarsens by powers of two when zoomed out. */
+   * 1/60 of the domain and adjusts by powers of two in both zoom directions. */
   readonly dashPeriod?: number;
   readonly dashOffset?: number;
   readonly marker?: "o" | "s" | "none";

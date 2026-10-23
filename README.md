@@ -331,8 +331,8 @@ Dashed data paths repeat in **curve parameter coordinates**, evaluated directly 
 `parameter: "auto"` uses x for strictly increasing x data, and sample index otherwise. Select
 `"x"` or `"index"` explicitly when needed. An explicit `dashPeriod` fixes the period in
 parameter units; `dashOffset` fixes its phase origin. Without an explicit period, automatic
-density starts at 1/60 of the parameter domain and coarsens by powers of two as the view
-shrinks, keeping round caps separated. The GPU derives this level from the viewport and
+density starts at 1/60 of the parameter domain and adjusts by powers of two in both zoom
+directions, keeping gaps visible when zoomed in and round caps separated when zoomed out. The GPU derives this level from the viewport and
 resident data bounds, without arc-length accumulation. The phase origin stays anchored;
 automatic density changes the repeating period at level transitions. Explicit periods
 remain attached to the curve, with screen length varying by projection and slope; sufficiently

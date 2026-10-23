@@ -541,22 +541,36 @@ fn boxDistance(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
 }
 
 fn visibleDashPeriod() -> f32 {
-  if ((s.automatic == 0u)) {
+  if (((s.dash <= 0.0) || (s.automatic == 0u))) {
     return s.period;
   }
   var rate: f32 = 0.0;
   if ((s.xParameter != 0u)) {
-    rate = (u.span.x / extent().x);
+    let _cse0 = extent().x;
+    rate = (u.span.x / _cse0);
     if ((u.logarithmic.x > 0.0)) {
-      rate *= (max(s.dataBounds.z, 1e-30) * log(10.0));
+      let visibleMaximum = min(s.dataBounds.z, pow(10.0, (u.lower.x + u.span.x)));
+      rate *= (max(visibleMaximum, 1e-30) * log(10.0));
+      if (((s.ordered != 0u) && (s.count >= 2u))) {
+        let right = min((s.count - 1u), max(1u, lowerBound(visibleMaximum)));
+        let a = sampleAt((right - 1u));
+        let b = sampleAt(right);
+        let logSpan = ((log2(b.x) - log2(a.x)) / log2(10.0));
+        if ((((a.w > 0.0) && (b.w > 0.0)) && (logSpan > 1e-20))) {
+          rate = (((abs((b.z - a.z)) / logSpan) * u.span.x) / _cse0);
+        }
+      }
     }
   } else {
     let projected = abs((pixelPoint(s.dataBounds.zw) - pixelPoint(s.dataBounds.xy)));
     rate = (s.parameterRange / max(max(projected.x, projected.y), 1e-20));
   }
   let pixelPeriod = select(max(8.0, (s.width * 4.0)), max(5.0, (s.width * 2.5)), (s.dash > 1.5));
-  let level = max(0.0, ceil(log2(max(((rate * pixelPeriod) / s.period), 1.0))));
-  return (s.period * pow(2.0, level));
+  if (((rate > 0.0) == false)) {
+    return s.period;
+  }
+  let level = ceil(log2(max(((rate * pixelPeriod) / s.period), 1e-20)));
+  return max((s.period * pow(2.0, level)), 1e-30);
 }
 
 fn pathDistance(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>, parameters: vec2<f32>, period: f32) -> f32 {
@@ -687,7 +701,7 @@ fn textVertex(@location(0) origin: vec2<f32>, @location(1) info: vec3<f32>, @loc
 fn textFragment(v: Letter) -> @location(0) vec4<f32> {
   return vec4<f32>(text.color.rgb, (text.color.a * glyphCoverage(v.local, i32(v.code), v.size)));
 }
-`,bindings:[{name:"u",emitted:"u",space:"uniform",group:0,binding:0,type:"struct:DataUniforms",resource:{resourceKind:"uniform-buffer",structName:"DataUniforms",structEmitted:"DataUniforms"},stages:["vertex","fragment"],rule:"std140",layout:{kind:"struct",size:96,fields:[{name:"resolution",offset:0,layout:{kind:"vector",size:2,type:"f32"}},{name:"lower",offset:8,layout:{kind:"vector",size:2,type:"f32"}},{name:"span",offset:16,layout:{kind:"vector",size:2,type:"f32"}},{name:"logarithmic",offset:24,layout:{kind:"vector",size:2,type:"f32"}},{name:"grid",offset:32,layout:{kind:"scalar",type:"f32"}},{name:"layer",offset:36,layout:{kind:"scalar",type:"f32"}},{name:"background",offset:48,layout:{kind:"vector",size:4,type:"f32"}},{name:"legend",offset:64,layout:{kind:"vector",size:4,type:"f32"}},{name:"focus",offset:80,layout:{kind:"scalar",type:"f32"}}]}},{name:"s",emitted:"s",space:"uniform",group:0,binding:1,type:"struct:SeriesUniforms",resource:{resourceKind:"uniform-buffer",structName:"SeriesUniforms",structEmitted:"SeriesUniforms"},stages:["fragment"],rule:"std140",layout:{kind:"struct",size:80,fields:[{name:"color",offset:0,layout:{kind:"vector",size:4,type:"f32"}},{name:"kind",offset:16,layout:{kind:"scalar",type:"f32"}},{name:"width",offset:20,layout:{kind:"scalar",type:"f32"}},{name:"dash",offset:24,layout:{kind:"scalar",type:"f32"}},{name:"marker",offset:28,layout:{kind:"scalar",type:"f32"}},{name:"count",offset:32,layout:{kind:"scalar",type:"u32"}},{name:"ordered",offset:36,layout:{kind:"scalar",type:"u32"}},{name:"period",offset:40,layout:{kind:"scalar",type:"f32"}},{name:"offset",offset:44,layout:{kind:"scalar",type:"f32"}},{name:"automatic",offset:48,layout:{kind:"scalar",type:"u32"}},{name:"xParameter",offset:52,layout:{kind:"scalar",type:"u32"}},{name:"parameterRange",offset:56,layout:{kind:"scalar",type:"f32"}},{name:"dataBounds",offset:64,layout:{kind:"vector",size:4,type:"f32"}}]}},{name:"points",emitted:"points",space:"storage",group:0,binding:2,access:"read",type:"array<f32>",resource:{resourceKind:"storage-buffer",glslDataTexture:"r32f"},stages:["fragment"],rule:"std430",layout:{kind:"array",length:null,stride:4,element:{kind:"scalar",type:"f32"}},dataTexture:{format:"r32float",lanes:1}},{name:"text",emitted:"text",space:"uniform",group:0,binding:3,type:"struct:TextUniforms",resource:{resourceKind:"uniform-buffer",structName:"TextUniforms",structEmitted:"TextUniforms"},stages:["fragment"],rule:"std140",layout:{kind:"struct",size:16,fields:[{name:"color",offset:0,layout:{kind:"vector",size:4,type:"f32"}}]}},{name:"glyphAtlas",emitted:"glyphAtlas",space:"uniform",group:0,binding:4,type:"texture_2d<f32>",resource:{resourceKind:"texture",textureDim:"2d",textureElem:"f32",sampleType:"unfilterable-float"},stages:["fragment"]},{name:"font",emitted:"font",space:"uniform",group:0,binding:5,type:"struct:FontUniforms",resource:{resourceKind:"uniform-buffer",structName:"FontUniforms",structEmitted:"FontUniforms"},stages:["fragment"],rule:"std140",layout:{kind:"struct",size:16,fields:[{name:"pixelRatio",offset:0,layout:{kind:"scalar",type:"f32"}}]}}],entries:[{name:"surfaceVertex",emitted:"surfaceVertex",stage:"vertex",inputs:[{name:"i",emitted:"i",type:"u32",builtin:"vertex_index"}],outputs:[{name:"position",emitted:"position",type:"vec4<f32>",builtin:"position"},{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],bindings:[],line:{file:"shaders/data.shade.ts",line:60}},{name:"axesFragment",emitted:"axesFragment",stage:"fragment",inputs:[{name:"position",emitted:"position",type:"vec4<f32>",builtin:"position"},{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<f32>",location:0}],bindings:[{name:"u",writes:!1},{name:"glyphAtlas",writes:!1},{name:"font",writes:!1}],line:{file:"shaders/data.shade.ts",line:67}},{name:"seriesFragment",emitted:"seriesFragment",stage:"fragment",inputs:[{name:"position",emitted:"position",type:"vec4<f32>",builtin:"position"},{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<f32>",location:0}],bindings:[{name:"u",writes:!1},{name:"s",writes:!1},{name:"points",writes:!1},{name:"font",writes:!1}],line:{file:"shaders/data.shade.ts",line:172}},{name:"textVertex",emitted:"textVertex",stage:"vertex",inputs:[{name:"origin",emitted:"origin",type:"vec2<f32>",location:0},{name:"info",emitted:"info",type:"vec3<f32>",location:1},{name:"unit",emitted:"unit",type:"vec2<f32>",location:2}],outputs:[{name:"position",emitted:"position",type:"vec4<f32>",builtin:"position"},{name:"local",emitted:"local",type:"vec2<f32>",location:0},{name:"code",emitted:"code",type:"u32",location:1},{name:"size",emitted:"size",type:"f32",location:2}],bindings:[{name:"u",writes:!1}],vertex:{attributes:[{name:"origin",location:0,offset:0,format:"float32x2",type:"vec2<f32>"},{name:"info",location:1,offset:8,format:"float32x3",type:"vec3<f32>"},{name:"unit",location:2,offset:20,format:"float32x2",type:"vec2<f32>"}],arrayStride:28},line:{file:"shaders/data.shade.ts",line:219}},{name:"textFragment",emitted:"textFragment",stage:"fragment",inputs:[{name:"position",emitted:"position",type:"vec4<f32>",builtin:"position"},{name:"local",emitted:"local",type:"vec2<f32>",location:0},{name:"code",emitted:"code",type:"u32",location:1},{name:"size",emitted:"size",type:"f32",location:2}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<f32>",location:0}],bindings:[{name:"text",writes:!1},{name:"glyphAtlas",writes:!1},{name:"font",writes:!1}],line:{file:"shaders/data.shade.ts",line:225}}],structs:[{name:"FontUniforms",emitted:"FontUniforms",fields:[{name:"pixelRatio",emitted:"pixelRatio",type:"f32"}]},{name:"NumberFormat",emitted:"NumberFormat",fields:[{name:"value",emitted:"value",type:"f32"},{name:"negative",emitted:"negative",type:"bool"},{name:"scientific",emitted:"scientific",type:"bool"},{name:"decimals",emitted:"decimals",type:"i32"},{name:"digits",emitted:"digits",type:"i32"},{name:"exponent",emitted:"exponent",type:"i32"},{name:"length",emitted:"length",type:"i32"}]},{name:"DataUniforms",emitted:"DataUniforms",fields:[{name:"resolution",emitted:"resolution",type:"vec2<f32>"},{name:"lower",emitted:"lower",type:"vec2<f32>"},{name:"span",emitted:"span",type:"vec2<f32>"},{name:"logarithmic",emitted:"logarithmic",type:"vec2<f32>"},{name:"grid",emitted:"grid",type:"f32"},{name:"layer",emitted:"layer",type:"f32"},{name:"background",emitted:"background",type:"vec4<f32>"},{name:"legend",emitted:"legend",type:"vec4<f32>"},{name:"focus",emitted:"focus",type:"f32"}]},{name:"SeriesUniforms",emitted:"SeriesUniforms",fields:[{name:"color",emitted:"color",type:"vec4<f32>"},{name:"kind",emitted:"kind",type:"f32"},{name:"width",emitted:"width",type:"f32"},{name:"dash",emitted:"dash",type:"f32"},{name:"marker",emitted:"marker",type:"f32"},{name:"count",emitted:"count",type:"u32"},{name:"ordered",emitted:"ordered",type:"u32"},{name:"period",emitted:"period",type:"f32"},{name:"offset",emitted:"offset",type:"f32"},{name:"automatic",emitted:"automatic",type:"u32"},{name:"xParameter",emitted:"xParameter",type:"u32"},{name:"parameterRange",emitted:"parameterRange",type:"f32"},{name:"dataBounds",emitted:"dataBounds",type:"vec4<f32>"}]},{name:"TextUniforms",emitted:"TextUniforms",fields:[{name:"color",emitted:"color",type:"vec4<f32>"}]},{name:"Surface",emitted:"Surface",fields:[{name:"position",emitted:"position",type:"vec4<f32>"},{name:"uv",emitted:"uv",type:"vec2<f32>"}]},{name:"Letter",emitted:"Letter",fields:[{name:"position",emitted:"position",type:"vec4<f32>"},{name:"local",emitted:"local",type:"vec2<f32>"},{name:"code",emitted:"code",type:"u32"},{name:"size",emitted:"size",type:"f32"}]}],overrides:[],features:[],gl:{vertices:{surfaceVertex:{vertex:`#version 300 es
+`,bindings:[{name:"u",emitted:"u",space:"uniform",group:0,binding:0,type:"struct:DataUniforms",resource:{resourceKind:"uniform-buffer",structName:"DataUniforms",structEmitted:"DataUniforms"},stages:["vertex","fragment"],rule:"std140",layout:{kind:"struct",size:96,fields:[{name:"resolution",offset:0,layout:{kind:"vector",size:2,type:"f32"}},{name:"lower",offset:8,layout:{kind:"vector",size:2,type:"f32"}},{name:"span",offset:16,layout:{kind:"vector",size:2,type:"f32"}},{name:"logarithmic",offset:24,layout:{kind:"vector",size:2,type:"f32"}},{name:"grid",offset:32,layout:{kind:"scalar",type:"f32"}},{name:"layer",offset:36,layout:{kind:"scalar",type:"f32"}},{name:"background",offset:48,layout:{kind:"vector",size:4,type:"f32"}},{name:"legend",offset:64,layout:{kind:"vector",size:4,type:"f32"}},{name:"focus",offset:80,layout:{kind:"scalar",type:"f32"}}]}},{name:"s",emitted:"s",space:"uniform",group:0,binding:1,type:"struct:SeriesUniforms",resource:{resourceKind:"uniform-buffer",structName:"SeriesUniforms",structEmitted:"SeriesUniforms"},stages:["fragment"],rule:"std140",layout:{kind:"struct",size:80,fields:[{name:"color",offset:0,layout:{kind:"vector",size:4,type:"f32"}},{name:"kind",offset:16,layout:{kind:"scalar",type:"f32"}},{name:"width",offset:20,layout:{kind:"scalar",type:"f32"}},{name:"dash",offset:24,layout:{kind:"scalar",type:"f32"}},{name:"marker",offset:28,layout:{kind:"scalar",type:"f32"}},{name:"count",offset:32,layout:{kind:"scalar",type:"u32"}},{name:"ordered",offset:36,layout:{kind:"scalar",type:"u32"}},{name:"period",offset:40,layout:{kind:"scalar",type:"f32"}},{name:"offset",offset:44,layout:{kind:"scalar",type:"f32"}},{name:"automatic",offset:48,layout:{kind:"scalar",type:"u32"}},{name:"xParameter",offset:52,layout:{kind:"scalar",type:"u32"}},{name:"parameterRange",offset:56,layout:{kind:"scalar",type:"f32"}},{name:"dataBounds",offset:64,layout:{kind:"vector",size:4,type:"f32"}}]}},{name:"points",emitted:"points",space:"storage",group:0,binding:2,access:"read",type:"array<f32>",resource:{resourceKind:"storage-buffer",glslDataTexture:"r32f"},stages:["fragment"],rule:"std430",layout:{kind:"array",length:null,stride:4,element:{kind:"scalar",type:"f32"}},dataTexture:{format:"r32float",lanes:1}},{name:"text",emitted:"text",space:"uniform",group:0,binding:3,type:"struct:TextUniforms",resource:{resourceKind:"uniform-buffer",structName:"TextUniforms",structEmitted:"TextUniforms"},stages:["fragment"],rule:"std140",layout:{kind:"struct",size:16,fields:[{name:"color",offset:0,layout:{kind:"vector",size:4,type:"f32"}}]}},{name:"glyphAtlas",emitted:"glyphAtlas",space:"uniform",group:0,binding:4,type:"texture_2d<f32>",resource:{resourceKind:"texture",textureDim:"2d",textureElem:"f32",sampleType:"unfilterable-float"},stages:["fragment"]},{name:"font",emitted:"font",space:"uniform",group:0,binding:5,type:"struct:FontUniforms",resource:{resourceKind:"uniform-buffer",structName:"FontUniforms",structEmitted:"FontUniforms"},stages:["fragment"],rule:"std140",layout:{kind:"struct",size:16,fields:[{name:"pixelRatio",offset:0,layout:{kind:"scalar",type:"f32"}}]}}],entries:[{name:"surfaceVertex",emitted:"surfaceVertex",stage:"vertex",inputs:[{name:"i",emitted:"i",type:"u32",builtin:"vertex_index"}],outputs:[{name:"position",emitted:"position",type:"vec4<f32>",builtin:"position"},{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],bindings:[],line:{file:"shaders/data.shade.ts",line:60}},{name:"axesFragment",emitted:"axesFragment",stage:"fragment",inputs:[{name:"position",emitted:"position",type:"vec4<f32>",builtin:"position"},{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<f32>",location:0}],bindings:[{name:"u",writes:!1},{name:"glyphAtlas",writes:!1},{name:"font",writes:!1}],line:{file:"shaders/data.shade.ts",line:67}},{name:"seriesFragment",emitted:"seriesFragment",stage:"fragment",inputs:[{name:"position",emitted:"position",type:"vec4<f32>",builtin:"position"},{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<f32>",location:0}],bindings:[{name:"u",writes:!1},{name:"s",writes:!1},{name:"points",writes:!1},{name:"font",writes:!1}],line:{file:"shaders/data.shade.ts",line:188}},{name:"textVertex",emitted:"textVertex",stage:"vertex",inputs:[{name:"origin",emitted:"origin",type:"vec2<f32>",location:0},{name:"info",emitted:"info",type:"vec3<f32>",location:1},{name:"unit",emitted:"unit",type:"vec2<f32>",location:2}],outputs:[{name:"position",emitted:"position",type:"vec4<f32>",builtin:"position"},{name:"local",emitted:"local",type:"vec2<f32>",location:0},{name:"code",emitted:"code",type:"u32",location:1},{name:"size",emitted:"size",type:"f32",location:2}],bindings:[{name:"u",writes:!1}],vertex:{attributes:[{name:"origin",location:0,offset:0,format:"float32x2",type:"vec2<f32>"},{name:"info",location:1,offset:8,format:"float32x3",type:"vec3<f32>"},{name:"unit",location:2,offset:20,format:"float32x2",type:"vec2<f32>"}],arrayStride:28},line:{file:"shaders/data.shade.ts",line:235}},{name:"textFragment",emitted:"textFragment",stage:"fragment",inputs:[{name:"position",emitted:"position",type:"vec4<f32>",builtin:"position"},{name:"local",emitted:"local",type:"vec2<f32>",location:0},{name:"code",emitted:"code",type:"u32",location:1},{name:"size",emitted:"size",type:"f32",location:2}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<f32>",location:0}],bindings:[{name:"text",writes:!1},{name:"glyphAtlas",writes:!1},{name:"font",writes:!1}],line:{file:"shaders/data.shade.ts",line:241}}],structs:[{name:"FontUniforms",emitted:"FontUniforms",fields:[{name:"pixelRatio",emitted:"pixelRatio",type:"f32"}]},{name:"NumberFormat",emitted:"NumberFormat",fields:[{name:"value",emitted:"value",type:"f32"},{name:"negative",emitted:"negative",type:"bool"},{name:"scientific",emitted:"scientific",type:"bool"},{name:"decimals",emitted:"decimals",type:"i32"},{name:"digits",emitted:"digits",type:"i32"},{name:"exponent",emitted:"exponent",type:"i32"},{name:"length",emitted:"length",type:"i32"}]},{name:"DataUniforms",emitted:"DataUniforms",fields:[{name:"resolution",emitted:"resolution",type:"vec2<f32>"},{name:"lower",emitted:"lower",type:"vec2<f32>"},{name:"span",emitted:"span",type:"vec2<f32>"},{name:"logarithmic",emitted:"logarithmic",type:"vec2<f32>"},{name:"grid",emitted:"grid",type:"f32"},{name:"layer",emitted:"layer",type:"f32"},{name:"background",emitted:"background",type:"vec4<f32>"},{name:"legend",emitted:"legend",type:"vec4<f32>"},{name:"focus",emitted:"focus",type:"f32"}]},{name:"SeriesUniforms",emitted:"SeriesUniforms",fields:[{name:"color",emitted:"color",type:"vec4<f32>"},{name:"kind",emitted:"kind",type:"f32"},{name:"width",emitted:"width",type:"f32"},{name:"dash",emitted:"dash",type:"f32"},{name:"marker",emitted:"marker",type:"f32"},{name:"count",emitted:"count",type:"u32"},{name:"ordered",emitted:"ordered",type:"u32"},{name:"period",emitted:"period",type:"f32"},{name:"offset",emitted:"offset",type:"f32"},{name:"automatic",emitted:"automatic",type:"u32"},{name:"xParameter",emitted:"xParameter",type:"u32"},{name:"parameterRange",emitted:"parameterRange",type:"f32"},{name:"dataBounds",emitted:"dataBounds",type:"vec4<f32>"}]},{name:"TextUniforms",emitted:"TextUniforms",fields:[{name:"color",emitted:"color",type:"vec4<f32>"}]},{name:"Surface",emitted:"Surface",fields:[{name:"position",emitted:"position",type:"vec4<f32>"},{name:"uv",emitted:"uv",type:"vec2<f32>"}]},{name:"Letter",emitted:"Letter",fields:[{name:"position",emitted:"position",type:"vec4<f32>"},{name:"local",emitted:"local",type:"vec2<f32>"},{name:"code",emitted:"code",type:"u32"},{name:"size",emitted:"size",type:"f32"}]}],overrides:[],features:[],gl:{vertices:{surfaceVertex:{vertex:`#version 300 es
 precision highp float;
 precision highp int;
 
@@ -1087,23 +1101,54 @@ float boxDistance(vec2 p, vec2 a, vec2 b) {
   return (length(max(q, vec2(0.0, 0.0))) + min(max(q.x, q.y), 0.0));
 }
 
+uint lowerBound(float value) {
+  uint lo = 0u;
+  uint hi = s.count;
+  for (int iteration = 0; (iteration < 32); iteration = (iteration + 1)) {
+    if ((lo >= hi)) {
+      break;
+    }
+    uint middle = (lo + ((hi - lo) / 2u));
+    if ((_sfetch(points, int((middle * 4u))) < value)) {
+      lo = (middle + 1u);
+    } else {
+      hi = middle;
+    }
+  }
+  return lo;
+}
+
 float visibleDashPeriod() {
-  if ((s.automatic == 0u)) {
+  if (((s.dash <= 0.0) || (s.automatic == 0u))) {
     return s.period;
   }
   float rate = 0.0;
   if ((s.xParameter != 0u)) {
-    rate = (u.span.x / extent().x);
+    float _cse0 = extent().x;
+    rate = (u.span.x / _cse0);
     if ((u.logarithmic.x > 0.0)) {
-      rate *= (max(s.dataBounds.z, 1e-30) * log(10.0));
+      float visibleMaximum = min(s.dataBounds.z, pow(10.0, (u.lower.x + u.span.x)));
+      rate *= (max(visibleMaximum, 1e-30) * log(10.0));
+      if (((s.ordered != 0u) && (s.count >= 2u))) {
+        uint right = min((s.count - 1u), max(1u, lowerBound(visibleMaximum)));
+        vec4 a = sampleAt((right - 1u));
+        vec4 b = sampleAt(right);
+        float logSpan = ((log2(b.x) - log2(a.x)) / log2(10.0));
+        if ((((a.w > 0.0) && (b.w > 0.0)) && (logSpan > 1e-20))) {
+          rate = (((abs((b.z - a.z)) / logSpan) * u.span.x) / _cse0);
+        }
+      }
     }
   } else {
     vec2 projected = abs((pixelPoint(s.dataBounds.zw) - pixelPoint(s.dataBounds.xy)));
     rate = (s.parameterRange / max(max(projected.x, projected.y), 1e-20));
   }
   float pixelPeriod = ((s.dash > 1.5) ? max(5.0, (s.width * 2.5)) : max(8.0, (s.width * 4.0)));
-  float level = max(0.0, ceil(log2(max(((rate * pixelPeriod) / s.period), 1.0))));
-  return (s.period * pow(2.0, level));
+  if (((rate > 0.0) == false)) {
+    return s.period;
+  }
+  float level = ceil(log2(max(((rate * pixelPeriod) / s.period), 1e-20)));
+  return max((s.period * pow(2.0, level)), 1e-30);
 }
 
 float pathDistance(vec2 p, vec2 a, vec2 b, vec2 parameters, float period) {
@@ -1135,23 +1180,6 @@ float pathDistance(vec2 p, vec2 a, vec2 b, vec2 parameters, float period) {
     }
   }
   return distance;
-}
-
-uint lowerBound(float value) {
-  uint lo = 0u;
-  uint hi = s.count;
-  for (int iteration = 0; (iteration < 32); iteration = (iteration + 1)) {
-    if ((lo >= hi)) {
-      break;
-    }
-    uint middle = (lo + ((hi - lo) / 2u));
-    if ((_sfetch(points, int((middle * 4u))) < value)) {
-      lo = (middle + 1u);
-    } else {
-      hi = middle;
-    }
-  }
-  return lo;
 }
 in vec2 uv;
 layout(location = 0) out vec4 _ret;

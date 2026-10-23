@@ -53,8 +53,8 @@ selected by physical glyph size; the generator preserves original alpha instead 
 resampling it, preventing ringing from becoming visible secondary SDF contours. Default
 display density now follows DPR up to four, within the existing render budgets. The browser does not use Canvas2D text or DOM overlays.
 
-Automatic data dashes now select a power-of-two density level in parameter space from the
-current viewport. This keeps the Playground cosine's round caps separated when zoomed
+Automatic data dashes select a signed power-of-two density level in parameter space from
+the current viewport, refining on zoom-in as well as coarsening on zoom-out. This keeps the Playground cosine's round caps separated when zoomed
 out, while reusing resident sample data. Explicit dashPeriod retains fixed parameter
 spacing, which can become subpixel; it is not silently replaced by pixel arc lengths.
 Index-coordinate data uses a projected data-envelope estimate for automatic density.
