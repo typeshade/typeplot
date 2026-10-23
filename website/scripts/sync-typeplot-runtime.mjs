@@ -1,5 +1,12 @@
-import { copyFile, mkdir, readdir, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  readdir,
+  readFile,
+  writeFile,
+} from "node:fs/promises";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -25,11 +32,38 @@ for (const name of ["curve", "helix"])
   );
 for (const name of ["LICENSE", "NOTICE"])
   await copyFile(resolve(root, name), resolve(target, name));
-const commit = execFileSync(
-  "git",
-  ["-C", root, "log", "-1", "--format=%H", "--", "src", "shaders"],
-  { encoding: "utf8" },
-).trim();
+// Preserve provenance for identical runtime bytes, including in shallow CI checkouts.
+const hash = createHash("sha256");
+for (const name of [
+  "index.js",
+  "data.js",
+  "index.d.ts",
+  "data.d.ts",
+  "types.d.ts",
+  "curve.js",
+  "helix.js",
+])
+  hash
+    .update(name)
+    .update("\0")
+    .update(await readFile(resolve(target, name)))
+    .update("\0");
+const runtimeSha256 = hash.digest("hex");
+let previous;
+try {
+  previous = JSON.parse(
+    await readFile(resolve(target, "version.json"), "utf8"),
+  );
+} catch {
+  /* First synchronization. */
+}
+const commit =
+  previous?.runtimeSha256 === runtimeSha256 &&
+  /^[0-9a-f]{40}$/.test(previous.commit)
+    ? previous.commit
+    : execFileSync("git", ["-C", root, "rev-parse", "HEAD"], {
+        encoding: "utf8",
+      }).trim();
 if (!/^[0-9a-f]{40}$/.test(commit))
   throw new Error(
     "A committed TypePlot runtime is required for website provenance.",
@@ -37,7 +71,7 @@ if (!/^[0-9a-f]{40}$/.test(commit))
 await writeFile(
   resolve(target, "version.json"),
   JSON.stringify(
-    { commit, source: "https://github.com/typeshade/typeplot" },
+    { commit, source: "https://github.com/typeshade/typeplot", runtimeSha256 },
     null,
     2,
   ) + "\n",
