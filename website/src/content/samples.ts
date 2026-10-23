@@ -1,5 +1,5 @@
 export type Preset =
-  "signals" | "scatter" | "bars" | "histogram" | "power" | "helix";
+  "signals" | "scatter" | "bars" | "histogram" | "power" | "sine" | "helix";
 export const signalCode = `import { subplots, linspace } from "typeplot";
 
 const { fig, axes: [ax] } = subplots();
@@ -37,6 +37,8 @@ import { createPlot } from "typeplot";
 import helix from "./helix.shade.ts?plot=3d";
 const plot = await createPlot(canvas, helix, {
   bounds: { x: [-6.28, 6.28], y: [-1.25, 1.25] },
+  domain: [-6.28, 6.28],
+  quality: { samples: 128, refinements: 5 },
 });`;
 export function exampleCode(
   preset: Preset,
@@ -56,6 +58,23 @@ export function exampleCode(
         "ax.plot(x, Math.cos,",
         `ax.plot(x, x => Math.cos(x * ${frequency}),`,
       );
+  if (preset === "sine")
+    return `// sine.shade.ts — evaluated as a field across the visible plane
+"use typeshade";
+export function sample(x: f32, frequency: f32): f32 {
+  return sin(x * frequency);
+}
+
+// main.ts
+import { createPlot } from "typeplot";
+import sine from "./sine.shade.ts?plot";
+const plot = await createPlot(canvas, sine, {
+  bounds: { x: [-6.28, 6.28], y: [-1.5, 1.5] },
+  backend: "${backend}",
+  mode: "${threeD ? "3d" : "2d"}",
+  projection: "${threeD ? projection : "orthographic"}",
+  parameters: { frequency: ${frequency} },
+});`;
   if (preset === "power")
     return gpuCode
       .replace("exponent: 2", `exponent: ${exponent}`)

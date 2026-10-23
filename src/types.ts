@@ -13,6 +13,13 @@ export interface PlotProgram {
   /** Programs compiled with the projective camera support both projection modes. */
   readonly camera?: "projective";
 }
+/** Numerical search controls for arbitrary spatial callbacks, evaluated on the GPU. */
+export interface PlotQuality {
+  /** Parameter search intervals, 16–512. Default 128. */
+  readonly samples?: number;
+  /** Closest-point iterations, 1–8. Default 5. */
+  readonly refinements?: number;
+}
 /** CSS-pixel widths and shader decorations, independent of zoom and display density. */
 export interface PlotStyle {
   /** Axis and tick width. Default 1 CSS px; zero hides the strokes. */
@@ -21,6 +28,10 @@ export interface PlotStyle {
   readonly gridWidth?: number;
   /** Function/trajectory stroke width. Default 2 CSS px. */
   readonly curveWidth?: number;
+  readonly lineStyle?: "-" | "--" | ":";
+  /** Dash period in callback parameter units. Default 0.2. */
+  readonly dashPeriod?: number;
+  readonly dashOffset?: number;
   /** Numeric tick and axis label size. Default 11 CSS px. */
   readonly labelSize?: number;
   readonly grid?: boolean;
@@ -31,6 +42,10 @@ export interface PlotOptions {
   /** Accessible canvas name. Existing aria-label/aria-labelledby are preserved unless supplied. */
   readonly label?: string;
   readonly bounds?: PlotBounds;
+  /** Spatial callback parameter domain; independent of the camera. Defaults to initial bounds.x.
+   * Scalar functions are evaluated over the entire visible plane instead. */
+  readonly domain?: readonly [number, number];
+  readonly quality?: PlotQuality;
   readonly backend?: "auto" | "webgpu" | "webgl2";
   readonly mode?: "2d" | "3d";
   readonly projection?: PlotProjection;
@@ -47,6 +62,9 @@ export interface Plot {
   setMode(mode: "2d" | "3d"): void;
   setProjection(projection: PlotProjection): void;
   setStyle(style: PlotStyle): void;
+  setDomain(domain: readonly [number, number]): void;
+  domain(): readonly [number, number];
+  setQuality(quality: PlotQuality): void;
   setProbe(value: number): void;
   setParameters(values: Readonly<Record<string, number>>): void;
   bounds(): PlotBounds;

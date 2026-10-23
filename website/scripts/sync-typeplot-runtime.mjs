@@ -26,13 +26,17 @@ for (const name of await readdir(resolve(root, "dist"))) {
   if (/^(index|data)\.js\.LEGAL\.txt$/.test(name))
     await copyFile(resolve(root, "dist", name), resolve(target, name));
 }
-for (const name of ["curve", "helix"])
+for (const name of ["curve", "helix", "sine"])
   await copyFile(
     resolve(root, "examples/generated", `${name}.js`),
     resolve(target, `${name}.js`),
   );
 for (const name of ["LICENSE", "NOTICE"])
   await copyFile(resolve(root, name), resolve(target, name));
+await copyFile(
+  resolve(root, "assets/LICENSE-XGIS.txt"),
+  resolve(target, "LICENSE-XGIS.txt"),
+);
 // Preserve provenance for identical runtime bytes, including in shallow CI checkouts.
 const hash = createHash("sha256");
 for (const name of [
@@ -44,6 +48,7 @@ for (const name of [
   "gpu-renderer.d.ts",
   "curve.js",
   "helix.js",
+  "sine.js",
 ])
   hash
     .update(name)
@@ -80,7 +85,7 @@ await writeFile(
 );
 await writeFile(
   resolve(target, "README.md"),
-  `# TypePlot browser runtime\n\nBuilt from [typeshade/typeplot](https://github.com/typeshade/typeplot/tree/${commit}) at runtime source commit \`${commit}\`.\n\nRun the library build and examples generation, then \`npm run sync:typeplot\` in website/.\nJavaScript is generated and ignored by Git. Declarations, source provenance, Apache-2.0 LICENSE,\nand NOTICE are retained. Compiled curve and helix programs come from the repository's named\nTypeShade callbacks. The website does not compile visitor source or load a CDN runtime.\n`,
+  `# TypePlot browser runtime\n\nBuilt from [typeshade/typeplot](https://github.com/typeshade/typeplot/tree/${commit}) at runtime source commit \`${commit}\`.\n\nRun the library build and examples generation, then \`npm run sync:typeplot\` in website/.\nJavaScript is generated and ignored by Git. Declarations, source provenance, Apache-2.0 LICENSE,\nand NOTICE are retained. Compiled power, sine and helix programs come from the repository's named\nTypeShade callbacks. The website does not compile visitor source or load a CDN runtime.\n`,
 );
 console.log(
   `Synced TypePlot browser runtime and shader examples from ${commit}.`,

@@ -1156,6 +1156,10 @@
   font-size: 12px;
   flex: 1;
 }
+.plot-field .ant-switch {
+  justify-self: start;
+  width: fit-content;
+}
 .plot-field .ant-select {
   width: 100%;
 }

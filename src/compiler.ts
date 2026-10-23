@@ -48,6 +48,9 @@ const reserved = new Set([
   "view3d",
   "appearance",
   "decorations",
+  "parameterBounds",
+  "curveQuality",
+  "curvePattern",
 ]);
 
 /** Compile a named TypeShade callback once, on the build machine. */
@@ -90,11 +93,11 @@ export function compilePlot(
   const jumps = options.discontinuous === true;
   const fragment =
     kind === "scalar"
-      ? `if (u.plotBlend >= 1.) { return plot3D(trajectory, uv, u, bounds, ${jumps}); }\n  const flat = plot2D(sample, uv, u, ${jumps});\n  if (u.plotBlend <= 0.) { return flat; }\n  return mix(flat, plot3D(trajectory, uv, u, bounds, ${jumps}), clamp(u.plotBlend, 0., 1.));`
-      : `return plot3D(trajectory, uv, u, bounds, ${jumps});`;
+      ? `if (u.plotBlend >= 1.) { return plotScalar3D(sample, trajectory, uv, u, ${jumps}); }\n  const flat = plot2D(sample, uv, u, ${jumps});\n  if (u.plotBlend <= 0.) { return flat; }\n  return mix(flat, plotScalar3D(sample, trajectory, uv, u, ${jumps}), clamp(u.plotBlend, 0., 1.));`
+      : `return plot3D(trajectory, uv, u, ${jumps});`;
   const wrapper = `"use typeshade";
 import { ${entry} as callback } from ${JSON.stringify("./" + path.basename(userFile))};
-import { PlotUniforms, plot2D, plot3D } from "./__typeplot-shared.shade.ts";
+import { PlotUniforms, plot2D, plot3D, plotScalar3D } from "./__typeplot-shared.shade.ts";
 class Uniforms extends PlotUniforms { ${names.map((n) => `${n}: f32;`).join(" ")} }
 declare const u: uniform<Uniforms>;
 ${callback}
@@ -104,7 +107,6 @@ class VertexOutput { @builtin("position") position: vec4; @location(0) uv: vec2;
   return { position: vec4(x, y, 0., 1.), uv: vec2(x * 0.5 + 0.5, y * 0.5 + 0.5) };
 }
 @fragment export function draw(@location(0) uv: vec2): vec4 {
-  const bounds = vec2(u.plotCenter.x - u.plotSpan.x * 0.5, u.plotCenter.x + u.plotSpan.x * 0.5);
   ${fragment}
 }
 `;

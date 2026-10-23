@@ -11,7 +11,7 @@ export function getStaticPaths() {
 const { locale, page } = Astro.props as { locale: Locale; page: PageKey | "home" | "playground" };
 const ko = locale === "ko";
 const title = page === "home" ? (ko ? "TypePlot — TypeScript로 그리는 그래프" : "TypePlot — Plotting in TypeScript") : page === "playground" ? (ko ? "직접 실행 — TypePlot" : "Playground — TypePlot") : `${pages[locale][page].title} — TypePlot`;
-const description = page === "home" ? (ko ? "배열과 함수를 그래프로 그립니다. 실제 예제, 영문·한국어 문서, TypeShade GPU 함수 시각화를 살펴봅니다." : "Plot arrays and functions in the browser. Explore real examples, bilingual guides and TypeShade GPU function plots.") : page === "playground" ? (ko ? "실제 TypePlot으로 여섯 가지 그래프를 실행하고, 뷰를 조절하고, PNG로 저장합니다." : "Run six real TypePlot examples, explore the view and save data charts to PNG.") : pages[locale][page].description;
+const description = page === "home" ? (ko ? "배열과 함수를 그래프로 그립니다. 실제 예제, 영문·한국어 문서, TypeShade GPU 함수 시각화를 살펴봅니다." : "Plot arrays and functions in the browser. Explore real examples, bilingual guides and TypeShade GPU function plots.") : page === "playground" ? (ko ? "실제 TypePlot으로 일곱 가지 그래프를 실행하고, 뷰를 조절하고, PNG로 저장합니다." : "Run seven real TypePlot examples, explore the view and save data charts to PNG.") : pages[locale][page].description;
 ---
 <SiteLayout locale={locale} active={page} title={title} description={description}>
   {page === "home" ? <Home locale={locale} /> : page === "playground" ? <article class="playground-page">

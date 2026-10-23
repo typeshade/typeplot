@@ -47,7 +47,8 @@
     "README.md",
     "LICENSE",
     "NOTICE",
-    "assets/LICENSE-IBM-Plex.txt"
+    "assets/LICENSE-IBM-Plex.txt",
+    "assets/LICENSE-XGIS.txt"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",

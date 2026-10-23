@@ -13,7 +13,8 @@ export interface SeriesOptions {
   readonly lineStyle?: "-" | "--" | ":" | "none";
   /** Dash coordinate. Auto uses increasing x, otherwise sample index. */
   readonly parameter?: "auto" | "x" | "index";
-  /** Period in parameter units. Defaults to 1/60 of the parameter domain. */
+  /** Fixed period in parameter units. If omitted, automatic density starts at
+   * 1/60 of the domain and coarsens by powers of two when zoomed out. */
   readonly dashPeriod?: number;
   readonly dashOffset?: number;
   readonly marker?: "o" | "s" | "none";
@@ -58,7 +59,7 @@ export interface FigureOptions {
 export interface QuickPlotOptions
   extends FigureOptions, SeriesOptions, AxesOptions {}
 export interface SaveFigureOptions {
-  /** Output pixels per CSS pixel. Defaults to the display density, capped at two. */
+  /** Output pixels per CSS pixel. Defaults to the figure display density. */
   readonly pixelRatio?: number;
 }
 
@@ -652,7 +653,13 @@ export class Figure {
     const width = positive(options.width ?? 640 * cols, "width"),
       height = positive(options.height ?? 400 * rows, "height");
     const ratio = positive(
-      options.pixelRatio ?? Math.min(win.devicePixelRatio || 1, 2),
+      options.pixelRatio ??
+        Math.min(
+          win.devicePixelRatio || 1,
+          4,
+          16384 / Math.max(width, height + (options.title ? 42 : 0)),
+          Math.sqrt(16_777_216 / (width * (height + (options.title ? 42 : 0)))),
+        ),
       "pixelRatio",
     );
     if (

@@ -139,6 +139,9 @@ interface SampleResource {
   count: number;
   ordered: boolean;
   period: number;
+  parameterRange: number;
+  xParameter: boolean;
+  bounds: readonly number[];
 }
 
 /** One runtime and glyph texture per figure; all visible geometry and text comes from TypeShade. */
@@ -268,6 +271,10 @@ export class GpuRenderer {
     const packed = new Float32Array(x.length * (series.kind === "bar" ? 5 : 4));
     let lower = Infinity,
       upper = -Infinity;
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity;
     for (let i = 0; i < x.length; i++) {
       const parameter = useX ? x[i] : i;
       if (series.kind === "bar")
@@ -282,6 +289,12 @@ export class GpuRenderer {
           i * 5,
         );
       else packed.set([x[i], y[i], parameter, 1], i * 4);
+      if (Number.isFinite(x[i]) && Number.isFinite(y[i])) {
+        minX = Math.min(minX, x[i]);
+        maxX = Math.max(maxX, x[i]);
+        minY = Math.min(minY, y[i]);
+        maxY = Math.max(maxY, y[i]);
+      }
       if (Number.isFinite(parameter)) {
         lower = Math.min(lower, parameter);
         upper = Math.max(upper, parameter);
@@ -293,6 +306,9 @@ export class GpuRenderer {
       count: x.length,
       ordered,
       period: series.style.dashPeriod || Math.max((upper - lower) / 60, 1e-20),
+      parameterRange: Number.isFinite(upper - lower) ? upper - lower : 0,
+      xParameter: useX,
+      bounds: Number.isFinite(minX) ? [minX, minY, maxX, maxY] : [0, 0, 0, 0],
     };
     this.samples.set(series, resource);
     return resource;
@@ -423,6 +439,10 @@ export class GpuRenderer {
                 : 0,
             period: resource?.period ?? 1,
             offset: style.dashOffset,
+            automatic: style.dashPeriod > 0 ? 0 : 1,
+            parameterRange: resource.parameterRange,
+            xParameter: resource.xParameter ? 1 : 0,
+            dataBounds: resource.bounds,
           };
           pass.draw(
             this.series,

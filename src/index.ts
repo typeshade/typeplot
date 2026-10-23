@@ -13,6 +13,7 @@ import type {
   PlotProgram,
   PlotProjection,
   PlotStyle,
+  PlotQuality,
 } from "./types.js";
 import { plot as plotData } from "./data.js";
 import type { Figure, NumericData, QuickPlotOptions } from "./data.js";
@@ -39,6 +40,7 @@ export type {
   PlotProgram,
   PlotProjection,
   PlotStyle,
+  PlotQuality,
 } from "./types.js";
 
 const ACTIVE = new WeakSet<HTMLCanvasElement>();
@@ -54,6 +56,9 @@ const RESERVED = new Set([
   "view3d",
   "appearance",
   "decorations",
+  "parameterBounds",
+  "curveQuality",
+  "curvePattern",
 ]);
 
 function finite(value: number, name: string): number {
@@ -170,6 +175,65 @@ export async function createPlot(
   const initialParameters = { ...parameters };
   const initialMode = mode;
   const manifest = program.manifest as Pack;
+  const uniformLayout = manifest.bindings.find(
+    (binding) => binding.name === "u",
+  )?.layout;
+  const supportsFields =
+    uniformLayout?.kind === "struct" &&
+    uniformLayout.fields.some((field) => field.name === "parameterBounds");
+  const checkFields = (): void => {
+    if (!supportsFields)
+      throw new Error(
+        "Recompile this TypePlot program to use procedural curve controls.",
+      );
+  };
+  const checkedDomain = (
+    value: readonly [number, number],
+  ): [number, number] => {
+    if (program.kind !== "parametric")
+      throw new TypeError(
+        "Only parametric curves have a bounded parameter domain. Scalar functions extend across the visible plane.",
+      );
+    if (!Array.isArray(value) || value.length !== 2)
+      throw new TypeError("domain needs two endpoints.");
+    value.forEach((n) => finite(n, "domain"));
+    if (
+      !(value[1] > value[0]) ||
+      !Number.isFinite(value[1] - value[0]) ||
+      value[1] - value[0] > MAX_F32
+    )
+      throw new RangeError("domain must be finite and increasing.");
+    return [value[0], value[1]];
+  };
+  let domain: [number, number] = [...bounds.x];
+  if (options.domain !== undefined) {
+    checkFields();
+    domain = checkedDomain(options.domain);
+  }
+  const initialDomain = [...domain] as [number, number];
+  const quality: Required<PlotQuality> = { samples: 128, refinements: 5 };
+  const checkQuality = (value: PlotQuality): void => {
+    checkFields();
+    if (program.kind !== "parametric")
+      throw new TypeError(
+        "Only parametric curves use bounded search quality. Scalar functions evaluate their field directly.",
+      );
+    for (const [key, number] of Object.entries(value)) {
+      if (!Object.hasOwn(quality, key))
+        throw new TypeError(`Unknown curve quality '${key}'.`);
+      const low = key === "samples" ? 16 : 1,
+        high = key === "samples" ? 512 : 8;
+      if (!Number.isInteger(number) || number < low || number > high)
+        throw new RangeError(
+          `${key} must be an integer from ${low} to ${high}.`,
+        );
+    }
+  };
+  if (options.quality !== undefined) {
+    checkQuality(options.quality);
+    Object.assign(quality, options.quality);
+  }
+  const initialQuality = { ...quality };
   const supportsStyle = manifest.bindings.some(
     (binding) => binding.name === "font",
   );
@@ -177,6 +241,9 @@ export async function createPlot(
     axisWidth: 1,
     gridWidth: 1,
     curveWidth: 2,
+    lineStyle: "-",
+    dashPeriod: 0.2,
+    dashOffset: 0,
     labelSize: 11,
     grid: true,
     tickLabels: true,
@@ -190,7 +257,22 @@ export async function createPlot(
     for (const [key, setting] of Object.entries(value)) {
       if (!Object.hasOwn(style, key))
         throw new TypeError(`Unknown plot style '${key}'.`);
-      if (["grid", "tickLabels", "axisLabels"].includes(key)) {
+      if (["lineStyle", "dashPeriod", "dashOffset"].includes(key)) {
+        checkFields();
+        if (key === "lineStyle") {
+          if (!["-", "--", ":"].includes(setting as string))
+            throw new TypeError("lineStyle must be -, -- or :.");
+        } else {
+          finite(setting as number, key);
+          if (
+            typeof setting !== "number" ||
+            (key === "dashPeriod" && setting < 1e-7)
+          )
+            throw new RangeError(
+              `${key} must be ${key === "dashPeriod" ? "at least 1e-7" : "finite"}.`,
+            );
+        }
+      } else if (["grid", "tickLabels", "axisLabels"].includes(key)) {
         if (typeof setting !== "boolean")
           throw new TypeError(`${key} must be a boolean.`);
       } else if (
@@ -370,7 +452,7 @@ export async function createPlot(
         }
       }
       const ratio =
-        options.pixelRatio ?? Math.min(win.devicePixelRatio || 1, 2);
+        options.pixelRatio ?? Math.min(win.devicePixelRatio || 1, 4);
       const width = Math.max(1, box.width * ratio);
       const height = Math.max(1, box.height * ratio);
       const limit =
@@ -391,6 +473,18 @@ export async function createPlot(
       if (canvas.height !== nextHeight) canvas.height = nextHeight;
       const u = {
         ...parameters,
+        ...(supportsFields
+          ? {
+              parameterBounds: domain,
+              curveQuality: [quality.samples, quality.refinements],
+              curvePattern: [
+                style.lineStyle === "-" ? 0 : 1,
+                style.dashPeriod,
+                style.dashOffset,
+                style.lineStyle === ":" ? 0.12 : 0.55,
+              ],
+            }
+          : {}),
         resolution: [box.width, box.height],
         ...(supportsStyle
           ? {
@@ -462,6 +556,27 @@ export async function createPlot(
         Object.assign(style, value);
         requestDraw();
       },
+      setDomain(value) {
+        alive();
+        checkFields();
+        domain = checkedDomain(value);
+        requestDraw();
+      },
+      domain() {
+        alive();
+        checkFields();
+        if (program.kind !== "parametric")
+          throw new TypeError(
+            "Scalar functions have no bounded parameter domain.",
+          );
+        return [...domain];
+      },
+      setQuality(value) {
+        alive();
+        checkQuality(value);
+        Object.assign(quality, value);
+        requestDraw();
+      },
       setProbe(value) {
         alive();
         probe = finite(value, "probe");
@@ -490,6 +605,8 @@ export async function createPlot(
       reset() {
         alive();
         probe = initialProbe;
+        domain = [...initialDomain];
+        Object.assign(quality, initialQuality);
         Object.assign(style, initialStyle);
         Object.assign(parameters, initialParameters);
         mode = initialMode;

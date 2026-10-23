@@ -16,6 +16,9 @@ export class PlotViewport {
 export class PlotUniforms extends PlotViewport {
   probe: f32;
   view3d: u32;
+  parameterBounds: vec2;
+  curveQuality: vec2u;
+  curvePattern: vec4;
 }
 
 type ScalarCurve = (x: f32) => f32;
@@ -149,26 +152,56 @@ export function plotComparison(
   return vec4(mix(color, vec3(0.98, 0.42, 0.06), orange), 1);
 }
 
-/** Analytic rendering samples the scalar callback in data coordinates. */
+/** A parameter-space dash field. No path mesh or cumulative length buffer. */
+function patternDistance(t: f32, rate: f32, u: PlotUniforms): f32 {
+  if (u.curvePattern.x == 0) return 0;
+  const period = u.curvePattern.y;
+  const phase = fract((t + u.curvePattern.z) / period);
+  const gap = max(0, abs(phase - 0.5) - u.curvePattern.w * 0.5) * period;
+  return gap / max(rate, 1e-20) * pixelWidth();
+}
+
+/** Evaluate the graph itself in a local pixel footprint, never a sampled path.
+ * Derivatives are taken only of the coordinate transform, not across callback jumps. */
+function scalarField(sample: ScalarCurve, p: vec2, dx: vec2, dy: vec2, u: PlotUniforms, jumps: bool): f32 {
+  const value = sample(p.x);
+  const xGradient = vec2(dx.x, dy.x);
+  const yGradient = vec2(dx.y, dy.y);
+  const h = max(max(length(xGradient) * 0.125, abs(p.x) * 1e-6), 1e-7);
+  const before = sample(p.x - h), after = sample(p.x + h);
+  let slope = (after - before) / (2 * h);
+  if (!(abs(before) < 1e18)) slope = (after - value) / h;
+  if (!(abs(after) < 1e18)) slope = (value - before) / h;
+  const normal = yGradient - slope * xGradient;
+  const normSquared = max(dot(normal, normal), 1e-30);
+  const residual = p.y - value;
+  const normalDistance = abs(residual) / sqrt(normSquared) * pixelWidth();
+  const parameter = p.x - residual * dot(xGradient, normal) / normSquared;
+  // The determinant form avoids cancellation at steep tangents.
+  const rate = abs(xGradient.x * yGradient.y - xGradient.y * yGradient.x) / sqrt(normSquared);
+  const gapDistance = patternDistance(parameter, rate, u);
+  // A discontinuity must not become an invented vertical connecting stroke.
+  const continuous = !jumps || abs(value - (before + after) * 0.5) <= max(length(yGradient) * 2, abs(after - before) * 0.2);
+  return abs(value) < 1e18 && abs(slope) < 1e18 && continuous ? distanceCoverage(length(vec2(normalDistance, gapDistance)), u.appearance.z) : 0;
+}
+
+/** Unbounded scalar field in two dimensions; the camera never sets a function domain. */
 export function plot2D(sample: ScalarCurve, uv: vec2, u: PlotUniforms, jumps: bool): vec4 {
   const size = plotSize(u.resolution);
   const span = max(u.plotSpan, vec2(0.00001));
-  const lo = u.plotCenter - span * 0.5;
-  const p = lo + uv * span;
-  const pixel = uv * size;
-  const value = sample(p.x);
-  const y = clamp(value, -1e18, 1e18);
-  const d = (p.y - y) / span.y;
-  // Euclidean screen-space gradient gives a consistent SDF stroke at every slope.
-  const gradient = length(vec2(dpdx(d), dpdy(d)));
-  const denominator = jumps ? min(gradient, 2 * pixelWidth() / size.y) : gradient;
-  const distance = abs(d) / max(denominator, 1e-12) * pixelWidth();
-  const curve = distanceCoverage(distance, u.appearance.z) * (abs(value) < 1e18 ? 1 : 0);
-  const axes = axes2D(uv, u);
-  let color = mix(vec3(0.965, 0.973, 0.985), vec3(0.39, 0.43, 0.49), axes);
+  const p = u.plotCenter + (uv - 0.5) * span;
+  const dx = dpdx(p), dy = dpdy(p);
+  // Four footprint samples integrate the procedural field, rather than weakening
+  // the stroke when a high-frequency function becomes smaller than a pixel.
+  let curve = 0;
+  for (let i = 0; i < 4; i++) {
+    const offset = vec2((i & 1) == 0 ? -0.25 : 0.25, (i & 2) == 0 ? -0.25 : 0.25);
+    curve += scalarField(sample, p + dx * offset.x + dy * offset.y, dx, dy, u, jumps) * 0.25;
+  }
+  let color = mix(vec3(0.965, 0.973, 0.985), vec3(0.39, 0.43, 0.49), axes2D(uv, u));
   color = mix(color, vec3(0.09, 0.42, 0.92), curve);
-  const selected = ((vec2(u.probe, sample(u.probe)) - lo) / span) * size;
-  return vec4(pointColor(color, pixel, selected), 1);
+  const selected = ((vec2(u.probe, sample(u.probe)) - u.plotCenter) / span + 0.5) * size;
+  return vec4(abs(sample(u.probe)) < 1e18 ? pointColor(color, uv * size, selected) : color, 1);
 }
 
 /** Camera coordinates in normalized world units, shared by projection and inverse rays. */
@@ -249,27 +282,8 @@ function groundField(ray: ViewRay, u: PlotUniforms, spacing: vec2): f32 {
   return (u.view3d != u32(2) || depth >= 0.101) && abs(ray.direction.y) >= 1e-8 && (u.decorations & u32(1)) != u32(0) ? field : 0;
 }
 
-/** Only the user trajectory is sampled; its outline is an analytic capsule distance field. */
-function worldStroke(pixel: vec2, first: vec3, second: vec3, u: PlotUniforms, width: f32): f32 {
-  let a = first, b = second;
-  if (u.view3d == u32(2)) {
-    const da = cameraDistance(a, u), db = cameraDistance(b, u);
-    if (da < 0.101 && db < 0.101) return 0;
-    if (da < 0.101) a = mix(first, second, (0.101 - da) / (db - da));
-    if (db < 0.101) b = mix(first, second, (0.101 - da) / (db - da));
-  }
-  return stroke(pixel, project(a, u), project(b, u), width);
-}
-
-/** A generic spatial curve, specialized by the compiler for its named callback.
- *  The bounded 96-segment polyline avoids an unbounded raymarch per pixel. */
-export function plot3D(
-  trajectory: SpaceCurve,
-  uv: vec2,
-  u: PlotUniforms,
-  bounds: vec2,
-  jumps: bool,
-): vec4 {
+/** Shared projective grid, axes and labels, independent of the curve representation. */
+function spatialBackground(uv: vec2, u: PlotUniforms): vec4 {
   const size = plotSize(u.resolution);
   const pixel = uv * size;
   const half = u.plotSpan * 0.5;
@@ -341,30 +355,109 @@ export function plot3D(
   color = mix(color, vec3(0.23, 0.47, 0.3), yAxis);
   color = mix(color, vec3(0.4, 0.35, 0.62), zAxis);
   color = mix(color, vec3(0.25, 0.29, 0.35), max(ticks, labels));
+  return vec4(color, labels);
+}
+
+/** The graph y=f(x), z=0 is an implicit mathematical field on an infinite plane.
+ * Inverse projection evaluates that field per fragment, just like the grid. */
+export function plotScalar3D(sample: ScalarCurve, trajectory: SpaceCurve, uv: vec2, u: PlotUniforms, jumps: bool): vec4 {
+  const ray = viewRay(uv, u);
+  const denominator = abs(ray.direction.z) < 1e-8 ? (ray.direction.z < 0 ? -1e-8 : 1e-8) : ray.direction.z;
+  const depth = -ray.origin.z / denominator;
+  const p = (ray.origin + ray.direction * depth).xy;
+  const dx = dpdx(p), dy = dpdy(p);
+  const background = spatialBackground(uv, u);
   let curve = 0;
-  let previous = trajectory(bounds.x);
-  for (let i = 1; i <= 96; i++) {
-    const t = mix(bounds.x, bounds.y, f32(i) / 96);
-    const next = trajectory(t);
-    const valid =
-      max(
-        max(abs(previous.x), abs(next.x)),
-        max(max(abs(previous.y), abs(next.y)), max(abs(previous.z), abs(next.z))),
-      ) < 1e18;
-    // A discontinuity deviates from the segment midpoint even when the viewport shrinks it.
-    // Compare in data units so zooming out cannot turn a step into a connecting line.
-    const middle = trajectory(t - (bounds.y - bounds.x) / 192);
-    const expected = (previous + next) * 0.5;
-    const continuous =
-      !jumps || length(middle - expected) <= max(0.000001, length(next - previous) * 0.2);
-    if (valid && continuous) {
-      curve = max(curve, worldStroke(pixel, previous, next, u, u.appearance.z));
-    }
-    previous = next;
+  for (let i = 0; i < 4; i++) {
+    const offset = vec2((i & 1) == 0 ? -0.25 : 0.25, (i & 2) == 0 ? -0.25 : 0.25);
+    curve += scalarField(sample, p + dx * offset.x + dy * offset.y, dx, dy, u, jumps) * 0.25;
   }
-  color = mix(color, vec3(0.09, 0.42, 0.92), curve);
-  color = mix(color, vec3(0.25, 0.29, 0.35), labels);
+  // An exactly edge-on plane has no unique inverse-plane coordinate. Use the
+  // same callback-distance search as spatial curves in this narrow singular view;
+  // this is still a procedural curve query, never a line mesh.
+  const edgeOn = abs(inverseCamera(vec3(0, 0, -1), u).z) < max(u.plotSpan.x, u.plotSpan.y) * 0.003;
+  if (edgeOn) {
+    const extent = max(u.plotSpan.x, u.plotSpan.y) * 32;
+    curve = distanceCoverage(trajectoryDistance(trajectory, uv * plotSize(u.resolution), u, vec2(u.plotCenter.x - extent, u.plotCenter.x + extent), jumps), u.appearance.z);
+  }
+  const visible = edgeOn || (abs(ray.direction.z) >= 1e-8 && (u.view3d != u32(2) || depth >= 0.101));
+  let color = mix(background.xyz, vec3(0.09, 0.42, 0.92), visible ? curve : 0);
+  color = mix(color, vec3(0.25, 0.29, 0.35), background.w);
+  const selected = vec3(u.probe, sample(u.probe), 0);
+  return vec4(abs(selected.y) < 1e18 && inFront(selected, u) ? pointColor(color, uv * plotSize(u.resolution), project(selected, u)) : color, 1);
+}
+
+/** Refine a candidate against the actual projected callback, never a chord SDF. */
+function refineTrajectory(trajectory: SpaceCurve, pixel: vec2, candidate: vec4, u: PlotUniforms, jumps: bool): f32 {
+  let t = candidate.y;
+  const low = candidate.z, high = candidate.w;
+  const epsilon = max(max((high - low) * 0.001, abs(t) * 1e-6), 1e-7);
+  for (let iteration = 0; iteration < i32(u.curveQuality.y); iteration++) {
+    const before = max(low, t - epsilon), after = min(high, t + epsilon);
+    const a = project(trajectory(before), u), b = project(trajectory(after), u);
+    const tangent = (b - a) / max(after - before, 1e-20);
+    const at = project(trajectory(t), u);
+    const delta = dot(at - pixel, tangent) / max(dot(tangent, tangent), 1e-20);
+    let next = clamp(t - delta, low, high);
+    let world = trajectory(next);
+    let projected = project(world, u);
+    const error = dot(at - pixel, at - pixel);
+    if (!(all(abs(world) < vec3(1e18)) && inFront(world, u) && dot(projected - pixel, projected - pixel) <= error)) {
+      next = (t + next) * 0.5;
+      world = trajectory(next);
+      projected = project(world, u);
+    }
+    // Safeguard the numerical step: refinement may not make a valid seed worse.
+    if (all(abs(world) < vec3(1e18)) && inFront(world, u) && dot(projected - pixel, projected - pixel) <= error) t = next;
+  }
+  const world = trajectory(t);
+  const middle = trajectory((low + high) * 0.5);
+  const continuous = !jumps || length(middle - (trajectory(low) + trajectory(high)) * 0.5) <= max(1e-6, length(trajectory(high) - trajectory(low)) * 0.2);
+  return all(abs(world) < vec3(1e18)) && continuous && inFront(world, u) ? length(pixel - project(world, u)) : 1e20;
+}
+
+/** Bounded candidate search for an arbitrary spatial callback. The three nearest
+ * candidates are refined against the mathematical callback; no path is constructed. */
+function trajectoryDistance(trajectory: SpaceCurve, pixel: vec2, u: PlotUniforms, bounds: vec2, jumps: bool): f32 {
+  let first = vec4(1e30, 0, 0, 0), second = first, third = first;
+  const requested = f32(u.curveQuality.x);
+  const range = bounds.y - bounds.x;
+  const count = i32(min(512, u.curvePattern.x == 0 ? requested : max(requested, ceil(range / u.curvePattern.y * 4))));
+  const stepSize = range / f32(count);
+  for (let i = 0; i < count; i++) {
+    let low = bounds.x + f32(i) * stepSize;
+    let high = low + stepSize;
+    let t = (low + high) * 0.5;
+    if (u.curvePattern.x != 0) {
+      const period = u.curvePattern.y;
+      const center = (floor((t + u.curvePattern.z) / period) + 0.5) * period - u.curvePattern.z;
+      low = max(low, center - period * u.curvePattern.w * 0.5);
+      high = min(high, center + period * u.curvePattern.w * 0.5);
+      t = clamp(t, low, max(low, high));
+    }
+    const world = trajectory(t);
+    if (high >= low && all(abs(world) < vec3(1e18)) && inFront(world, u)) {
+      const delta = project(world, u) - pixel;
+      const candidate = vec4(dot(delta, delta), t, low, high);
+      if (candidate.x < first.x) { third = second; second = first; first = candidate; }
+      else if (candidate.x < second.x) { third = second; second = candidate; }
+      else if (candidate.x < third.x) third = candidate;
+    }
+  }
+  let distance = 1e20;
+  if (first.x < 1e30) distance = min(distance, refineTrajectory(trajectory, pixel, first, u, jumps));
+  if (second.x < 1e30) distance = min(distance, refineTrajectory(trajectory, pixel, second, u, jumps));
+  if (third.x < 1e30) distance = min(distance, refineTrajectory(trajectory, pixel, third, u, jumps));
+  return distance;
+}
+
+export function plot3D(trajectory: SpaceCurve, uv: vec2, u: PlotUniforms, jumps: bool): vec4 {
+  const background = spatialBackground(uv, u);
+  const pixel = uv * plotSize(u.resolution);
+  const distance = trajectoryDistance(trajectory, pixel, u, u.parameterBounds, jumps);
+  let color = mix(background.xyz, vec3(0.09, 0.42, 0.92), distanceCoverage(distance, u.appearance.z));
+  color = mix(color, vec3(0.25, 0.29, 0.35), background.w);
   const selected = trajectory(u.probe);
-  const visible = u.probe >= bounds.x && u.probe <= bounds.y && abs(selected.y) < 1e18 && inFront(selected, u);
+  const visible = u.probe >= u.parameterBounds.x && u.probe <= u.parameterBounds.y && all(abs(selected) < vec3(1e18)) && inFront(selected, u);
   return vec4(visible ? pointColor(color, pixel, project(selected, u)) : color, 1);
 }

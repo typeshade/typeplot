@@ -23,6 +23,10 @@ class SeriesUniforms {
   ordered: u32;
   period: f32;
   offset: f32;
+  automatic: u32;
+  xParameter: u32;
+  parameterRange: f32;
+  dataBounds: vec4;
 }
 declare const s: uniform<SeriesUniforms>;
 declare const points: storage<array<f32>>;
@@ -113,21 +117,39 @@ function boxDistance(p: vec2, a: vec2, b: vec2): f32 {
   return length(max(q, vec2(0))) + min(max(q.x, q.y), 0);
 }
 
-function pathDistance(p: vec2, a: vec2, b: vec2, parameters: vec2): f32 {
+/** Automatic parameter-space LOD keeps round dash caps separated when zoomed out.
+ * The coordinate and phase origin remain mathematical parameters; no arc lengths
+ * are accumulated. Explicit periods preserve their fixed parameter spacing. */
+function visibleDashPeriod(): f32 {
+  if (s.automatic == u32(0)) return s.period;
+  let rate = 0;
+  if (s.xParameter != u32(0)) {
+    rate = u.span.x / extent().x;
+    if (u.logarithmic.x > 0) rate *= max(s.dataBounds.z, 1e-30) * log(10);
+  } else {
+    const projected = abs(pixelPoint(s.dataBounds.zw) - pixelPoint(s.dataBounds.xy));
+    rate = s.parameterRange / max(max(projected.x, projected.y), 1e-20);
+  }
+  const pixelPeriod = s.dash > 1.5 ? max(5, s.width * 2.5) : max(8, s.width * 4);
+  const level = max(0, ceil(log2(max(rate * pixelPeriod / s.period, 1))));
+  return s.period * pow(2, level);
+}
+
+function pathDistance(p: vec2, a: vec2, b: vec2, parameters: vec2, period: f32): f32 {
   if (s.dash <= 0) return segmentDistance(p, a, b);
   const delta = b - a;
   const along = clamp(dot(p - a, delta) / max(dot(delta, delta), 1e-20), 0, 1);
   const parameter = mix(parameters.x, parameters.y, along);
   const on = s.dash > 1.5 ? 0 : 0.6;
-  const phase = (parameter - s.offset) / s.period;
+  const phase = (parameter - s.offset) / period;
   const cycle = floor(phase - on * 0.5 + 0.5);
   const difference = parameters.y - parameters.x;
   if (abs(difference) < 1e-20) return fract(phase) <= on ? segmentDistance(p, a, b) : 1e20;
   let distance = 1e20;
   for (let neighbor = -1; neighbor <= 1; neighbor++) {
-    const start = s.offset + (cycle + f32(neighbor)) * s.period;
+    const start = s.offset + (cycle + f32(neighbor)) * period;
     const first = (start - parameters.x) / difference;
-    const second = (start + on * s.period - parameters.x) / difference;
+    const second = (start + on * period - parameters.x) / difference;
     const lo = max(0, min(first, second));
     const hi = min(1, max(first, second));
     if (hi >= lo) distance = min(distance, segmentDistance(p, mix(a, b, lo), mix(a, b, hi)));
@@ -153,6 +175,7 @@ function lowerBound(value: f32): u32 {
   if (p.x < lo.x || p.x > hi.x || p.y < lo.y || p.y > hi.y) return vec4(0);
   let distance = 1e20;
   if (s.kind < 0.5) {
+    const period = visibleDashPeriod();
     let start = u32(0), end = s.count > u32(0) ? s.count - u32(1) : u32(0);
     const radius = s.width * 0.5 + pixelWidth();
     if (s.ordered > u32(0)) {
@@ -167,7 +190,7 @@ function lowerBound(value: f32): u32 {
       if (a.w > 0 && b.w > 0) {
         const first = pixelPoint(a.xy), second = pixelPoint(b.xy);
         if (all(p >= min(first, second) - vec2(radius)) && all(p <= max(first, second) + vec2(radius)))
-          distance = min(distance, pathDistance(p, first, second, vec2(a.z, b.z)) - s.width * 0.5);
+          distance = min(distance, pathDistance(p, first, second, vec2(a.z, b.z), period) - s.width * 0.5);
       }
     }
   } else if (s.kind < 1.5) {

@@ -16,6 +16,7 @@ import {
   type PlotStyle,
 } from "../vendor/typeplot/index.js";
 import power from "../vendor/typeplot/curve.js";
+import sine from "../vendor/typeplot/sine.js";
 import helix from "../vendor/typeplot/helix.js";
 import { exampleCode, type Preset } from "../content/samples";
 import version from "../vendor/typeplot/version.json";
@@ -24,6 +25,9 @@ const DEFAULT_STYLE: Required<PlotStyle> = {
   axisWidth: 1,
   gridWidth: 1,
   curveWidth: 2,
+  lineStyle: "-",
+  dashPeriod: 0.2,
+  dashOffset: 0,
   labelSize: 11,
   grid: true,
   tickLabels: true,
@@ -40,6 +44,8 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
   const [threeD, setThreeD] = useState(false);
   const [projection, setProjection] = useState<PlotProjection>("perspective");
   const [style, setStyle] = useState(DEFAULT_STYLE);
+  const [domainExtent, setDomainExtent] = useState(6.28);
+  const [samples, setSamples] = useState(128);
   const [dark, setDark] = useState(false);
   const [status, setStatus] = useState(
     ko ? "그래프를 준비하고 있습니다…" : "Preparing the plot…",
@@ -53,9 +59,25 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
     gpu?: Plot;
     signal?: { x: Float64Array; lines: Series[] };
   }>({});
-  const desired = useRef({ exponent, threeD, projection, style });
-  desired.current = { exponent, threeD, projection, style };
-  const gpu = preset === "power" || preset === "helix";
+  const desired = useRef({
+    exponent,
+    frequency,
+    threeD,
+    projection,
+    style,
+    domainExtent,
+    samples,
+  });
+  desired.current = {
+    exponent,
+    frequency,
+    threeD,
+    projection,
+    style,
+    domainExtent,
+    samples,
+  };
+  const gpu = preset === "power" || preset === "sine" || preset === "helix";
   useEffect(() => {
     const update = () =>
       setDark(document.documentElement.dataset.theme === "dark");
@@ -164,12 +186,19 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
       target.appendChild(canvas);
       void createPlot(
         canvas,
-        (preset === "power" ? power : helix) as PlotProgram,
+        (preset === "power"
+          ? power
+          : preset === "sine"
+            ? sine
+            : helix) as PlotProgram,
         {
           bounds:
             preset === "power"
               ? { x: [0, 1], y: [0, 1] }
-              : { x: [-6.28, 6.28], y: [-1.25, 1.25] },
+              : { x: [-6.28, 6.28], y: [-1.5, 1.5] },
+          domain:
+            preset === "helix" ? [-domainExtent, domainExtent] : undefined,
+          quality: preset === "helix" ? { samples } : undefined,
           backend,
           mode: preset === "helix" || threeD ? "3d" : "2d",
           projection: preset === "helix" || threeD ? projection : undefined,
@@ -178,10 +207,19 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
               ? ko
                 ? "거듭제곱 함수"
                 : "Power function"
-              : ko
-                ? "3차원 나선"
-                : "Spatial helix",
-          parameters: preset === "power" ? { exponent } : undefined,
+              : preset === "sine"
+                ? ko
+                  ? "연속 사인 함수"
+                  : "Continuous sine function"
+                : ko
+                  ? "3차원 나선"
+                  : "Spatial helix",
+          parameters:
+            preset === "power"
+              ? { exponent }
+              : preset === "sine"
+                ? { frequency }
+                : undefined,
           onError: fail,
         },
       )
@@ -198,6 +236,12 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
             result.setProjection(current.projection);
           if (preset === "power")
             result.setParameters({ exponent: current.exponent });
+          if (preset === "sine")
+            result.setParameters({ frequency: current.frequency });
+          if (preset === "helix") {
+            result.setDomain([-current.domainExtent, current.domainExtent]);
+            result.setQuality({ samples: current.samples });
+          }
           active.current = { gpu: result };
           setReady(true);
           setStatus(result.backend === "webgpu" ? "WebGPU" : "WebGL2");
@@ -231,7 +275,22 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
     plot.setMode(preset === "helix" || threeD ? "3d" : "2d");
     if (preset === "helix" || threeD) plot.setProjection(projection);
     if (preset === "power") plot.setParameters({ exponent });
-  }, [preset, exponent, threeD, projection, style, ready]);
+    if (preset === "sine") plot.setParameters({ frequency });
+    if (preset === "helix") {
+      plot.setDomain([-domainExtent, domainExtent]);
+      plot.setQuality({ samples });
+    }
+  }, [
+    preset,
+    exponent,
+    frequency,
+    threeD,
+    projection,
+    style,
+    domainExtent,
+    samples,
+    ready,
+  ]);
   async function save() {
     if (!active.current.figure) return;
     setSaving(true);
@@ -256,7 +315,12 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
   const code = gpu
     ? sourceCode +
       `
-plot.setStyle(${JSON.stringify(style, null, 2)});`
+plot.setStyle(${JSON.stringify(style, null, 2)});` +
+      (preset === "helix"
+        ? `
+plot.setDomain([-${domainExtent}, ${domainExtent}]);
+plot.setQuality({ samples: ${samples}, refinements: 5 });`
+        : "")
     : sourceCode;
   const descriptions: Record<Preset, string> = ko
     ? {
@@ -267,7 +331,8 @@ plot.setStyle(${JSON.stringify(style, null, 2)});`
         bars: "네 집단의 관측값은 순서대로 12, 19, 8, 15입니다.",
         histogram:
           "세 삼각함수로 만든 600개 값을 20개 구간으로 나눕니다. 막대의 전체 넓이는 1입니다.",
-        power: `0부터 1까지의 구간에서 y = x^${exponent}을 표시합니다. 음수 구간은 셰이더에서 제외합니다.`,
+        sine: "수학적 사인 함수를 화면 전체에서 직접 평가합니다. 확대하거나 축소해도 표본 배열의 끝이 생기지 않습니다.",
+        power: `초기 뷰는 0부터 1까지이며 y = x^${exponent}을 화면 전체에서 평가합니다. 음수 구간은 셰이더에서 제외합니다.`,
         helix:
           "x = 2 cos(t), y = sin(t), z = 0.4t로 정의한 나선입니다. 드래그하면 회전합니다.",
       }
@@ -279,7 +344,8 @@ plot.setStyle(${JSON.stringify(style, null, 2)});`
         bars: "Four groups have observed values of 12, 19, 8 and 15, respectively.",
         histogram:
           "600 values formed from three trigonometric terms, grouped into 20 bins. Total bar area is one.",
-        power: `y = x^${exponent} over zero to one. The shader omits the negative domain.`,
+        sine: "The mathematical sine function is evaluated across the visible plane. Zooming never reaches the end of a sampled array.",
+        power: `y = x^${exponent}, initially viewed from zero to one, evaluated across the visible plane. The shader omits the negative domain.`,
         helix:
           "A helix defined by x = 2 cos(t), y = sin(t), z = 0.4t. Drag to orbit.",
       };
@@ -314,6 +380,10 @@ plot.setStyle(${JSON.stringify(style, null, 2)});`
                 { value: "bars", label: ko ? "막대 그래프" : "Bar chart" },
                 { value: "histogram", label: ko ? "히스토그램" : "Histogram" },
                 {
+                  value: "sine",
+                  label: ko ? "GPU 연속 사인 함수" : "GPU continuous sine",
+                },
+                {
                   value: "power",
                   label: ko ? "GPU 거듭제곱 함수" : "GPU power function",
                 },
@@ -324,7 +394,7 @@ plot.setStyle(${JSON.stringify(style, null, 2)});`
               ]}
             />
           </div>
-          {preset === "signals" && (
+          {(preset === "signals" || preset === "sine") && (
             <div className="plot-field">
               <label id="frequency-label">
                 {ko ? "주파수" : "Frequency"}: {frequency.toFixed(2)}
@@ -354,6 +424,10 @@ plot.setStyle(${JSON.stringify(style, null, 2)});`
                   onChange={setExponent}
                 />
               </div>
+            </>
+          )}
+          {(preset === "power" || preset === "sine") && (
+            <>
               <div className="plot-field">
                 <span id="mode-label">{ko ? "3D 보기" : "3D view"}</span>
                 <Switch
@@ -393,6 +467,38 @@ plot.setStyle(${JSON.stringify(style, null, 2)});`
               />
             </div>
           )}
+          {preset === "helix" && (
+            <>
+              <div className="plot-field">
+                <label id="domain-label">
+                  {ko ? "매개변수 구간" : "Parameter domain"}: ±
+                  {domainExtent.toFixed(2)}
+                </label>
+                <Slider
+                  min={3.14}
+                  max={31.4}
+                  step={3.14}
+                  value={domainExtent}
+                  ariaLabelledByForHandle="domain-label"
+                  onChange={setDomainExtent}
+                />
+              </div>
+              <div className="plot-field">
+                <label htmlFor="curve-samples">
+                  {ko ? "곡선 탐색 정밀도" : "Curve search quality"}
+                </label>
+                <Select
+                  id="curve-samples"
+                  value={samples}
+                  onChange={setSamples}
+                  options={[64, 128, 256, 512].map((value) => ({
+                    value,
+                    label: String(value),
+                  }))}
+                />
+              </div>
+            </>
+          )}
           <div className="plot-actions">
             <Button
               disabled={!ready}
@@ -406,6 +512,11 @@ plot.setStyle(${JSON.stringify(style, null, 2)});`
                   if (preset === "helix" || threeD)
                     plot.setProjection(projection);
                   if (preset === "power") plot.setParameters({ exponent });
+                  if (preset === "sine") plot.setParameters({ frequency });
+                  if (preset === "helix") {
+                    plot.setDomain([-domainExtent, domainExtent]);
+                    plot.setQuality({ samples });
+                  }
                 }
               }}
             >
@@ -428,6 +539,39 @@ plot.setStyle(${JSON.stringify(style, null, 2)});`
                 : "Line and label settings (CSS px)"}
             </summary>
             <div className="plot-toolbar">
+              <div className="plot-field">
+                <label htmlFor="line-style">
+                  {ko ? "선 패턴" : "Line pattern"}
+                </label>
+                <Select
+                  id="line-style"
+                  value={style.lineStyle}
+                  onChange={(lineStyle) =>
+                    setStyle((previous) => ({ ...previous, lineStyle }))
+                  }
+                  options={[
+                    { value: "-", label: ko ? "실선" : "Solid" },
+                    { value: "--", label: ko ? "파선" : "Dashed" },
+                    { value: ":", label: ko ? "점선" : "Dotted" },
+                  ]}
+                />
+              </div>
+              <div className="plot-field">
+                <label id="dash-period">
+                  {ko ? "매개변수 대시 주기" : "Parameter dash period"}:{" "}
+                  {style.dashPeriod}
+                </label>
+                <Slider
+                  min={0.05}
+                  max={2}
+                  step={0.05}
+                  value={style.dashPeriod}
+                  ariaLabelledByForHandle="dash-period"
+                  onChange={(dashPeriod) =>
+                    setStyle((previous) => ({ ...previous, dashPeriod }))
+                  }
+                />
+              </div>
               {(
                 [
                   ["axisWidth", ko ? "축 굵기" : "Axis width", 0, 4, 0.25],

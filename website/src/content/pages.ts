@@ -167,17 +167,17 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "Render a scalar function",
-          text: "The first scalar argument is x. Extra arguments are configurable parameters. Guard the mathematical domain in the callback; a magnitude of at least 1e18 omits a point. Configure parameters for curve.shade.ts as shown above.",
+          text: "The first scalar argument is x. In 2D and 3D, the renderer evaluates y − f(x) as an implicit field over the visible plane. Camera bounds never truncate its mathematical domain. Extra arguments are configurable parameters. Guard the mathematical domain in the callback; a magnitude of at least 1e18 omits a point. Configure parameters for curve.shade.ts as shown above.",
           code: gpuCode,
         },
         {
           title: "Render a spatial curve",
-          text: "A parametric callback returns vec3. Its first argument is the curve parameter. The x bounds supply its parameter interval; x/y bounds normalize the camera. Spatial curves evaluate bounded intervals of the callback as a distance field in the fragment shader, with no uploaded curve mesh. They open in 3D with perspective projection. Orthographic projection is also available; 2D always uses orthographic projection.",
+          text: "A parametric callback returns vec3. Its first argument is the curve parameter. Set domain independently from the camera bounds; it defaults to a copy of the initial x bounds and remains unchanged by zoom. The GPU refines closest-point candidates against the original callback, without connecting line segments. quality.samples (16–512, default 128) and quality.refinements (1–8, default 5) control this bounded numerical search. Change them with setQuality; setDomain changes the parameter interval without resetting the view. They open in 3D with perspective projection. Orthographic projection is also available; 2D always uses orthographic projection.",
           code: helixCode,
         },
         {
           title: "Shader appearance and navigation",
-          text: "Axes and ticks default to 1 CSS px. style and setStyle configure axisWidth, gridWidth, curveWidth, labelSize, grid, tickLabels and axisLabels. Widths stay independent of zoom and display density. Left-drag orbits in 3D, right-drag pans, and both buttons pan in 2D. Spatial axes and the ground lattice are implicit distance fields using the same camera as the curve.",
+          text: "Axes and ticks default to 1 CSS px. style and setStyle configure axisWidth, gridWidth, curveWidth, labelSize, grid, tickLabels and axisLabels. Widths stay independent of zoom and display density. lineStyle, dashPeriod and dashOffset define a procedural pattern in callback parameter coordinates, without cumulative path lengths. Left-drag orbits in 3D, right-drag pans, and both buttons pan in 2D. Spatial axes and the ground lattice are implicit distance fields using the same camera as the curve. Text uses X-GIS computeSDF encoding and its analytic antialiasing rule, with complete glyph padding at character boundaries.",
           code: `plot.setStyle({ axisWidth: 1, gridWidth: 0.5, curveWidth: 2, labelSize: 12, tickLabels: true });`,
         },
         {
@@ -205,7 +205,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "Style and axes options",
-          text: "Series styles use label, color, lineWidth, lineStyle, marker, markerSize and alpha. Procedural dashes repeat in parameter coordinates: parameter selects auto/x/index, dashPeriod sets the period, and dashOffset shifts it. Line styles are -, --, : and none. Markers are o, s and none. Axes can have linear or log xScale/yScale, fixed xLimits/yLimits, titles, labels, grids and legends.",
+          text: "Series styles use label, color, lineWidth, lineStyle, marker, markerSize and alpha. Procedural dashes repeat in parameter coordinates: parameter selects auto/x/index, dashPeriod sets the period, and dashOffset shifts it. Without an explicit dashPeriod, automatic density coarsens the parameter period by powers of two when zoomed out so rounded ends stay separated. Explicit periods retain fixed parameter spacing. Line styles are -, --, : and none. Markers are o, s and none. Axes can have linear or log xScale/yScale, fixed xLimits/yLimits, titles, labels, grids and legends.",
           code: `ax.plot(x, y, {\n  label: "Measurements", color: "#1677ff",\n  lineWidth: 2, lineStyle: "--", marker: "o", markerSize: 3,\n});\nax.set({ xScale: "log", xLimits: [1, 100], grid: true });`,
         },
         {
@@ -235,6 +235,10 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
             [
               "plot.setStyle(style)",
               "Configure CSS-pixel widths, label size and shader decorations without resetting the camera.",
+            ],
+            [
+              "plot.setDomain / domain / setQuality",
+              "Change or read the spatial parameter domain; configure GPU closest-point search without resetting the view.",
             ],
             [
               "plot.reset / redraw / destroy",
@@ -331,17 +335,17 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "스칼라 함수 표시",
-          text: "첫 스칼라 인수는 x입니다. 추가 인수는 갱신 가능한 매개변수입니다. 수학적 정의역을 콜백 안에서 처리하십시오. 크기가 1e18 이상인 반환값은 해당 점을 생략합니다. 위 설정처럼 curve.shade.ts의 매개변수 기본값을 지정합니다.",
+          text: "첫 스칼라 인수는 x입니다. 2D와 3D에서 보이는 평면 전체에 y − f(x) 암시적 필드를 직접 평가합니다. 카메라 범위는 함수의 정의역을 자르지 않습니다. 추가 인수는 갱신 가능한 매개변수입니다. 수학적 정의역을 콜백 안에서 처리하십시오. 크기가 1e18 이상인 반환값은 해당 점을 생략합니다. 위 설정처럼 curve.shade.ts의 매개변수 기본값을 지정합니다.",
           code: gpuCode,
         },
         {
           title: "공간 곡선 표시",
-          text: "매개변수 곡선 콜백은 vec3를 반환합니다. 첫 인수는 곡선의 매개변수입니다. x 범위는 매개변수 구간을 정하며, x/y 범위는 카메라 정규화에 사용합니다. 공간 곡선은 콜백의 유한한 구간을 프래그먼트 셰이더에서 거리장으로 평가하며 곡선 메시를 업로드하지 않습니다. Perspective 투영의 3D로 시작합니다. 3D에서는 Orthographic으로 전환할 수 있습니다. 2D는 항상 Orthographic을 사용합니다.",
+          text: "매개변수 곡선 콜백은 vec3를 반환합니다. 첫 인수는 곡선의 매개변수입니다. domain은 카메라와 독립된 매개변수 구간입니다. 기본값은 초기 x 범위의 복사본이며 줌으로 변하지 않습니다. GPU에서 원래 콜백의 최근접점을 수치 탐색하고 보정하며 점을 잇는 선분을 그리지 않습니다. quality.samples(16–512, 기본 128)와 quality.refinements(1–8, 기본 5)로 유한 수치 탐색의 정밀도를 조절합니다. setQuality와 setDomain은 카메라를 초기화하지 않고 설정을 갱신합니다. Perspective 투영의 3D로 시작합니다. 3D에서는 Orthographic으로 전환할 수 있습니다. 2D는 항상 Orthographic을 사용합니다.",
           code: helixCode,
         },
         {
           title: "셰이더 스타일과 탐색",
-          text: "축과 눈금의 기본 굵기는 1 CSS px입니다. style과 setStyle에서 axisWidth, gridWidth, curveWidth, labelSize, grid, tickLabels, axisLabels를 설정합니다. 굵기는 줌과 화면 배율에 영향을 받지 않습니다. 3D에서는 왼쪽 드래그로 회전하고 오른쪽 드래그로 이동하며, 2D에서는 양쪽 버튼으로 이동합니다. 공간 축과 바닥 격자는 곡선과 같은 카메라를 사용하는 암시적 거리장입니다.",
+          text: "축과 눈금의 기본 굵기는 1 CSS px입니다. style과 setStyle에서 axisWidth, gridWidth, curveWidth, labelSize, grid, tickLabels, axisLabels를 설정합니다. 굵기는 줌과 화면 배율에 영향을 받지 않습니다. lineStyle, dashPeriod, dashOffset은 콜백 매개변수 좌표에서 절차형 대시를 정의하며 경로 길이를 누적하지 않습니다. 3D에서는 왼쪽 드래그로 회전하고 오른쪽 드래그로 이동하며, 2D에서는 양쪽 버튼으로 이동합니다. 공간 축과 바닥 격자는 곡선과 같은 카메라를 사용하는 암시적 거리장입니다. 글자는 X-GIS computeSDF 인코딩과 크기별 안티앨리어싱 규칙을 사용하며 글자 경계의 SDF 여백을 보존합니다.",
           code: `plot.setStyle({ axisWidth: 1, gridWidth: 0.5, curveWidth: 2, labelSize: 12, tickLabels: true });`,
         },
         {
@@ -369,7 +373,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "계열 스타일과 축 옵션",
-          text: "계열에는 label, color, lineWidth, lineStyle, marker, markerSize, alpha를 지정합니다. 절차형 대시는 곡선 매개변수 좌표에서 반복하며 parameter(auto/x/index), dashPeriod, dashOffset으로 기준·주기·위상을 조절합니다. 선 종류는 -, --, :, none이며, 마커는 o, s, none입니다. xScale/yScale은 linear 또는 log이고 xLimits/yLimits로 범위를 고정합니다.",
+          text: "계열에는 label, color, lineWidth, lineStyle, marker, markerSize, alpha를 지정합니다. 절차형 대시는 곡선 매개변수 좌표에서 반복하며 parameter(auto/x/index), dashPeriod, dashOffset으로 기준·주기·위상을 조절합니다. dashPeriod를 생략하면 축소할 때 매개변수 주기를 2배 단위로 늘려 둥근 끝이 겹치지 않도록 합니다. 명시한 주기는 고정됩니다. 선 종류는 -, --, :, none이며, 마커는 o, s, none입니다. xScale/yScale은 linear 또는 log이고 xLimits/yLimits로 범위를 고정합니다.",
           code: `ax.plot(x, y, {\n  label: "Measurements", color: "#1677ff",\n  lineWidth: 2, lineStyle: "--", marker: "o", markerSize: 3,\n});\nax.set({ xScale: "log", xLimits: [1, 100], grid: true });`,
         },
         {
@@ -399,6 +403,10 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
             [
               "plot.setStyle(style)",
               "카메라를 초기화하지 않고 CSS px 단위의 굵기와 글자 크기, 격자·라벨 표시를 설정합니다.",
+            ],
+            [
+              "plot.setDomain / domain / setQuality",
+              "카메라와 독립된 공간 곡선 매개변수 구간을 읽거나 갱신하고 GPU 최근접점 탐색 정밀도를 조절합니다.",
             ],
             [
               "plot.reset / redraw / destroy",

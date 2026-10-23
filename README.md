@@ -252,11 +252,28 @@ export function sample(t: f32): vec3 {
 }
 ```
 
-Compile with `{ kind: 'parametric' }`. The x bounds supply the parameter interval, and x/y
-bounds supply camera normalization. Spatial plots open in 3D with perspective projection. Pass `projection: "orthographic"`
+Compile with `{ kind: 'parametric' }`. Set `domain: [start, end]` for the callback's parameter
+interval; its default is a copy of the initial x bounds. Camera bounds only control the view.
+Zooming and panning never change the parameter domain. Spatial plots open in 3D with perspective projection. Pass `projection: "orthographic"`
 for parallel projection, or call `plot.setProjection("orthographic")`. Two-dimensional plots
 always use orthographic projection. Switching mode preserves the selected 3D projection.
-The current renderer uses a bounded polyline; it does not draw implicit surfaces or meshes.
+Scalar graphs use the implicit field `y - f(x)` in both 2D and 3D. The spatial renderer
+intersects each camera ray with the graph's z=0 plane, then evaluates the function directly.
+There are no sampled endpoints, connecting segments or path vertex buffers for scalar graphs.
+They extend throughout the visible mathematical domain, including after zooming out. An exactly
+edge-on graph plane uses a bounded numerical callback search to handle its singular inverse
+projection. Arrays
+remain finite observations; host JavaScript callbacks passed to `ax.plot(x, callback)` remain
+sampled data and do not automatically become unbounded GPU functions.
+
+Arbitrary spatial callbacks use a separate bounded closest-point search. Candidate parameters
+are found on the GPU, then refined against the original projected callback. The renderer draws
+no connecting polyline. `quality: { samples: 128, refinements: 5 }` controls this numerical search;
+`plot.setQuality()` updates it, and `plot.setDomain()` changes the domain without resetting the
+camera. Higher-frequency trajectories may require more search samples (16–512, default 128).
+Refinements accept 1–8, default 5. This is a numerical distance approximation for arbitrary
+callbacks, rather than a promise of an exact analytic SDF. Scalar fields use four footprint
+samples for antialiasing; subpixel oscillations and f32 precision still limit resolved detail.
 
 ## GPU function API
 
@@ -265,14 +282,15 @@ The current renderer uses a bounded polyline; it does not draw implicit surfaces
 Relative imports use TypeShade's existing resolver. Extra scalar callback arguments match
 the declaration order of `parameters`. Their values must fit finite f32 numbers. Callbacks
 must guard their mathematical domain; returning a magnitude of at least `1e18` omits a point.
-`discontinuous: true` suppresses segment connections across detected jumps.
+`discontinuous: true` rejects locally detected jumps instead of drawing invented connections.
 
 `createPlot(canvas, program, options)` accepts bounds, backend (`auto`, `webgpu`, `webgl2`),
-mode, projection (`perspective` or `orthographic`), probe, parameter values, pixel ratio,
+mode, projection (`perspective` or `orthographic`), spatial callback domain and quality,
+style, probe, parameter values, pixel ratio,
 interaction enablement and an error callback. `plot.projection` reports the effective projection.
 Programs compiled before this camera feature retain orthographic rendering; recompile them
 to enable perspective projection.
-The returned plot provides `setMode`, `setProjection`, `setProbe`, `setParameters`, `setStyle`, `bounds`, `reset`, `redraw`
+The returned plot provides `setMode`, `setProjection`, `setProbe`, `setParameters`, `setStyle`, `setDomain`, `domain`, `setQuality`, `bounds`, `reset`, `redraw`
 and `destroy`. Unknown parameter names and non-finite values are rejected.
 
 Axis and tick strokes default to **1 CSS px**, independent of camera zoom and display density.
@@ -298,22 +316,34 @@ Widths accept 0–32 CSS px; zero hides the strokes. Labels accept 6–48 CSS px
 older programs to enable these settings. The shader projects world-coordinate tick multiples
 through the curve's camera for spatial grids and numeric labels, in both projection modes.
 Stroke outlines and rounded dash ends are analytic distance fields; text uses an offline IBM
-Plex signed distance atlas. Line, marker and bar fields use a fullscreen triangle per series, without host path
-tessellation. Increasing-x lines use GPU binary searches to limit local field evaluation. Spatial curves still approximate their callback with bounded segments.
+Plex signed distance atlas generated with X-GIS computeSDF and sampled with its 0.75 edge /
+physical-size antialiasing rule. Native 12/24/48px ASCII buckets preserve
+hinting and contour detail at different physical display sizes; rendering follows DPR up
+to four within the render budgets. Line, marker and bar fields use a fullscreen triangle per series, without host path
+tessellation. Increasing-x lines use GPU binary searches to limit local field evaluation. Spatial callbacks use bounded closest-point search against the callback itself.
+
+GPU function styles additionally support `lineStyle: "-" | "--" | ":"`, `dashPeriod`
+(default 0.2 parameter units) and `dashOffset` (default 0). Scalar graphs use x as their
+parameter; spatial callbacks use t. `plot.setStyle({ lineStyle: "--", dashPeriod: 0.5 })`
+updates the procedural pattern without recompilation or camera changes.
 
 Dashed data paths repeat in **curve parameter coordinates**, evaluated directly in the SDF.
 `parameter: "auto"` uses x for strictly increasing x data, and sample index otherwise. Select
-`"x"` or `"index"` explicitly when needed. `dashPeriod` is in those parameter units (default:
-1/60 of the parameter domain), and `dashOffset` shifts the pattern. The pattern stays attached
-to the curve while zooming or panning; its screen-pixel length varies with the projection and
-slope. Missing data splits the distance field without rephasing later samples. No cumulative
+`"x"` or `"index"` explicitly when needed. An explicit `dashPeriod` fixes the period in
+parameter units; `dashOffset` fixes its phase origin. Without an explicit period, automatic
+density starts at 1/60 of the parameter domain and coarsens by powers of two as the view
+shrinks, keeping round caps separated. The GPU derives this level from the viewport and
+resident data bounds, without arc-length accumulation. The phase origin stays anchored;
+automatic density changes the repeating period at level transitions. Explicit periods
+remain attached to the curve, with screen length varying by projection and slope; sufficiently
+small fixed periods can merge below pixel resolution. Missing data splits the distance field without rephasing later samples. No cumulative
 path-length buffer or prefix-scan pass is used. PNG export uses the same field and layout.
 
 ```ts
 ax.plot(x, Math.sin, { lineStyle: "--", parameter: "x", dashPeriod: 0.2 });
 ```
 
-Wheel input zooms around the cursor. Left-dragging tracks the pointer directly to pan a scalar plot or orbit a 3D plot. Right-dragging pans either mode; the canvas suppresses its context menu only while interaction is enabled. Rendering
+Wheel input zooms around the cursor in 2D and around the camera focus plane in 3D. Left-dragging tracks the pointer directly to pan a scalar plot or orbit a 3D plot. Right-dragging pans either mode; the canvas suppresses its context menu only while interaction is enabled. Rendering
 is coalesced to animation frames; dragging and wheel input do not restart eased transitions.
 Arrow keys move the view, `+`/`-` zoom, and Home resets the camera. `reset()` restores the
 initial plot settings. Reduced motion applies camera changes immediately. Idle plots do

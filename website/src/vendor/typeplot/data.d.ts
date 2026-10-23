@@ -10,7 +10,8 @@ export interface SeriesOptions {
     readonly lineStyle?: "-" | "--" | ":" | "none";
     /** Dash coordinate. Auto uses increasing x, otherwise sample index. */
     readonly parameter?: "auto" | "x" | "index";
-    /** Period in parameter units. Defaults to 1/60 of the parameter domain. */
+    /** Fixed period in parameter units. If omitted, automatic density starts at
+     * 1/60 of the domain and coarsens by powers of two when zoomed out. */
     readonly dashPeriod?: number;
     readonly dashOffset?: number;
     readonly marker?: "o" | "s" | "none";
@@ -55,7 +56,7 @@ export interface FigureOptions {
 export interface QuickPlotOptions extends FigureOptions, SeriesOptions, AxesOptions {
 }
 export interface SaveFigureOptions {
-    /** Output pixels per CSS pixel. Defaults to the display density, capped at two. */
+    /** Output pixels per CSS pixel. Defaults to the figure display density. */
     readonly pixelRatio?: number;
 }
 type Pair = [number, number];

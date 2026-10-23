@@ -123,7 +123,13 @@ export function createPlotInteraction(
         original.span[axis] * 1e-3,
         original.span[axis] * 1e3,
       );
-      if (!threeD) {
+      if (threeD) {
+        // Hold the focus plane under the pointer. Perspective parallax remains
+        // depth-dependent, while orthographic anchoring is exact.
+        const cursor = anchor[axis] - 0.5;
+        target.pan[axis] =
+          cursor - ((cursor - target.pan[axis]) * before) / after;
+      } else {
         target.center[axis] = limitCenter(
           axis,
           target.center[axis] + (anchor[axis] - 0.5) * (before - after),

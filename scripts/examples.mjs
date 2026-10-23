@@ -4,6 +4,7 @@ await mkdir("examples/generated", { recursive: true });
 for (const [name, options] of [
   ["curve", { parameters: { exponent: 2 } }],
   ["helix", { kind: "parametric" }],
+  ["sine", { parameters: { frequency: 1 } }],
 ]) {
   const fileName = `examples/${name}.shade.ts`;
   const program = compilePlot(await readFile(fileName, "utf8"), {
