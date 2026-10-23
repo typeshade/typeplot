@@ -1,0 +1,67 @@
+{
+  "name": "typeplot",
+  "version": "0.1.0",
+  "description": "GPU function plots with TypeShade callbacks, WebGPU and WebGL2",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/typeshade/typeplot.git"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./compiler": {
+      "types": "./dist/compiler.d.ts",
+      "import": "./dist/compiler.js"
+    },
+    "./shade": {
+      "typeshade": "./shaders/plot.shade.ts",
+      "default": "./shaders/plot.shade.ts"
+    },
+    "./interaction": {
+      "types": "./dist/interaction.d.ts",
+      "import": "./dist/interaction.js"
+    },
+    "./shaders": {
+      "types": "./dist/shaders.d.ts",
+      "import": "./dist/shaders.js"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "import": "./dist/vite.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "shaders",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "tsc --noEmit",
+    "format": "prettier --write src scripts examples docs README.md package.json tsconfig.json",
+    "examples": "node scripts/examples.mjs",
+    "pack": "npm pack"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@webgpu/types": "^0.1.72",
+    "esbuild": "^0.25.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.9.3",
+    "typeshade": "https://github.com/typeshade/typeshade.git#91c2fe31de045ebf0e5f2c333ac98b95cc460280",
+    "vite": "^6.4.5"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}
