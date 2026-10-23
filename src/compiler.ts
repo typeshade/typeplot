@@ -48,7 +48,10 @@ const reserved = new Set([
   "view3d",
   "appearance",
   "decorations",
+  "labelStyle",
+  "decorationOpacity",
   "parameterBounds",
+  "parameterMode",
   "curveQuality",
   "curvePattern",
 ]);

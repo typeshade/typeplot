@@ -1,3 +1,10 @@
+export interface PlotInteractionOptions {
+  /** Continue a released drag with exponential damping. Default true. */
+  readonly inertia?: boolean;
+  /** Double-click restores the home camera. Default true. */
+  readonly doubleClickReset?: boolean;
+}
+
 export interface PlotBounds {
   x: readonly [number, number];
   y: readonly [number, number];
@@ -32,6 +39,7 @@ export function createPlotInteraction(
   enabled = true,
   viewport: () => Pick<DOMRect, "left" | "top" | "width" | "height"> = () =>
     canvas.getBoundingClientRect(),
+  options: PlotInteractionOptions = {},
 ) {
   const win = canvas.ownerDocument.defaultView!;
   for (const axis of [initialBounds.x, initialBounds.y]) {
@@ -62,7 +70,20 @@ export function createPlotInteraction(
   let destroyed = false;
   let frame = 0;
   let started = 0;
-  let pointer: { id: number; x: number; y: number; pan: boolean } | null = null;
+  let pointer: {
+    id: number;
+    x: number;
+    y: number;
+    pan: boolean;
+    time: number;
+    velocity: Pair;
+  } | null = null;
+  let momentum: {
+    velocity: Pair;
+    pan: boolean;
+    last: number;
+    started: number;
+  } | null = null;
   const motion = win.matchMedia("(prefers-reduced-motion: reduce)");
   const oldTouchAction = canvas.style.touchAction;
   const oldTabIndex = canvas.getAttribute("tabindex");
@@ -96,6 +117,7 @@ export function createPlotInteraction(
     if (destroyed) return;
     if (frame) win.cancelAnimationFrame(frame);
     frame = 0;
+    momentum = null;
     if (motion.matches || immediate) {
       assign(target);
       onChange();
@@ -150,6 +172,9 @@ export function createPlotInteraction(
       clamp((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1),
       clamp(1 - (event.clientY - rect.top) / Math.max(rect.height, 1), 0, 1),
     ];
+    if (momentum) {
+      target = copy(current);
+    }
     zoom(Math.exp(clamp(event.deltaY * units * 0.002, -1, 1)), anchor, true);
   }
 
@@ -168,6 +193,8 @@ export function createPlotInteraction(
       x: event.clientX,
       y: event.clientY,
       pan: event.button === 2,
+      time: win.performance.now(),
+      velocity: [0, 0],
     };
     canvas.setPointerCapture(event.pointerId);
     canvas.focus({ preventScroll: true });
@@ -194,7 +221,21 @@ export function createPlotInteraction(
     );
     pointer.x = event.clientX;
     pointer.y = event.clientY;
-    if (threeD && !pointer.pan) rotate(dx * Math.PI, dy * Math.PI);
+    const now = win.performance.now();
+    const elapsed = Math.max((now - pointer.time) / 1000, 0.001);
+    // Low-pass recent input velocity; positions themselves always track directly.
+    const weight = 1 - Math.exp(-elapsed / 0.035);
+    pointer.velocity[0] +=
+      (clamp(dx / elapsed, -2, 2) - pointer.velocity[0]) * weight;
+    pointer.velocity[1] +=
+      (clamp(dy / elapsed, -2, 2) - pointer.velocity[1]) * weight;
+    pointer.time = now;
+    dragBy(dx, dy, pointer.pan);
+    change(true);
+  }
+
+  function dragBy(dx: number, dy: number, pan: boolean) {
+    if (threeD && !pan) rotate(dx * Math.PI, dy * Math.PI);
     else if (threeD) {
       target.pan[0] += dx;
       target.pan[1] -= dy;
@@ -202,7 +243,42 @@ export function createPlotInteraction(
       target.center[0] = limitCenter(0, target.center[0] - dx * target.span[0]);
       target.center[1] = limitCenter(1, target.center[1] + dy * target.span[1]);
     }
-    change(true);
+  }
+
+  function inertiaTick(time: number) {
+    frame = 0;
+    if (destroyed || !momentum || motion.matches) {
+      momentum = null;
+      return;
+    }
+    // Integrate exponential damping exactly, independently of frame rate.
+    // A paused/background tab terminates motion instead of resuming a stale fling.
+    const elapsed = (time - momentum.last) / 1000;
+    if (elapsed > 0.2) {
+      momentum = null;
+      return;
+    }
+    const dt = Math.max(0, elapsed);
+    const decay = Math.exp(-8.5 * dt);
+    const travel = (1 - decay) / 8.5;
+    dragBy(
+      momentum.velocity[0] * travel,
+      momentum.velocity[1] * travel,
+      momentum.pan,
+    );
+    momentum.velocity[0] *= decay;
+    momentum.velocity[1] *= decay;
+    momentum.last = time;
+    assign(target);
+    const active = momentum;
+    onChange();
+    if (destroyed || momentum !== active) return;
+    if (
+      Math.hypot(...momentum.velocity) > 0.003 &&
+      time - momentum.started < 1200
+    )
+      frame = win.requestAnimationFrame(inertiaTick);
+    else momentum = null;
   }
 
   function contextmenu(event: MouseEvent) {
@@ -211,9 +287,27 @@ export function createPlotInteraction(
 
   function up(event: PointerEvent) {
     if (pointer?.id !== event.pointerId) return;
+    const released = pointer;
     pointer = null;
     if (canvas.hasPointerCapture(event.pointerId))
       canvas.releasePointerCapture(event.pointerId);
+    const now = win.performance.now();
+    if (
+      event.type === "pointerup" &&
+      options.inertia !== false &&
+      !motion.matches &&
+      now - released.time < 80 &&
+      Math.hypot(...released.velocity) > 0.02
+    ) {
+      if (frame) win.cancelAnimationFrame(frame);
+      momentum = {
+        velocity: [...released.velocity],
+        pan: released.pan,
+        last: now,
+        started: now,
+      };
+      frame = win.requestAnimationFrame(inertiaTick);
+    }
   }
 
   function reset() {
@@ -222,8 +316,20 @@ export function createPlotInteraction(
     change();
   }
 
+  function doubleClick(event: MouseEvent) {
+    if (event.button !== 0 || options.doubleClickReset === false) return;
+    reset();
+    event.preventDefault();
+  }
+
   function keydown(event: KeyboardEvent) {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.key === "Escape") {
+      target = copy(current);
+      change(true);
+      event.preventDefault();
+      return;
+    }
     const directions: Record<string, Pair> = {
       ArrowLeft: [-1, 0],
       ArrowRight: [1, 0],
@@ -262,6 +368,7 @@ export function createPlotInteraction(
     canvas.addEventListener("lostpointercapture", up);
     canvas.addEventListener("keydown", keydown);
     canvas.addEventListener("contextmenu", contextmenu);
+    canvas.addEventListener("dblclick", doubleClick);
   }
   motion.addEventListener("change", motionChanged);
 
@@ -310,6 +417,7 @@ export function createPlotInteraction(
       original.span = [bounds.x[1] - bounds.x[0], bounds.y[1] - bounds.y[0]];
       if (frame) win.cancelAnimationFrame(frame);
       frame = 0;
+      momentum = null;
       target = copy(original);
       target.blend[0] = threeD ? 1 : 0;
       assign(target);
@@ -331,6 +439,7 @@ export function createPlotInteraction(
       if (destroyed) return;
       destroyed = true;
       if (frame) win.cancelAnimationFrame(frame);
+      momentum = null;
       if (pointer && canvas.hasPointerCapture(pointer.id))
         canvas.releasePointerCapture(pointer.id);
       pointer = null;
@@ -342,6 +451,7 @@ export function createPlotInteraction(
       canvas.removeEventListener("lostpointercapture", up);
       canvas.removeEventListener("keydown", keydown);
       canvas.removeEventListener("contextmenu", contextmenu);
+      canvas.removeEventListener("dblclick", doubleClick);
       motion.removeEventListener("change", motionChanged);
       if (enabled) {
         canvas.style.touchAction = oldTouchAction;

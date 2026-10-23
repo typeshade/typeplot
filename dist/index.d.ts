@@ -1,3 +1,5 @@
+export { ViewControl } from "./controls.js";
+export type { PlotControl, ControlPosition } from "./controls.js";
 import type { Plot, PlotOptions, PlotProgram } from "./types.js";
 import type { Figure, NumericData, QuickPlotOptions } from "./data.js";
 export { figure, subplots, linspace, Figure, Axes, Series } from "./data.js";

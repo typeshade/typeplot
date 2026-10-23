@@ -1,5 +1,5 @@
 "use typeshade";
-import { glyphCoverage, tickNumber, pixelWidth } from "./font.shade.ts";
+import { glyphCoverage, glyphLayers, tickNumberLayers, numberPlate, numberWidth, tickLevels, tickOpacity, pixelWidth } from "./font.shade.ts";
 
 class DataUniforms {
   resolution: vec2;
@@ -7,6 +7,7 @@ class DataUniforms {
   span: vec2;
   logarithmic: vec2;
   grid: f32;
+  labelStyle: vec4;
   layer: f32;
   background: vec4;
   legend: vec4;
@@ -30,7 +31,7 @@ class SeriesUniforms {
 }
 declare const s: uniform<SeriesUniforms>;
 declare const points: storage<array<f32>>;
-class TextUniforms { color: vec4; }
+class TextUniforms { color: vec4; box: vec4; }
 declare const text: uniform<TextUniforms>;
 
 class Surface { @builtin("position") position: vec4; @location(0) uv: vec2; }
@@ -49,12 +50,21 @@ function line(p: vec2, a: vec2, b: vec2, radius: f32): f32 {
   const aa = pixelWidth() * 0.5;
   return 1 - smoothstep(max(0, radius - aa), radius + aa, length(p - a - t * d));
 }
-function tickSpacing(span: f32, size: f32, logarithmic: f32): f32 {
-  const raw = span / max(4, floor(size / 80));
-  if (logarithmic > 0 && span >= 1) return max(1, ceil(raw));
-  const unit = pow(10, floor(log2(max(raw, 1e-30)) / log2(10)));
-  const fraction = raw / unit;
-  return (fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10) * unit;
+function dataTickLevels(lower: f32, span: f32, pixels: f32, logarithmic: f32, horizontal: bool): vec3 {
+  const size = u.labelStyle.x;
+  const rough = span * size * 4 / max(pixels, 1);
+  let gap = size * 2.6;
+  if (horizontal) {
+    const low = logarithmic > 0 ? pow(10, lower) : lower;
+    const high = logarithmic > 0 ? pow(10, lower + span) : lower + span;
+    const step = logarithmic > 0 ? max(low * (pow(10, min(rough, 20)) - 1), 1e-30) : rough;
+    gap = max(size * 3.5, max(numberWidth(low, step, size), numberWidth(high, step, size)) + size * 1.3);
+  }
+  let raw = span * gap / max(pixels * u.labelStyle.y, 1);
+  // Wide log views use a nested integer-decade lattice. Sub-decade views use
+  // their actual adjacent value difference when formatting labels.
+  if (logarithmic > 0 && span >= 2) raw = max(raw, 1);
+  return tickLevels(raw);
 }
 
 @vertex export function surfaceVertex(@builtin("vertex_index") i: u32): Surface {
@@ -67,32 +77,50 @@ function tickSpacing(span: f32, size: f32, logarithmic: f32): f32 {
 @fragment export function axesFragment(v: Surface): vec4 {
   const p = vec2(v.uv.x, 1 - v.uv.y) * u.resolution;
   const size = extent();
-  const lo = vec2(76, 42);
-  const hi = lo + size;
+  const lo = vec2(76, 42), hi = lo + size;
   const inside = p.x >= lo.x && p.x <= hi.x && p.y >= lo.y && p.y <= hi.y;
   const value = u.lower + vec2((p.x - lo.x) / size.x, 1 - (p.y - lo.y) / size.y) * u.span;
-  const spacing = vec2(tickSpacing(u.span.x, size.x, u.logarithmic.x), tickSpacing(u.span.y, size.y, u.logarithmic.y));
-  const nearest = floor(value / spacing + 0.5) * spacing;
-  const tick = lo + vec2((nearest.x - u.lower.x) / u.span.x, 1 - (nearest.y - u.lower.y) / u.span.y) * size;
-  const grid = max(1 - smoothstep(0.25, 1, abs(p.x - tick.x)), 1 - smoothstep(0.25, 1, abs(p.y - tick.y)));
-  if (u.layer < 0.5) {
-    const color = inside && u.grid > 0 ? mix(u.background.rgb, vec3(0.89, 0.91, 0.93), grid) : u.background.rgb;
-    return vec4(color, u.background.a);
-  }
+  const xLevels = dataTickLevels(u.lower.x, u.span.x, size.x, u.logarithmic.x, true);
+  const yLevels = dataTickLevels(u.lower.y, u.span.y, size.y, u.logarithmic.y, false);
+  let grid = 0;
+  let labels = vec3(0);
   let coverage = max(max(line(p, lo, vec2(hi.x, lo.y), 0.5), line(p, lo, vec2(lo.x, hi.y), 0.5)), max(line(p, hi, vec2(lo.x, hi.y), 0.5), line(p, hi, vec2(hi.x, lo.y), 0.5)));
-  if (tick.x >= lo.x - 0.01 && tick.x <= hi.x + 0.01) {
-    coverage = max(coverage, line(p, vec2(tick.x, hi.y), vec2(tick.x, hi.y + 5), 0.5));
-    const n = u.logarithmic.x > 0 ? pow(10, nearest.x) : nearest.x;
-    const step = u.logarithmic.x > 0 ? max(n, 1e-30) : spacing.x;
-    coverage = max(coverage, tickNumber(p - vec2(tick.x, hi.y + 6), n, step, 0.5));
+  // Query coarse labels independently: their full glyphs can span several fine
+  // Voronoi cells. Selecting only the nearest fine tick clips/ghosts the text.
+  for (let level = 0; level < 2; level++) {
+    const spacing = level == 0 ? vec2(xLevels.x, yLevels.x) : vec2(xLevels.y, yLevels.y);
+    const nearest = floor(value / spacing + 0.5) * spacing;
+    const tick = lo + vec2((nearest.x - u.lower.x) / u.span.x, 1 - (nearest.y - u.lower.y) / u.span.y) * size;
+    const weights = level == 0 ? vec2(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, yLevels)) : vec2(1);
+    grid = max(grid, max(line(p, vec2(tick.x, lo.y), vec2(tick.x, hi.y), 0.5) * weights.x, line(p, vec2(lo.x, tick.y), vec2(hi.x, tick.y), 0.5) * weights.y));
+    if (u.layer > 0.5) {
+      if (tick.x >= lo.x - 0.01 && tick.x <= hi.x + 0.01) {
+        coverage = max(coverage, line(p, vec2(tick.x, hi.y), vec2(tick.x, hi.y + 5), 0.5) * weights.x);
+        const n = u.logarithmic.x > 0 ? pow(10, nearest.x) : nearest.x;
+        const step = u.logarithmic.x > 0 ? max(n * (pow(10, xLevels.x) - 1), 1e-30) : xLevels.x;
+        const width = numberWidth(n, step, u.labelStyle.x);
+        const room = min(tick.x - width * 0.5 - 4, u.resolution.x - tick.x - width * 0.5 - 4);
+        const fit = smoothstep(width + 6, width + 14, spacing.x / u.span.x * size.x);
+        const opacity = weights.x * fit * smoothstep(0, 5, room);
+        const local = p - vec2(tick.x, hi.y + 6);
+        labels = max(labels, vec3(tickNumberLayers(local, n, step, 0.5, u.labelStyle.x, u.labelStyle.z), numberPlate(local, n, step, 0.5, u.labelStyle.x) * u.labelStyle.w) * opacity);
+      }
+      if (tick.y >= lo.y - 0.01 && tick.y <= hi.y + 0.01) {
+        coverage = max(coverage, line(p, vec2(lo.x - 5, tick.y), vec2(lo.x, tick.y), 0.5) * weights.y);
+        const n = u.logarithmic.y > 0 ? pow(10, nearest.y) : nearest.y;
+        const step = u.logarithmic.y > 0 ? max(n * (pow(10, yLevels.x) - 1), 1e-30) : yLevels.x;
+        const width = numberWidth(n, step, u.labelStyle.x);
+        const fit = smoothstep(u.labelStyle.x * 1.6, u.labelStyle.x * 2.2, spacing.y / u.span.y * size.y);
+        const opacity = weights.y * fit * smoothstep(0, 5, lo.x - 13 - width);
+        const local = p - vec2(lo.x - 9, tick.y - u.labelStyle.x * 0.75);
+        labels = max(labels, vec3(tickNumberLayers(local, n, step, 1, u.labelStyle.x, u.labelStyle.z), numberPlate(local, n, step, 1, u.labelStyle.x) * u.labelStyle.w) * opacity);
+      }
+    }
   }
-  if (tick.y >= lo.y - 0.01 && tick.y <= hi.y + 0.01) {
-    coverage = max(coverage, line(p, vec2(lo.x - 5, tick.y), vec2(lo.x, tick.y), 0.5));
-    const n = u.logarithmic.y > 0 ? pow(10, nearest.y) : nearest.y;
-    const step = u.logarithmic.y > 0 ? max(n, 1e-30) : spacing.y;
-    coverage = max(coverage, tickNumber(p - vec2(lo.x - 9, tick.y - 8), n, step, 1));
-  }
-  let color = vec4(0.2, 0.26, 0.34, coverage);
+  if (u.layer < 0.5) return vec4(inside ? mix(u.background.rgb, vec3(0.89, 0.91, 0.93), grid * u.grid) : u.background.rgb, u.background.a);
+  const alpha = max(max(coverage, labels.y), labels.z * 0.94);
+  const ink = max(coverage, labels.x);
+  let color = vec4(mix(u.background.rgb, vec3(0.2, 0.26, 0.34), ink / max(alpha, 1e-20)), alpha);
   if (u.legend.z > 0 && p.x >= u.legend.x && p.y >= u.legend.y && p.x <= u.legend.x + u.legend.z && p.y <= u.legend.y + u.legend.w) color = vec4(1, 1, 1, 0.96);
   if (u.focus > 0 && min(min(p.x, p.y), min(u.resolution.x - p.x, u.resolution.y - p.y)) < 2) color = vec4(0.09, 0.42, 0.92, 1);
   return color;
@@ -238,4 +266,19 @@ function lowerBound(value: f32): u32 {
   const p = origin + (info.z > 0 ? vec2(local.y, -local.x) : local);
   return { position: clipPosition(p), local, code: u32(info.x), size };
 }
-@fragment export function textFragment(v: Letter): vec4 { return vec4(text.color.rgb, text.color.a * glyphCoverage(v.local, i32(v.code), v.size)); }
+@fragment export function textFragment(v: Letter): vec4 {
+  const layers = glyphLayers(v.local, i32(v.code), v.size, u.labelStyle.z);
+  return vec4(mix(u.background.rgb, text.color.rgb, layers.x / max(layers.y, 1e-20)), text.color.a * layers.y);
+}
+
+/** Layout supplies a rectangle only; its rounded field and AA are shader evaluated. */
+@fragment export function labelPlateFragment(v: Surface): vec4 {
+  const p = vec2(v.uv.x, 1 - v.uv.y) * u.resolution;
+  const q = abs(p - text.box.xy) - text.box.zw + vec2(3);
+  const distance = length(max(q, vec2(0))) + min(max(q.x, q.y), 0) - 3;
+  const aa = pixelWidth() * 0.5;
+  const coverage = 1 - smoothstep(-aa, aa, distance);
+  const border = 1 - smoothstep(-0.7 - aa, -0.7 + aa, distance);
+  const fill = mix(u.background.rgb, vec3(0.995), 0.8);
+  return vec4(mix(vec3(0.8, 0.84, 0.9), fill, border), coverage * 0.94);
+}

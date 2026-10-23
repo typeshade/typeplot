@@ -17,6 +17,7 @@ export interface RenderAxes {
         y: readonly [number, number];
     };
     readonly settings: AxesOptions;
+    readonly gridOpacity: number;
     readonly series: readonly RenderSeries[];
     readonly focused: boolean;
 }
@@ -39,6 +40,7 @@ export declare class GpuRenderer {
     private axes;
     private series;
     private text;
+    private labelPlate;
     private glyphs;
     private device?;
     private samples;

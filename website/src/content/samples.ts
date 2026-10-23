@@ -37,7 +37,7 @@ import { createPlot } from "typeplot";
 import helix from "./helix.shade.ts?plot=3d";
 const plot = await createPlot(canvas, helix, {
   bounds: { x: [-6.28, 6.28], y: [-1.25, 1.25] },
-  domain: [-6.28, 6.28],
+  domain: [-Infinity, Infinity],
   quality: { samples: 128, refinements: 5 },
 });`;
 export function exampleCode(

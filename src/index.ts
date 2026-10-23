@@ -1,3 +1,7 @@
+import { PlotControlHost } from "./controls.js";
+export { ViewControl } from "./controls.js";
+export type { PlotControl, ControlPosition } from "./controls.js";
+import { OpacityFade } from "./fade.js";
 import {
   createRuntime,
   type Pack,
@@ -56,7 +60,10 @@ const RESERVED = new Set([
   "view3d",
   "appearance",
   "decorations",
+  "labelStyle",
+  "decorationOpacity",
   "parameterBounds",
+  "parameterMode",
   "curveQuality",
   "curvePattern",
 ]);
@@ -196,16 +203,41 @@ export async function createPlot(
       );
     if (!Array.isArray(value) || value.length !== 2)
       throw new TypeError("domain needs two endpoints.");
-    value.forEach((n) => finite(n, "domain"));
+    value.forEach((n) => {
+      if (
+        typeof n !== "number" ||
+        Number.isNaN(n) ||
+        (Number.isFinite(n) && Math.abs(n) > MAX_F32)
+      )
+        throw new RangeError(
+          "domain endpoints must be real f32 values or infinities.",
+        );
+    });
     if (
       !(value[1] > value[0]) ||
-      !Number.isFinite(value[1] - value[0]) ||
-      value[1] - value[0] > MAX_F32
+      (Number.isFinite(value[0]) &&
+        Number.isFinite(value[1]) &&
+        value[1] - value[0] > MAX_F32)
     )
-      throw new RangeError("domain must be finite and increasing.");
+      throw new RangeError(
+        "domain must be increasing; infinite endpoints are supported.",
+      );
+    if (
+      (!Number.isFinite(value[0]) || !Number.isFinite(value[1])) &&
+      !supportsUnbounded
+    )
+      throw new Error(
+        "Recompile this program to use unbounded parameter domains.",
+      );
     return [value[0], value[1]];
   };
-  let domain: [number, number] = [...bounds.x];
+  const supportsUnbounded =
+    uniformLayout?.kind === "struct" &&
+    uniformLayout.fields.some((field) => field.name === "parameterMode");
+  let domain: [number, number] =
+    program.kind === "parametric" && supportsUnbounded
+      ? [-Infinity, Infinity]
+      : [...bounds.x];
   if (options.domain !== undefined) {
     checkFields();
     domain = checkedDomain(options.domain);
@@ -245,6 +277,9 @@ export async function createPlot(
     dashPeriod: 0.2,
     dashOffset: 0,
     labelSize: 11,
+    tickDensity: 1,
+    labelHalo: 0.8,
+    labelBackground: false,
     grid: true,
     tickLabels: true,
     axisLabels: true,
@@ -272,7 +307,19 @@ export async function createPlot(
               `${key} must be ${key === "dashPeriod" ? "at least 1e-7" : "finite"}.`,
             );
         }
-      } else if (["grid", "tickLabels", "axisLabels"].includes(key)) {
+      } else if (key === "tickDensity" || key === "labelHalo") {
+        const low = key === "tickDensity" ? 0.25 : 0;
+        const high = key === "tickDensity" ? 4 : 2;
+        if (
+          typeof setting !== "number" ||
+          !Number.isFinite(setting) ||
+          setting < low ||
+          setting > high
+        )
+          throw new RangeError(`${key} must be between ${low} and ${high}.`);
+      } else if (
+        ["grid", "tickLabels", "axisLabels", "labelBackground"].includes(key)
+      ) {
         if (typeof setting !== "boolean")
           throw new TypeError(`${key} must be a boolean.`);
       } else if (
@@ -292,6 +339,10 @@ export async function createPlot(
     Object.assign(style, options.style);
   }
   const initialStyle = { ...style };
+  const decorationKeys = ["grid", "tickLabels", "axisLabels"] as const;
+  const decorationFades = decorationKeys.map(
+    (key) => new OpacityFade(style[key] ? 1 : 0),
+  );
   const original = {
     width: canvas.width,
     height: canvas.height,
@@ -315,6 +366,7 @@ export async function createPlot(
   let glyphs: Texture | undefined;
   let context: GPUCanvasContext | WebGL2RenderingContext | undefined;
   let controller: ReturnType<typeof createPlotInteraction> | undefined;
+  let controls: PlotControlHost | undefined;
   let observer: ResizeObserver | undefined;
   let destroyed = false;
   let dirty = false;
@@ -335,6 +387,8 @@ export async function createPlot(
       scheduled = win.requestAnimationFrame(() => {
         scheduled = 0;
         void redraw().catch(report);
+        if (decorationFades.some((fade) => fade.active(win.performance.now())))
+          requestDraw();
       });
   };
 
@@ -360,6 +414,7 @@ export async function createPlot(
     if (scheduled) win!.cancelAnimationFrame(scheduled);
     observer?.disconnect();
     win!.removeEventListener("resize", requestDraw);
+    controls?.destroy();
     controller?.destroy();
     if (rt?.tier === "webgpu")
       (context as GPUCanvasContext | undefined)?.unconfigure();
@@ -433,9 +488,12 @@ export async function createPlot(
       bounds,
       requestDraw,
       options.interactive !== false,
+      undefined,
+      { inertia: options.inertia, doubleClickReset: options.doubleClickReset },
     );
     drawFrame = async () => {
       if (destroyed) return;
+      controls?.update();
       const box = canvas.getBoundingClientRect();
       if (box.width <= 0 || box.height <= 0) return;
       // Keep an intrinsic canvas at its CSS size when its backing store gains pixels.
@@ -475,7 +533,16 @@ export async function createPlot(
         ...parameters,
         ...(supportsFields
           ? {
-              parameterBounds: domain,
+              parameterBounds: domain.map((endpoint) =>
+                Number.isFinite(endpoint) ? endpoint : 0,
+              ),
+              ...(supportsUnbounded
+                ? {
+                    parameterMode:
+                      (Number.isFinite(domain[0]) ? 0 : 1) |
+                      (Number.isFinite(domain[1]) ? 0 : 2),
+                  }
+                : {}),
               curveQuality: [quality.samples, quality.refinements],
               curvePattern: [
                 style.lineStyle === "-" ? 0 : 1,
@@ -494,10 +561,27 @@ export async function createPlot(
                 style.curveWidth,
                 style.labelSize,
               ],
+              labelStyle: [
+                style.tickDensity,
+                style.labelHalo,
+                style.labelBackground ? 1 : 0,
+                0,
+              ],
+              decorationOpacity: decorationFades.map((fade) =>
+                fade.value(win.performance.now()),
+              ),
               decorations:
-                (style.grid ? 1 : 0) |
-                (style.tickLabels ? 2 : 0) |
-                (style.axisLabels ? 4 : 0),
+                (style.grid || decorationFades[0]!.active(win.performance.now())
+                  ? 1
+                  : 0) |
+                (style.tickLabels ||
+                decorationFades[1]!.active(win.performance.now())
+                  ? 2
+                  : 0) |
+                (style.axisLabels ||
+                decorationFades[2]!.active(win.performance.now())
+                  ? 4
+                  : 0),
             }
           : {}),
         plotCenter: controller!.value("plotCenter"),
@@ -538,7 +622,34 @@ export async function createPlot(
     }
     win.addEventListener("resize", requestDraw);
     await redraw();
-    return {
+    const plot: Plot = {
+      kind: program.kind,
+      getMode() {
+        alive();
+        return mode;
+      },
+      getProjection() {
+        alive();
+        return projection;
+      },
+      getContainer() {
+        alive();
+        return controls!.container();
+      },
+      addControl(control, position) {
+        alive();
+        controls!.add(control, position);
+        return plot;
+      },
+      removeControl(control) {
+        alive();
+        controls!.remove(control);
+        return plot;
+      },
+      resetView() {
+        alive();
+        controller!.reset();
+      },
       backend: runtime.tier,
       get projection() {
         return mode === "2d" ? "orthographic" : projection;
@@ -554,6 +665,14 @@ export async function createPlot(
         alive();
         checkStyle(value);
         Object.assign(style, value);
+        decorationKeys.forEach((key, i) =>
+          decorationFades[i]!.set(
+            style[key] ? 1 : 0,
+            win.performance.now(),
+            win.matchMedia?.("(prefers-reduced-motion: reduce)").matches ??
+              false,
+          ),
+        );
         requestDraw();
       },
       setDomain(value) {
@@ -608,6 +727,13 @@ export async function createPlot(
         domain = [...initialDomain];
         Object.assign(quality, initialQuality);
         Object.assign(style, initialStyle);
+        decorationKeys.forEach((key, i) =>
+          decorationFades[i]!.set(
+            style[key] ? 1 : 0,
+            win.performance.now(),
+            true,
+          ),
+        );
         Object.assign(parameters, initialParameters);
         mode = initialMode;
         projection = initialProjection;
@@ -618,6 +744,8 @@ export async function createPlot(
       redraw,
       destroy,
     };
+    controls = new PlotControlHost(canvas, plot);
+    return plot;
   } catch (error) {
     destroy();
     throw error;

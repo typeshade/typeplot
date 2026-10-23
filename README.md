@@ -304,12 +304,16 @@ const plot = await createPlot(canvas, program, {
     gridWidth: 1,
     curveWidth: 2,
     labelSize: 11,
+    tickDensity: 1,
+    labelHalo: 0.8,
+    labelBackground: false,
     grid: true,
     tickLabels: true,
     axisLabels: true,
   },
 });
 plot.setStyle({ gridWidth: 0.5, labelSize: 13 });
+plot.setStyle({ tickDensity: 1.25, labelHalo: 0.8, labelBackground: false });
 ```
 
 Widths accept 0–32 CSS px; zero hides the strokes. Labels accept 6–48 CSS px. Recompile
@@ -386,3 +390,73 @@ provides a generic name. Existing roles are preserved, with `img` used as the de
 Add descriptive fallback content inside the canvas and use `aria-describedby` for keyboard
 instructions or a textual explanation. A canvas label does not replace an accessible table
 or mathematical description of the underlying data. Attributes are restored on destruction.
+
+
+### Adaptive grid and label layout
+
+Ticks use nested world-coordinate decimal lattices. Intermediate ticks fade continuously
+with zoom while common multiples stay visible. Spatial labels query the infinite projected
+axes, independently of the curve domain. Projected label dimensions control density and
+collision fading; nearly coincident x/z axes give x labels priority. Edge and origin guards
+reduce clipped and duplicate labels. Extremely compressed or edge-on axes can hide labels.
+
+GPU `style` / `setStyle` and data `Axes.set` expose `labelSize`, `tickDensity` (0.25–4),
+`labelHalo` (0–2 CSS px, limited by available glyph padding), and `labelBackground`.
+Labels default to a thin halo with no box. Optional rounded backgrounds cover numeric labels
+and axis names; data titles and axis descriptions use the same setting. All backgrounds, glyph halos, grids and ticks are
+TypeShade distance fields. Log-axis precision follows the adjacent value difference.
+
+Grid visibility fades over 160 ms; GPU numeric/axis-label visibility fades too. Reduced-motion
+preferences disable these timed fades. Camera dragging remains direct. Static PNG exports
+use the requested final grid visibility, regardless of an in-progress display fade.
+
+See [grid and label implementation notes](docs/grid-label-layout.md).
+
+
+### Camera gestures
+
+Drag follows the pointer directly. On release, recent drag velocity continues with
+frame-rate-independent exponential damping, for 2D panning, 3D orbit and right-button pan.
+A new pointer press, wheel input, Escape, reset, or a mode change interrupts momentum.
+Reduced-motion preferences disable inertia. Set `inertia: false` in `createPlot` or figure
+options to disable it explicitly. Double-click restores the home camera without changing
+data or style; `doubleClickReset: false` disables this gesture. Home also resets the view.
+
+
+### Unbounded parameter domains
+
+Newly compiled spatial programs default to `domain: [-Infinity, Infinity]`. One-sided
+infinite domains are accepted too. Finite endpoints continue to clip explicitly.
+Unbounded numerical search compactifies the real parameter line into a finite query
+coordinate and concentrates detail near a local camera-focus estimate. It does not create
+an infinite path mesh or send IEEE infinities into GPU uniforms. `plot.domain()` reports
+the mathematical domain; `setDomain` changes it independently of the camera.
+
+This is numerical coverage, not a guaranteed global solution for arbitrary callbacks.
+The tails approach infinity, but f32 precision (compact-coordinate endpoint guard 1e-5),
+local focus estimation and finite `quality.samples` bound resolved detail. Increasing
+quality or supplying a finite domain may be necessary for highly oscillatory/re-entering
+curves. Scalar functions still evaluate their implicit field across the entire visible
+plane; input arrays remain finite observations. Legacy programs must be recompiled to
+support unbounded spatial domains.
+
+
+### HTML controls and optional HTML legends
+
+```ts
+import { ViewControl } from "typeplot";
+const view = new ViewControl();
+plot.addControl(view, "top-right");
+// plot.removeControl(view);
+```
+
+Controls implement `onAdd(plot): HTMLElement`, `onRemove(plot): void` and optionally
+`onUpdate(plot)`. Positions are top-left, top-right, bottom-left and bottom-right. Controls
+are cleaned up on removal/destruction. `ViewControl` provides 2D/3D, projection and camera
+reset; parametric programs remain 3D. `getMode`, `getProjection`, `getContainer` and
+`resetView` are available to custom controls. `resetView` preserves style and parameters.
+
+Data axes can opt into an HTML legend with `ax.legend("html")` or
+`ax.set({ legend: "html" })`. `true` retains the default GPU legend and `false` hides it.
+HTML labels use textContent, track series metadata and resize with their subplot. PNG
+export renders the corresponding legend on the GPU, independently of DOM controls.

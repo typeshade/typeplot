@@ -659,7 +659,7 @@ Additional information: BADCLIENT: Bad error code, ${P} not found in range ${p}.
 `,Yt,{start:Tr,end:Tr})},La=wB(Ze.sf);Wp(`"use typeshade";
 `,Ze,{start:La?.getStart(Ze.sf)??0,end:La?.getEnd()??0});let Qn=Yt=>Sr.get(Yt)?.fixedName==="binding";for(let Yt of v)if(dp.has(Yt))for(let jn of Yt.sf.statements)Qn(jn)&&Jd(Yt,jn)&&es(Yt,jn);let ja=new Set,Ca=Yt=>{if(!ja.has(Yt)){ja.add(Yt);for(let jn of Yt.imports)Ca(jn);if(dp.has(Yt))for(let jn of Yt.sf.statements)!Qn(jn)&&Jd(Yt,jn)&&es(Yt,jn)}};for(let Yt of v)Yt.root&&Yt!==Ze&&Ca(Yt);Ca(Ze);for(let Yt of Yf)Wp(`${Yt.text}
 `,Ze,{start:Yt.at.getStart(Ze.sf),end:Yt.at.getEnd()});let Mc=Yt=>{let jn=0,Gr=qi.length-1;for(;jn<=Gr;){let Tr=jn+Gr>>1,Ya=qi[Tr];if(Yt<Ya.at)Gr=Tr-1;else if(Yt>=Ya.at+Ya.length)jn=Tr+1;else return Ya}},lo=new Map,Xl=ct(dp);for(let[Yt,jn]of v.entries())lo.set(jn,Xl[Yt]);let hs=(Yt,jn)=>{let Gr=Mc(Yt)??Mc(Yt-1);if(Gr===void 0||Gr.file===void 0)return;let Tr=Gr.anchor!==void 0?Gr.anchor.start:Gr.from+Math.min(Yt-Gr.at,Gr.length),Ya=(Zr,ks)=>Zr.anchor!==void 0?Zr.anchor.end:Zr.from+Math.min(ks-Zr.at,Zr.length),Ir=Tr;if(jn>Yt){let Zr=Mc(jn-1);Ir=Zr!==void 0&&Zr.file===Gr.file?Ya(Zr,jn):Ya(Gr,Gr.at+Gr.length)}return{file:lo.get(Gr.file),start:Tr,end:Math.max(Tr,Ir)}};return l.sort((Yt,jn)=>Number(sut(jn))-Number(sut(Yt))),{fatal:!1,diagnostics:l,fileName:ht,source:Ns,files:Xl,exports:$l.map(Yt=>({name:Yt.name,emitted:Ed(Yt.unit,Yt.declared),file:Yt.unit.file.name})),map:hs,silenced:os}}var AB=Ll(Nl(),1);function put(i,s){let l=f=>{if(AB.default.isVariableDeclaration(f)&&f.type===void 0&&f.initializer!==void 0&&AB.default.isIdentifier(f.name)&&g3(f.initializer)&&efe(f,i)?.type===void 0){let _=f.name.text,h=AB.default.isNumericLiteral(f.initializer)?`Write "${_} = ${f.initializer.getText(i)}." to keep f32`:`Annotate it \u2014 "${_}: f32 = ${f.initializer.getText(i)}" \u2014 to keep f32`;s.push(hi(i,f,`"${_}" is written as an integer and types as f32 today; it will type as i32 (\xA713, #148). ${h}, or leave it and take i32.`,Je.INT_LITERAL_DEPRECATION,"warning"))}AB.default.forEachChild(f,l)};AB.default.forEachChild(i,l)}var FR=Ll(Nl(),1);var dut=["off","info","warning","error"],_ut=["derivative_uniformity"];function mut(i,s){let l=[],f=new Map,_=new Set;for(let h of i.statements){if(!FR.default.isFunctionDeclaration(h))continue;let v=h.name?.text??"(anonymous)",E=(h.modifiers??[]).filter(FR.default.isDecorator);for(let O of E){if(!FR.default.isCallExpression(O.expression)||!FR.default.isIdentifier(O.expression.expression)||O.expression.expression.text!=="diagnostic")continue;let L=O.expression.arguments.map(ae=>FR.default.isStringLiteral(ae)||FR.default.isNoSubstitutionTemplateLiteral(ae)?ae.text:void 0),[U,M]=L;if(L.length!==2||U===void 0||M===void 0){s.push(hi(i,O,'@diagnostic takes a severity and a rule, as strings: @diagnostic("off", "derivative_uniformity").',Je.ATTRIBUTE_NAME));continue}if(!dut.includes(U)){s.push(hi(i,O,`"${U}" is not a diagnostic severity. WGSL has: ${dut.join(", ")}.`,Je.ATTRIBUTE_NAME));continue}if(!_ut.includes(M)){s.push(hi(i,O,`"${M}" is not a rule this compiler analyses. It knows: ${_ut.join(", ")}.`,Je.ATTRIBUTE_NAME));continue}let oe=f.get(M);if(oe!==void 0){oe.severity!==U&&(_.has(M)||(_.add(M),s.push(hi(i,O,`"${M}" is set to "${oe.severity}" by the @diagnostic on "${oe.fn}" and to "${U}" by the one on "${v}". WGSL takes one severity per rule per scope, and both would be emitted: "conflicting diagnostic directive" on Tint. Keep one of the two.`,Je.ATTRIBUTE_NAME))));continue}f.set(M,{severity:U,fn:v}),l.push({severity:U,rule:M})}}return l}function gut(i){return i.find(s=>s.rule==="derivative_uniformity")?.severity}UC();ef();P_();var XGt=new Set([...mP,"workgroupUniformLoad"]),vut=new Set(["workgroup_id","num_workgroups","subgroup_size","num_subgroups"]);function Efe(i,s){return i==="non-uniform"||s==="non-uniform"?"non-uniform":i==="uniform"&&s==="uniform"?"uniform":"unknown"}var hPe={at:"unknown",why:"a value this compiler cannot classify"},Dfe=i=>i==="uniform"?0:i==="unknown"?1:2;function FA(i,s){return Dfe(s.at)>Dfe(i.at)?s:i}function OA(i,s){return s===void 0?i:FA(i,s)}function QGt(i,s){if(i.size!==s.size)return!1;for(let[l,f]of i){let _=s.get(l);if(_===void 0||_.at!==f.at)return!1}return!0}function ZGt(i,s){return i===void 0||s===void 0?i===s:i.length!==s.length?!1:i.every((l,f)=>l.at===s[f]?.at)}function F3(i,s){let l=new Map(i);for(let[f,_]of s){let h=l.get(f);l.set(f,h===void 0?_:FA(h,_))}return l}function eHt(i,s,l){let f=Tc(s);if(f===void 0)return;if(l.builtin!==void 0)return vut.has(l.builtin)?{at:"uniform",why:`"${l.name}" (@builtin(${l.builtin}), uniform across the group)`}:{at:"non-uniform",why:`"${l.name}" (@builtin(${l.builtin}))`};if(l.location!==void 0)return{at:"non-uniform",why:`"${l.name}" (a ${f} input at @location(${String(l.location)}))`};let _=l.type;if(_.kind==="struct"&&i.structs.some(h=>h.name===_.name))return{at:"unknown",why:`"${l.name}"`}}function tHt(i,s,l,f){let h=i.structs.find(v=>v.name===s)?.fields.find(v=>v.name===l);if(h){if(h.builtin!==void 0)return vut.has(h.builtin)?{at:"uniform",why:`"${s}.${l}" (@builtin(${h.builtin}), uniform across the group)`}:{at:"non-uniform",why:`"${s}.${l}" (@builtin(${h.builtin}))`};if(h.location!==void 0)return{at:"non-uniform",why:`"${s}.${l}" (a ${f} input at @location(${String(h.location)}))`}}}var nHt=(i,s)=>s!==void 0&&i.nonUniform===s.nonUniform&&i.params.size===s.params.size&&[...i.params].every(l=>s.params.has(l));function rHt(i,s,l,f){let _=new Map(i.params.map((K,de)=>[K.name,de])),h=new Map,v=new Set,w=!1,E=new Set,O=!1,L=K=>{let de=new Set,De=$e=>{if($e.op==="param"){let Ze=_.get($e.name);Ze!==void 0&&de.add(Ze);return}if($e.op==="varref"){(f($e.name)||E.has($e.name))&&(O=!0);for(let Ze of h.get($e.name)??[])de.add(Ze);return}if($e.op==="call"&&s.has($e.fn)){let Ze=l.get($e.fn);if(Ze!==void 0){Ze.nonUniform&&(O=!0),$e.args.forEach((ht,ct)=>{Ze.params.has(ct)&&De(ht)});return}}P$($e,(Ze,ht)=>{ht!=="length"&&De(Ze)})};return De(K),de},U=K=>(O=!1,{deps:L(K),nonUniform:O}),M=(K,de)=>{let De=h.get(K)??new Set;for(let $e of de)De.add($e);h.set(K,De)},oe=(K,de)=>{for(let De of K)switch(De.s){case"let":{let $e=U(De.expr);M(De.name,$e.deps),$e.nonUniform&&E.add(De.name);break}case"var":{if(De.init){let $e=U(De.init);M(De.name,$e.deps),$e.nonUniform&&E.add(De.name)}break}case"assign":case"assignOp":{let $e=Afe(De.target);if($e!==void 0){let Ze=U(De.expr),ht=Nfe(De.target).map(U);M($e,[...Ze.deps,...de,...ht.flatMap(ct=>[...ct.deps])]),(Ze.nonUniform||ht.some(ct=>ct.nonUniform))&&E.add($e)}break}case"return":{if(De.expr){let $e=U(De.expr);for(let Ze of $e.deps)v.add(Ze);$e.nonUniform&&(w=!0)}for(let $e of de)v.add($e);break}case"if":{let $e=new Set(de);for(let Ze of De.arms){let ht=U(Ze.cond);ht.nonUniform&&(w=!0);for(let ct of ht.deps)$e.add(ct);oe(Ze.body,new Set([...de,...ht.deps]))}De.elseBody&&oe(De.elseBody,$e);break}case"for":{oe([De.init],de);let $e=U(De.cond);$e.nonUniform&&(w=!0);let Ze=new Set([...de,...$e.deps,...hut(De.body,iHt).flatMap(ht=>[...L(ht)])]);oe(De.body,Ze),oe([De.update],Ze);break}case"switch":{let $e=U(De.scrut);$e.nonUniform&&(w=!0);let Ze=new Set([...de,...$e.deps]),ht=ct=>new Set([...Ze,...hut(ct,aHt).flatMap(Oe=>[...L(Oe)])]);for(let ct of De.cases)oe(ct.body,ht(ct.body));De.defaultBody&&oe(De.defaultBody,ht(De.defaultBody));break}default:break}},ae=()=>[...h.values()].reduce((K,de)=>K+de.size,0)+v.size+E.size+(w?1:0);for(let K=0;K<=i.body.length+2;K++){let de=ae();if(oe(i.body,new Set),ae()===de)break}return{params:v,nonUniform:w}}var iHt=new Set(["break","continue"]),aHt=new Set(["break"]);function hut(i,s){let l=[],f=(_,h)=>{let v=!1;for(let w of _)if(h.has(w.s))v=!0;else if(w.s==="if")[...w.arms.map(O=>O.body),...w.elseBody?[w.elseBody]:[]].map(O=>f(O,h)).some(Boolean)&&(l.push(...w.arms.map(O=>O.cond)),v=!0);else if(w.s==="switch"){let E=new Set([...h].filter(L=>L!=="break"));[...w.cases.map(L=>L.body),...w.defaultBody?[w.defaultBody]:[]].map(L=>f(L,E)).some(Boolean)&&(l.push(w.scrut),v=!0)}return v};return f(i,s),l}function sHt(i,s,l){let f=new Map;for(let _ of i.funcs)f.set(_.name,{params:new Set,nonUniform:!1});for(let _=0;_<=i.funcs.length+1;_++){let h=!1;for(let v of i.funcs){let w=rHt(v,s,f,l);nHt(w,f.get(v.name))||(f.set(v.name,w),h=!0)}if(!h)break}return f}function _k(i,s,l){switch(l.op){case"lit":case"constref":return{at:"uniform",why:"a constant"};case"overrideref":return{at:"uniform",why:`override "${l.name}"`};case"param":{let f=i.f.params.find(h=>h.name===l.name),_=f&&eHt(i.m,i.f,f);return _||(i.paramAt.get(l.name)??{at:"unknown",why:`"${l.name}"`})}case"varref":{let f=(i.m.vars??[]).find(v=>v.name===l.name);if(f!==void 0)return f.space==="workgroup"?{at:"non-uniform",why:`"${l.name}" (workgroup memory, which the whole workgroup writes; read it with workgroupUniformLoad to branch on it)`}:{at:"non-uniform",why:`"${l.name}" (a module variable, which each invocation owns)`};let _=i.m.bindings.find(v=>v.name===l.name);if(_!==void 0)return _.space==="uniform"?{at:"uniform",why:`uniform "${l.name}"`}:_.space==="storage"?_.access==="read_write"?{at:"non-uniform",why:`"${l.name}" (a read_write storage buffer)`}:{at:"uniform",why:`read-only storage "${l.name}"`}:{at:"unknown",why:`"${l.name}"`};let h=s.get(l.name);return h||{at:"unknown",why:`"${l.name}"`}}case"member":{let f=l.base;if(f.op==="param"){let _=i.f.params.find(v=>v.name===f.name),h=Tc(i.f);if(_?.type.kind==="struct"&&h!==void 0){let v=tHt(i.m,_.type.name,l.field,h);if(v)return v}}return _k(i,s,f)}case"call":{let f=l.declRef===void 0;if(f&&l.fn==="workgroupUniformLoad")return{at:"uniform",why:"workgroupUniformLoad(\u2026), one value for the workgroup"};if(f&&l.args.length>0&&l.args.every((E,O)=>rAe(l.fn,O)==="length"))return{at:"uniform",why:`${l.fn}(\u2026), the size of the bound buffer`};if(f&&X3e.has(l.fn))return{at:"non-uniform",why:`${l.fn}(\u2026), which differences neighbouring invocations`};if(f&&tk(l.fn))return l.args.length===0?{at:"unknown",why:`${l.fn}(\u2026)`}:RR(i,s,l.args,`${l.fn}(\u2026)`);let _=i.retDeps.get(l.fn),h=_===void 0?l.args:l.args.filter((E,O)=>_.params.has(O)),v=`${i.source.calleeText?.(l)??l.fn}(\u2026)`,w=RR(i,s,h,v);return _?.nonUniform===!0?{at:"non-uniform",why:`${v}, which reads memory the invocations share`}:{at:Efe("unknown",w.at),why:w.at==="non-uniform"?w.why:v}}case"binop":case"compare":case"logical":return RR(i,s,[l.a,l.b],"the expression");case"unop":return _k(i,s,l.a);case"construct":return l.args.length===0?hPe:RR(i,s,l.args,"the expression");case"index":return RR(i,s,[l.base,l.idx],"the expression");case"select":return RR(i,s,[l.cond,l.ifTrue,l.ifFalse],"the expression");case"matchExpr":return RR(i,s,[l.scrutinee,...l.cases.map(([,f])=>f),l.default],"the expression");default:return hPe}}function RR(i,s,l,f){let _={at:"uniform",why:f};for(let h of l)_=FA(_,_k(i,s,h));return _}function wfe(i,s){if(i===void 0||s===void 0)return i??s;let l=i.at===void 0?s.at:OA(i.at,s.at);return{env:F3(i.env,s.env),...l===void 0?{}:{at:l}}}var oHt=i=>i==="loop"||i==="bound-return"?"bound-return":"loop-return";function cHt(i){let s=0,l=f=>{(f.s==="let"||f.s==="var"||f.s==="assign"||f.s==="assignOp")&&s++,Uc(f,()=>{},l)};for(let f of i)l(f);return s}function but(i,s={}){let l=new Map(i.funcs.map(M=>[M.name,M])),_=sHt(i,l,M=>{if((i.vars??[]).some(ae=>ae.name===M))return!0;let oe=i.bindings.find(ae=>ae.name===M);return oe!==void 0&&oe.space==="storage"&&oe.access==="read_write"}),h=M=>{let oe=l.get(M);return oe!==void 0&&Tc(oe)!==void 0},v=M=>h(M)?{at:"uniform",why:"the entry"}:{at:"uniform",why:"no call of it"},w=(M,oe)=>{let ae=l.get(M),K=new Map;return ae===void 0||ae.params.forEach((de,De)=>{let $e=oe[De];$e!==void 0&&K.set(de.name,$e)}),K},E=new Map(i.funcs.map(M=>[M.name,v(M.name)])),O=new Map;for(let M=0;M<=i.funcs.length+1;M++){let oe=new Map,ae=new Map,K=(De,$e,Ze)=>{if(!l.has(De)||h(De))return;let ht=oe.get(De);oe.set(De,ht===void 0?$e:FA(ht,$e));let ct=ae.get(De);ae.set(De,ct===void 0?Ze:Ze.map((Oe,Ge)=>{let dn=ct[Ge];return dn===void 0?Oe:FA(dn,Oe)}))};for(let De of i.funcs)yut(i,De,E.get(De.name),w(De.name,O.get(De.name)??[]),_,s,[],K);for(let De of i.funcs)oe.has(De.name)||oe.set(De.name,v(De.name));let de=i.funcs.every(De=>oe.get(De.name)?.at===E.get(De.name)?.at)&&i.funcs.every(De=>ZGt(ae.get(De.name),O.get(De.name)));if(E=oe,O=ae,de)break}let L=[];for(let M of i.funcs)yut(i,M,E.get(M.name),w(M.name,O.get(M.name)??[]),_,s,L,()=>{});let U=new Map;for(let M of L){let oe=M.span===void 0?`-|${M.cause}|${M.via}`:String(M.span.start);U.set(`${M.fn}|${M.callee}|${M.kind}|${oe}`,M)}return[...U.values()]}function yut(i,s,l,f,_,h,v,w){let E={m:i,f:s,paramAt:f,retDeps:_,source:h},O={env:new Map,at:l?.at??"unknown",why:l?.why??"the control flow this function is called under",...l?.via===void 0?{}:{via:l.via},diverged:void 0},L="loop",U=O.at,M=0,oe=(Ze,ht,ct)=>{let Oe=_k(E,Ze.env,ht);if(Oe.at!=="non-uniform")return Ze;let Ge=OA({at:Ze.at,why:Ze.why,via:Ze.via},{...Oe,via:ct});return{...Ze,at:Ge.at,why:Ge.why,via:Ge.via}},ae=(Ze,ht)=>{if(Ze.op==="logical"){ae(Ze.a,ht),ae(Ze.b,oe(ht,Ze.a,"short-circuit"));return}if(Ze.op==="select"&&Ze.cond.type.kind==="scalar"&&!lHt(Ze.type)){ae(Ze.cond,ht);let ct=oe(ht,Ze.cond,"conditional");ae(Ze.ifTrue,ct),ae(Ze.ifFalse,ct);return}Ze.op==="call"&&K(Ze,ht),sl(Ze,ct=>(ae(ct,ht),ct))},K=(Ze,ht)=>{let ct={at:ht.at,why:ht.why,via:ht.via},{at:Oe,why:Ge,via:dn}=ht.diverged===void 0?ct:OA(ht.diverged,ct);w(Ze.fn,{at:Oe,why:Ge,via:dn},Ze.args.map(an=>_k(E,ht.env,an))),Ze.declRef===void 0&&(X3e.has(Ze.fn)?Oe==="non-uniform"&&v.push({fn:s.name,callee:Ze.fn,kind:"derivative",isDerivativeBuiltin:/^(dpdx|dpdy|fwidth)/.test(Ze.fn),cause:Ge,via:dn??"branch",span:Ze.span}):XGt.has(Ze.fn)&&(Oe==="non-uniform"||Oe==="unknown"&&(Ze.fn!=="workgroupUniformLoad"||M>0))&&v.push({fn:s.name,callee:Ze.fn,kind:"barrier",isDerivativeBuiltin:!1,cause:Oe==="non-uniform"?Ge:`${Ge}, which this compiler cannot prove uniform`,via:dn??"branch",span:Ze.span}))},de=(Ze,ht)=>{let ct=ht;for(let Oe of Ze)switch(Uc(Oe,Ge=>ae(Ge,ct),()=>{}),Oe.s){case"let":ct={...ct,env:gPe(ct,Oe.name,_k(E,ct.env,Oe.expr))};break;case"var":ct={...ct,env:gPe(ct,Oe.name,Oe.init?_k(E,ct.env,Oe.init):hPe)};break;case"assign":case"assignOp":{let Ge=Afe(Oe.target);if(Ge!==void 0){let dn=_k(E,ct.env,Oe.expr),an={at:ct.at,why:ct.why},$n=Nfe(Oe.target).reduce((Ot,cn)=>FA(Ot,_k(E,ct.env,cn)),FA(dn,an)),bn=Oe.target.op==="varref"?void 0:ct.env.get(Ge);ct={...ct,env:gPe(ct,Ge,bn===void 0?$n:FA(bn,$n))}}break}case"if":{let Ge=E.source.builtIfs?.get(Oe),dn=Ge===void 0?De:de,an=Ge??"branch",$n,bn=ct,Ot={at:"uniform",why:ct.why};for(let cn of Oe.arms){let fn=_k(E,ct.env,cn.cond);Ot=FA(Ot,fn);let Sr=dn(cn.body,{env:new Map(ct.env),at:Efe(ct.at,fn.at),why:fn.at==="uniform"?ct.why:fn.why,via:fn.at==="uniform"?ct.via:an,diverged:ct.diverged});$n=$n===void 0?Sr.env:F3($n,Sr.env),Sr.diverged!==void 0&&ct.diverged===void 0&&(bn={...bn,diverged:Sr.diverged}),bn=$e(bn,Sr)}if(Oe.elseBody){let cn=dn(Oe.elseBody,{env:new Map(ct.env),at:Efe(ct.at,Ot.at),why:Ot.at==="uniform"?ct.why:Ot.why,via:Ot.at==="uniform"?ct.via:an,diverged:ct.diverged});$n=$n===void 0?cn.env:F3($n,cn.env),cn.diverged!==void 0&&ct.diverged===void 0&&(bn={...bn,diverged:cn.diverged}),bn=$e(bn,cn)}ct={...bn,env:$n===void 0?ct.env:F3(ct.env,$n)};break}case"for":{let Ge=de([Oe.init],ct),dn=Ge.env,an={at:Ge.at,why:Ge.why,via:Ge.via},$n=Ge.diverged,bn,Ot={breakLeaves:L,loopBase:U};L="loop";let cn=2*cHt(Oe.body)+4;for(let fn=0;fn<=cn;fn++){let Sr=_k(E,dn,Oe.cond),yi=OA(an,{...Sr,via:"loop"}),It={env:new Map(dn),at:yi.at,why:yi.why,via:yi.via,diverged:$n};ae(Oe.cond,{...It,at:an.at,why:an.why,via:an.via}),U=It.at;let os=de(Oe.body,It),Kt=de([Oe.update],{...os,env:os.continued?F3(os.env,os.continued.env):os.env}),wr=F3(dn,Kt.env),Cn=Sr.at==="non-uniform"?{...Sr,via:"loop"}:void 0,ri=OA(OA(OA(an,Cn),os.broke?.at),os.continued?.at),ji=$n??(Kt.diverged&&{...Kt.diverged,via:oHt(Kt.diverged.via)}),to=QGt(wr,dn)&&ri.at===an.at&&ji?.at===$n?.at;if(dn=wr,an=ri,$n=ji,bn=os.broke,to)break}({breakLeaves:L,loopBase:U}=Ot),ct={...Ge,env:bn?F3(dn,bn.env):dn,diverged:$n};break}case"switch":{let Ge=_k(E,ct.env,Oe.scrut),dn=Efe(ct.at,Ge.at),an=Ge.at==="uniform"?ct.why:Ge.why,$n=Ge.at==="uniform"?ct.via:"branch",bn,Ot=ct.diverged,cn=ct,fn=L;L="switch";for(let Sr of[...Oe.cases.map(yi=>yi.body),...Oe.defaultBody?[Oe.defaultBody]:[]]){let yi=De(Sr,{env:new Map(ct.env),at:dn,why:an,via:$n,diverged:ct.diverged}),It=yi.broke?F3(yi.env,yi.broke.env):yi.env;bn=bn===void 0?It:F3(bn,It),Ot=Ot??yi.diverged,cn=$e(cn,{...yi,broke:void 0})}L=fn,ct={...cn,diverged:Ot,env:bn===void 0?ct.env:F3(ct.env,bn)};break}case"return":ct.at!=="uniform"&&ct.diverged===void 0&&(ct={...ct,diverged:{at:ct.at,why:ct.why,via:Dfe(ct.at)>Dfe(U)?"return":ct.via}});break;case"break":case"continue":{let Ge={env:ct.env,...ct.at==="non-uniform"?{at:{at:ct.at,why:ct.why,via:Oe.s==="continue"?"continue":L==="switch"?"switch-break":"break"}}:{}};ct=Oe.s==="break"?{...ct,broke:wfe(ct.broke,Ge)}:{...ct,continued:wfe(ct.continued,Ge)};break}default:break}return ct},De=(Ze,ht)=>{M++;try{return de(Ze,ht)}finally{M--}},$e=(Ze,ht)=>{let ct=wfe(Ze.broke,ht.broke),Oe=wfe(Ze.continued,ht.continued),{at:Ge,why:dn,via:an}=OA(OA({at:Ze.at,why:Ze.why,via:Ze.via},ht.broke?.at),ht.continued?.at);return{...Ze,at:Ge,why:dn,...an===void 0?{}:{via:an},...ct===void 0?{}:{broke:ct},...Oe===void 0?{}:{continued:Oe}}};de(s.body,O)}function lHt(i){return i.kind==="scalar"||i.kind==="vec"||i.kind==="f64"}function Nfe(i){switch(i.op){case"index":return[i.idx,...Nfe(i.base)];case"member":return Nfe(i.base);default:return[]}}function Afe(i){switch(i.op){case"varref":return i.name;case"member":return Afe(i.base);case"index":return Afe(i.base);default:return}}function gPe(i,s,l){let f=new Map(i.env);return f.set(s,l),f}lDe();function xut(i,s={}){return Sut(i,s).result}function Sut(i,s={}){return Hit(()=>uHt(i,s))}function uHt(i,s){let l=s.sourceFile??jy.default.createSourceFile(s.fileName??"typeshade-input.ts",i,jy.default.ScriptTarget.Latest,!0,jy.default.ScriptKind.TS),f=[],_=[],h=wB(l),v=h!==void 0,w={hasDirective:!1,funcs:[],diagnostics:f,sourceFile:l,consts:[],bindings:[],structs:[],overrides:[],vars:[],enables:[],directives:[],symbols:_,expressions:[]};if(!v){let ct={...w};return(s.requireDirective??!0)&&f.push(hi(l,void 0,`Missing "${QH}" directive. Add "${QH}"; at the top level to mark this file for TypeShade compilation.`,Je.MISSING_DIRECTIVE)),{result:ct}}let E=ple(l);if(E.length>0)return f.push(...E),{result:{...w,hasDirective:!0}};if(uut(l)||(s.roots?.length??0)>0)return pHt(l,s,f);Tut(l,h,f),zit(l),Elt(l,f),s.deprecations===!0&&put(l,f);let O=klt(l,f),L=mut(l,f),U=Xlt(l,f,_),M=ylt(l,f,_,0,cw(U)),oe=Oot(l,f,_,cw(U)),ae=new Set([...U.flatMap(ct=>ct.decl.fields.map(Oe=>Oe.name)),...M.map(ct=>ct.name)]),K=Sot(l,f,_,ae),de=wot(l,f,_,oe,cw(U),K);gHt(l,f,oe,M,K,de);let De=Ult($ct(l,f,oe,M,U,_,K,de)),$e=qlt({consts:[...oe],structs:cw(U),bindings:[...M],funcs:De,overrides:[...K],vars:[...de]},l,f);for(let ct of cDe(cw(U),De,gn))f.push(hi(l,yPe(l,ct.fragment),ct.message,Je.STRUCT_FIELD));{let ct={consts:[...oe],structs:cw(U),bindings:[...M],funcs:[...De],overrides:[...K],vars:[...de]},Oe=gut(L),Ge=hHt(l,De),an=De.some($n=>Tc($n)!==void 0&&yPe(l,$n.name)===void 0)?l.statements.some($n=>jy.default.isFunctionDeclaration($n)&&$n.body!==void 0)?"a top-level function":void 0:"the entry";for(let $n of but(ct,{builtIfs:$e,calleeText:Ge})){if($n.kind==="derivative"&&Oe==="off")continue;let bn=$n.kind==="derivative"&&(Oe==="warning"||Oe==="info")?"warning":"error";f.push(b1(l,$n.span,yPe(l,$n.fn),vHt($n,an),Je.UNIFORMITY,bn))}}De.some(ct=>ct.kernel===!0)&&!f.some(ct=>ct.category==="error")&&f.push(...Cct({consts:[...oe],structs:cw(U),bindings:[...M],funcs:[...De],overrides:[...K],vars:[...de]},()=>l)),Dlt(l,f),Vrt(f);let Ze;if((s.emit??!0)&&De.length>0&&!f.some(ct=>ct.category==="error"))try{Ze=MG({consts:[...oe],structs:cw(U),bindings:[...M],funcs:[...De],overrides:[...K],vars:[...de],enables:O,...L.length>0?{diagnostics:L}:{}})}catch(ct){f.push(O$(l,ct))}return{result:{hasDirective:!0,funcs:De,diagnostics:f,directives:L,sourceFile:l,consts:oe,bindings:M,structs:U,overrides:K,vars:de,enables:O,symbols:_,expressions:Wit(l),wgsl:Ze}}}var fHt=new Set([Je.UNKNOWN_FN,Je.UNKNOWN_TYPE,Je.UNKNOWN_NAME]);function pHt(i,s,l){let f={...s.readDocument?{readDocument:s.readDocument}:{},...s.resolveImport?{resolveImport:s.resolveImport}:{}},_=fut([{fileName:i.fileName,text:i.text},...s.roots??[]],f);l.push(..._.diagnostics);let h={hasDirective:!0,funcs:[],diagnostics:l,sourceFile:i,consts:[],bindings:[],structs:[],overrides:[],vars:[],enables:[],directives:[],symbols:[],expressions:[]};if(_.fatal)return{result:h};for(let ae of _.files){if(!ae.kept)continue;let K=wB(ae.sourceFile);K!==void 0&&Tut(ae.sourceFile,K,l)}let v=jy.default.createSourceFile(_.fileName,_.source,jy.default.ScriptTarget.Latest,!0,jy.default.ScriptKind.TS),E=Kit({sourceFile:v,written:(ae,K)=>{let de=_.map(ae,K);return de&&{file:de.file.name,text:de.file.sourceFile.text.slice(de.start,de.end)}}},()=>Sut(_.source,{...s,sourceFile:v,readDocument:void 0,resolveImport:void 0,roots:void 0}).result),O=_.files[0];wlt(v,i,(ae,K)=>{let de=_.map(ae,K);return de!==void 0&&de.file.name===O.name?de:void 0});let L=ae=>{if(ae.fileName!==_.fileName)return ae;let K=_.map(ae.start,ae.start+ae.length),de=K?.file.sourceFile??O.sourceFile,De=K?.start??i.statements[0]?.getStart(i)??0,$e=K?.end??i.statements[0]?.getEnd()??De;if(K!==void 0&&ae.code!==void 0&&fHt.has(ae.code)&&_.silenced.some(ct=>ct.file===K.file.name&&(ct.start===De||ct.start>=De&&ct.end<=$e&&ae.message.includes(`"${ct.name}"`))))return;let Ze=de.getLineAndCharacterOfPosition(De),ht=de.getLineAndCharacterOfPosition($e);return{...ae,fileName:K?.file.name??i.fileName,start:De,length:$e-De,line:Ze.line+1,character:Ze.character+1,endLine:ht.line+1,endCharacter:ht.character+1}};for(let ae of E.diagnostics){let K=L(ae);K!==void 0&&l.push(K)}dHt(_,[...E.funcs,...E.consts,...E.bindings,...E.structs.map(ae=>ae.decl),...E.overrides,...E.vars]);let U=(ae,K)=>{let de=_.map(ae,ae+K);if(!(de===void 0||de.file.name!==O.name))return{start:de.start,length:de.end-de.start}},M=[];for(let ae of E.symbols){let K=U(ae.start,ae.length);if(K===void 0)continue;let de=i.text.slice(K.start,K.start+K.length);M.push({...ae,...K,name:/^[A-Za-z_]\w*$/.test(de)?de:ae.name})}let oe=[];for(let ae of E.expressions){let K=U(ae.start,ae.length);K!==void 0&&oe.push({...ae,...K})}return{result:{...E,diagnostics:l,sourceFile:i,symbols:M,expressions:oe},linked:{linked:_,sourceFile:v,symbols:E.symbols}}}function dHt(i,s){let l=new WeakSet,f=h=>{if(h.file!==i.fileName)return h;let v=i.map(h.start,h.start+h.length);if(v===void 0)return h;let w=v.file.sourceFile.getLineAndCharacterOfPosition(v.start),E=v.file.sourceFile.getLineAndCharacterOfPosition(v.end);return{file:v.file.name,start:v.start,length:v.end-v.start,line:w.line,character:w.character,endLine:E.line,endCharacter:E.character}},_=h=>{if(h===null||typeof h!="object"||l.has(h))return;if(l.add(h),Array.isArray(h)){for(let w of h)_(w);return}let v=h;for(let w of Object.keys(v)){let E=v[w];if((w==="span"||w==="nameSpan")&&_Ht(E)){v[w]=f(E);continue}_(E)}};for(let h of s)_(h)}var _Ht=i=>typeof i=="object"&&i!==null&&typeof i.file=="string"&&typeof i.start=="number"&&typeof i.length=="number";function Tut(i,s,l){let f=i.statements[0];f===void 0||f===s||l.push(hi(i,s,`"${QH}" must be the file's first statement: here it follows ${mHt(f)}, so TypeScript reads it as an ordinary string and not as a directive. Move it to the top of the file.`,Je.MISPLACED_DIRECTIVE))}function mHt(i){return jy.default.isClassDeclaration(i)?"a class declaration":jy.default.isFunctionDeclaration(i)?"a function declaration":jy.default.isInterfaceDeclaration(i)?"an interface declaration":jy.default.isTypeAliasDeclaration(i)?"a type alias":jy.default.isVariableStatement(i)?"a variable declaration":jy.default.isImportDeclaration(i)?"an import":jy.default.isExpressionStatement(i)&&jy.default.isStringLiteral(i.expression)?`the "${i.expression.text}" directive`:"another statement"}function gHt(i,s,l,f,_,h=[]){let v=new Map;for(let[w,E]of[["a module const",l],["a resource",f],["an override",_],["a module variable",h]])for(let O of E){let L=v.get(O.name);L!==void 0&&L!==w?s.push(hi(i,void 0,`"${O.name}" is declared as ${L} and as ${w}; one module-scope name means one thing.`,Je.DUPLICATE_SYMBOL)):v.set(O.name,w)}}function yPe(i,s){return i.statements.find(l=>jy.default.isFunctionDeclaration(l)&&l.name?.text===s)}function hHt(i,s){let l,f=new Map(s.map(h=>[h.name,h])),_=(h,v)=>i.text.slice(h,h+v).replace(/\s+/g,"");return h=>{if(h.span!==void 0){if(l===void 0){let E=new Map,O=L=>{if(jy.default.isCallExpression(L)){let U=L.getStart(i),M=L.expression,oe=M.getStart(i);E.set(`${U}:${L.getEnd()-U}`,_(oe,M.getEnd()-oe))}jy.default.forEachChild(L,O)};O(i),l=E}let w=l.get(`${h.span.start}:${h.span.length}`);if(w!==void 0)return w}let v=f.get(h.fn)?.nameSpan;return v===void 0?void 0:_(v.start,v.length)}}var yHt={branch:{reached:"under",move:"Move it out of the branch",hoist:"Hoist the call above the branch",on:"branch on"},"short-circuit":{reached:"on the right of an && or || whose left side reads",move:"Call it before the && or ||",hoist:"Hoist the call above the && or ||",on:"make the left side"},conditional:{reached:"in an arm of a ?: whose condition reads",move:"Call it before the ?:",hoist:"Hoist the call above the ?:",on:"make the condition"},loop:{reached:"in a loop whose condition reads",move:"Move it out of the loop",hoist:"Hoist the call out of the loop",on:"bound the loop by"},return:{reached:"after a return taken under",move:"Move it above the return",hoist:"Hoist the call above the return",on:"return on"},"loop-return":{reached:"after a return taken inside a loop under",move:"Move it above the loop",hoist:"Hoist the call above the loop",on:"return on"},"bound-return":{reached:"after a return inside a loop whose condition reads",move:"Move it above the loop",hoist:"Hoist the call above the loop",on:"bound the loop by"},break:{reached:"in a loop some invocations leave by a break taken under",move:"Move it out of the loop",hoist:"Hoist the call out of the loop",on:"break on"},continue:{reached:"in a loop where some invocations skip ahead by a continue taken under",move:"Move it out of the loop",hoist:"Hoist the call out of the loop",on:"continue on"},"switch-break":{reached:"after a break out of the switch taken under",move:"Move it above the break",hoist:"Hoist the call above the break",on:"break on"}};function vHt(i,s){let l=yHt[i.via],f=`${l.reached} ${i.cause}`;if(i.kind==="barrier")return`${i.callee}() is reached ${f}, and every invocation of the workgroup has to reach it: one that does not is a workgroup that waits forever. ${l.move}, or ${l.on} a value the whole workgroup shares (a uniform, a module const, @builtin("workgroup_id")).`;let _=i.isDerivativeBuiltin?`${l.hoist} and select from its result, or compute the quantity some other way \u2014 a screen-space derivative has no alternative form`:`${l.hoist}, or use textureSampleLevel or textureSampleGrad, whose level of detail is the one you wrote`;return`${i.callee}() is reached ${f}, which WGSL's derivative_uniformity rule refuses: ${i.isDerivativeBuiltin?"it differences neighbouring invocations":"the implicit level of detail is a difference between neighbouring invocations"}, and one that did not run has no value to difference against. ${_}${s===void 0?".":`, or write @diagnostic("off", "derivative_uniformity") on ${s} to take the module as written.`}`}fG();DP();ef();o2();var kut=i=>i.kind==="scalar"&&i.scalar==="f32"||i.kind==="vec"&&i.elem==="f32",bHt=new Set(["binop","unop","call","select","construct","matchExpr","lit","param","constref","overrideref"]);function Pfe(i){return{...i,funcs:i.funcs.map(s=>{let l=xHt(s);return{...s,body:s.body.map(f=>Ex(Cut(f),l))}})}}function Cut(i){let s=Vl(i,l=>l,Cut);return s.s!=="assignOp"||!kut(s.target.type)?s:{s:"assign",target:s.target,expr:{op:"binop",type:s.target.type,bop:s.bop,a:s.target,b:s.expr},...s.span!==void 0?{span:s.span}:{}}}function xHt(i){let s=new Set(i.params.flatMap(l=>l.mode==="inout"?[l.name]:[]));return l=>{if(l.op==="call"&&l.fn==="__fround"){let f=l.args[0];return f!==void 0&&f.op==="call"&&f.fn==="__fround"?f:l}return!kut(l.type)||!bHt.has(l.op)||l.op==="param"&&s.has(l.name)?l:{op:"call",type:l.type,fn:"__fround",args:[l]}}}v4e();P_();Hh();Y$();Bm();aA();aG();P_();fG();DP();Y$();P_();v4e();Hh();var SHt={kind:"normal"},Dut=i=>new Error(`typeshade/debug: no value supplied for binding '${i}'; pass it in the session's bindings`);function*ml(i,s,l){switch(i.op){case"lit":return i.value;case"constref":{let f=l.consts.get(i.name);if(f===void 0)throw new Error(`typeshade/debug: unknown const ${i.name}`);return f}case"overrideref":{let f=l.overrides.get(i.name);if(f===void 0)throw new Error(`typeshade/debug: unknown override ${i.name}`);return f}case"externref":throw new Error(`typeshade/debug: host-provided global '${i.name}' has no CPU value`);case"param":case"varref":{if(s.has(i.name))return l.frames[l.frames.length-1]?.stubbed.has(i.name)&&l.stubHits++,s.get(i.name);if(i.name in l.bindings)return l.bindings[i.name];if(i.name in l.privates)return l.privates[i.name];if(i.name in l.vars)return l.vars[i.name];throw l.bindingNames.has(i.name)?Dut(i.name):new Error(`typeshade/debug: unbound ${i.name}`)}case"binop":{let f=yield*ml(i.a,s,l),_=yield*ml(i.b,s,l);return i.bop==="*"&&i.a.type.kind==="mat"&&(i.b.type.kind==="vec"||i.b.type.kind==="vec64")?mue(f,_,i.a.type.cols,i.a.type.rows):i.bop==="*"&&i.a.type.kind==="mat"&&i.b.type.kind==="mat"?hue(f,_,i.a.type.cols,i.a.type.rows,i.b.type.cols):i.bop==="*"&&i.a.type.kind==="vec"&&i.b.type.kind==="mat"?gue(f,_,i.b.type.cols,i.b.type.rows):nB(i.bop,f,_,fk(i.type))}case"unop":{let f=yield*ml(i.a,s,l);return tB(gc(f)?f.map(_=>-_):-f,fk(i.type))}case"compare":{let f=yield*ml(i.a,s,l),_=yield*ml(i.b,s,l);return uue(i.cop,f,_,lue(i.a.type))}case"logical":{let f=yield*ml(i.a,s,l);return i.lop==="&&"?f?yield*ml(i.b,s,l):!1:f?!0:yield*ml(i.b,s,l)}case"call":{if(i.declRef===void 0&&kh(i.fn)){if(!l.lockstep)throw Woe(i.fn);return 0}if(i.declRef===void 0&&pb(i.fn))return yield*THt(i,s,l);if(i.declRef===void 0&&l.words!==void 0&&(i.fn==="_phLoad"||i.fn==="_phStore")){let U=yield*ml(i.args[0],s,l),M=yield*ml(i.args[1],s,l);if(i.fn==="_phLoad")return l.words.load(U,M);l.words.store(U,M,yield*ml(i.args[2],s,l));return}let f=[],_=[],h=l.decls.get(i.fn)?.params,v=[];for(let[U,M]of i.args.entries()){let oe=l.stubHits;if(h?.[U]?.mode==="inout"&&(M.op==="member"||M.op==="index")){let ae=yield*Aut(M,s,l);v[U]=ae,f.push(ae.get())}else f.push(yield*ml(M,s,l));_.push(l.stubHits>oe)}if(i.declRef===void 0&&i.fn.startsWith("console.")){l.consoleSink?.({method:i.fn.slice(8),args:Qle(f,i.labels,Zle(i.fn.slice(8),i.args.map(U=>U.type))),...i.span?{span:i.span}:{},...l.invocation?{invocation:l.invocation}:{}});return}if(i.fn==="u32"||i.fn==="i32"){let U=i.args[0].type;if(U.kind==="f64"||U.kind==="scalar"&&U.scalar==="f32")return i.fn==="u32"?SH(f[0]):TH(f[0])}if(i.declRef===void 0&&i.fn==="transpose"){let U=i.args[0].type;if(U.kind==="mat")return CH(f[0],U.cols,U.rows)}if(i.declRef===void 0&&pue.has(i.fn))return T3(i.fn,f,rB(i.args[0].type)==="i32"?"i32":"u32");let w=i.declRef!==void 0?l.decls.get(i.fn):void 0,E=w===void 0?hR[i.fn]:void 0;if(E)return tB(E(...f),fk(i.type));let O=w===void 0?bH[i.fn]:void 0;if(O){if(!l.gpuStubs)throw new Error(`typeshade/debug: '${i.fn}' is GPU-only and not computable here; start the session with gpuStubs: true to accept placeholder values`);return l.stubbed.add(i.fn),l.stubHits++,O(...f)}let L=w??l.decls.get(i.fn);if(L){if(!L.params.some(oe=>oe.mode==="inout"))return yield*wut(L,f,i.span,l,_);let U=[],M=yield*wut(L,f,i.span,l,_,U);for(let[oe,ae]of L.params.entries()){let K=i.args[oe];ae.mode!=="inout"||K===void 0||(K.op==="varref"||K.op==="param"?yield*bPe(K,U[oe],s,l):v[oe]?.set(U[oe]))}return M}throw new Error(`typeshade/debug: unknown fn ${i.fn}`)}case"member":{let f=yield*ml(i.base,s,l);return gc(f)?i.field.length>1?[...i.field].map(_=>f[C3[_]]):f[C3[i.field]]:f[i.field]}case"construct":{if(i.type.kind==="array"){let h=[];for(let v of i.args)h.push(yield*ml(v,s,l));return h}if(i.type.kind==="struct"){let h=l.structs.get(i.type.name);if(h===void 0)throw new Error(`typeshade/debug: struct '${i.type.name}' not declared`);let v={};for(let w=0;w<h.fields.length;w++)v[h.fields[w].name]=yield*ml(i.args[w],s,l);return v}let f=i.type.kind==="vec"?i.type.elem:void 0,_=[];for(let h of i.args){let v=yield*ml(h,s,l),w=rB(h.type);if(f===void 0||w===void 0){gc(v)?_.push(...v):_.push(v);continue}gc(v)?_.push(..._ue(v,w,f)):_.push(kH(v,w,f))}return(i.type.kind==="vec"||i.type.kind==="vec64")&&_.length===1?new Array(i.type.n).fill(_[0]):_}case"select":{let f=yield*ml(i.cond,s,l);if(gc(f)){let _=yield*ml(i.ifTrue,s,l),h=yield*ml(i.ifFalse,s,l);return fue(f,_,h)}return f?yield*ml(i.ifTrue,s,l):yield*ml(i.ifFalse,s,l)}case"index":{let f=yield*ml(i.base,s,l),_=yield*ml(i.idx,s,l);return i.base.type.kind==="mat"?yR(f,_,i.base.type.rows):f[_]}case"matchExpr":{let f=yield*ml(i.scrutinee,s,l),_=i.cases.find(([h])=>h===f);return yield*ml(_?_[1]:i.default,s,l)}}}function*wut(i,s,l,f,_,h){let v=yield*iK(i,s,l,f,_,h),w=f.frames[f.frames.length-1];return w?.current&&(yield{stmt:w.current,frames:f.frames,afterCall:!0}),v.kind==="return"?v.value:void 0}function*iK(i,s,l,f,_,h){let v=new Map,w=f.copies.get(i.name);i.params.forEach((O,L)=>v.set(O.name,w?.[L]===!0?k3(s[L]):s[L]));let E={fnName:i.name,fnSpan:i.span,callSpan:l,env:v,types:CHt(i),parameterLocals:Dst(i),stubbed:new Set(i.params.filter((O,L)=>_?.[L]).map(O=>O.name)),current:void 0};f.frames.push(E);try{let O=yield*R3(i.body,v,f);return h!==void 0&&i.params.forEach((L,U)=>h[U]=v.get(L.name)),O}finally{f.frames.pop()}}function PB(i){let s=i;for(;;){if(s.op==="varref"||s.op==="param")return s.name;if(s.op==="member"||s.op==="index"){s=s.base;continue}return}}function Eut(i){return i.op==="varref"||i.op==="param"}function Ife(i,s,l,f){!i||s===void 0||(l?i.stubbed.add(s):f&&i.stubbed.delete(s))}function Ofe(i,s,l){return i!==void 0&&!s.has(i)&&!(i in l.privates)&&(i in l.bindings||i in l.vars)}function MR(i,s,l,f,_){if(f.journal!==void 0&&_){let h=i[s],v=l;f.journal.push({undo:()=>{i[s]=h},redo:()=>{i[s]=v}})}i[s]=l}function Nut(i,s,l,f,_,h){if(_.journal!==void 0&&h){let v=yR(i,s,l),w=[...f];_.journal.push({undo:()=>vR(i,s,l,v),redo:()=>vR(i,s,l,w)})}vR(i,s,l,f)}function*Aut(i,s,l){if(i.op==="varref"||i.op==="param"){let f=i.name;if(s.has(f))return{get:()=>s.get(f),set:_=>s.set(f,_)};for(let _ of[l.privates,l.vars,l.bindings])if(f in _)return{get:()=>_[f],set:h=>MR(_,f,h,l,_!==l.privates)};throw l.bindingNames.has(f)?Dut(f):new Error(`typeshade/debug: unbound ${f}`)}if(i.op==="member"){let f=yield*ml(i.base,s,l),_=gc(f)?C3[i.field]:i.field,h=f,v=Ofe(PB(i),s,l);return{get:()=>h[_],set:w=>MR(h,_,w,l,v)}}if(i.op==="index"){let f=yield*ml(i.base,s,l),_=yield*ml(i.idx,s,l),h=Ofe(PB(i),s,l);if(i.base.type.kind==="mat"){let w=i.base.type.rows;return{get:()=>yR(f,_,w),set:E=>Nut(f,_,w,E,l,h)}}let v=f;return{get:()=>f[_],set:w=>MR(v,_,w,l,h)}}throw new Error(`typeshade/debug: bad atomic location ${i.op}`)}function*THt(i,s,l){let f=i.args[0];if(f===void 0)throw new Error(`typeshade/debug: ${i.fn} needs a location`);let _=yield*Aut(f,s,l),h=i.args[1]===void 0?0:yield*ml(i.args[1],s,l),v=i.args[2]===void 0?void 0:yield*ml(i.args[2],s,l),w=l.frames.at(-1)?.current;l.lockstep&&w!==void 0&&(yield{stmt:w,frames:l.frames,atomic:"before"});let E=dG(i.fn,_.get(),h,fk(f.type),v);return i.fn!=="atomicLoad"&&_.set(E.next),l.lockstep&&w!==void 0&&(yield{stmt:w,frames:l.frames,atomic:"after"}),E.result}function*bPe(i,s,l,f){if(i.op==="varref"||i.op==="param"){if(!l.has(i.name)){for(let _ of[f.privates,f.vars,f.bindings])if(i.name in _){MR(_,i.name,s,f,_!==f.privates);return}}l.set(i.name,s);return}if(i.op==="member"){let _=yield*ml(i.base,l,f),h=Ofe(PB(i),l,f);gc(_)?MR(_,C3[i.field],s,f,h):MR(_,i.field,s,f,h);return}if(i.op==="index"){let _=yield*ml(i.base,l,f),h=yield*ml(i.idx,l,f),v=Ofe(PB(i),l,f);if(i.base.type.kind==="mat"){Nut(_,h,i.base.type.rows,s,f,v);return}MR(_,h,s,f,v);return}throw new Error(`typeshade/debug: bad assignment target ${i.op}`)}function vPe(i,s){return xH(s)?k3(i):i}function*R3(i,s,l){let f=l.frames[l.frames.length-1];for(let _ of i)switch(f&&(f.current=_),yield{stmt:_,frames:l.frames},_.s){case"let":{let h=l.stubHits;s.set(_.name,vPe(yield*ml(_.expr,s,l),_.expr.type)),Ife(f,_.name,l.stubHits>h,!0);break}case"var":{let h=l.stubHits;s.set(_.name,_.init?vPe(yield*ml(_.init,s,l),_.type):yv(_.type,l.structs,l.overrides)),Ife(f,_.name,l.stubHits>h,!0);break}case"assign":{let h=l.stubHits,v=vPe(yield*ml(_.expr,s,l),_.expr.type);yield*bPe(_.target,v,s,l),Ife(f,PB(_.target),l.stubHits>h,Eut(_.target));break}case"assignOp":{let h=l.stubHits,v=yield*ml(_.target,s,l),w=fk(_.target.type),E=yield*ml(_.expr,s,l);yield*bPe(_.target,nB(_.bop,v,E,w),s,l),Ife(f,PB(_.target),l.stubHits>h,Eut(_.target));break}case"return":return{kind:"return",value:_.expr?yield*ml(_.expr,s,l):void 0};case"break":return{kind:"break"};case"continue":return{kind:"continue"};case"discard":return{kind:"discard"};case"call":yield*ml(_.expr,s,l);break;case"if":{let h=!1;for(let v of _.arms)if(yield*ml(v.cond,s,l)){let w=yield*R3(v.body,s,l);if(w.kind!=="normal")return w;h=!0;break}if(!h&&_.elseBody){let v=yield*R3(_.elseBody,s,l);if(v.kind!=="normal")return v}break}case"for":{let h=l.trees?.get(_);if(h!==void 0){let v=yield*kHt(_,h,s,l);if(v!==void 0)return v;break}for(yield*R3([_.init],s,l);yield*ml(_.cond,s,l);){let v=yield*R3(_.body,s,l);if(v.kind==="break")break;if(v.kind==="return"||v.kind==="discard")return v;yield*R3([_.update],s,l)}break}case"switch":{let h=yield*ml(_.scrut,s,l),v=_.cases.find(E=>E.values.includes(h)),w=v?v.body:_.defaultBody;if(w){let E=yield*R3(w,s,l);if(E.kind!=="normal"&&E.kind!=="break")return E}break}case"placeholder":throw new Error(`typeshade/debug: placeholder Stmt reached the stepping backend; composer forgot to splice tag=${_.tag}`);case"raw":throw new Error("typeshade/debug: raw Stmt reached the stepping backend; raw passthrough is GPU-only")}return SHt}function*kHt(i,s,l,f){let{reductions:_}=s,h=_.map(oe=>l.get(oe.name)),v=_.map(()=>[]),w=oe=>()=>ife(oe.op,oe.type),E=oe=>{let ae=sle(oe,f.f32??!1);return(K,de)=>LR(ml(ae,new Map([["$ta",K],["$tb",de]]),f))},O=s.scatters,L=O.map(oe=>l.get(oe)),U=O.length===0?void 0:new xB(L,f.f32??!1);O.forEach((oe,ae)=>l.set(oe,U.view(ae)));let M=()=>{U!==void 0&&(U.finish(),O.forEach((oe,ae)=>l.set(oe,U.real(ae))))};for(yield*R3([i.init],l,f);yield*ml(i.cond,l,f);){_.forEach(ae=>l.set(ae.name,w(ae)()));let oe=yield*R3(i.body,l,f);if(_.forEach((ae,K)=>v[K].push(l.get(ae.name))),U?.end(),oe.kind==="return"||oe.kind==="discard")return M(),oe;yield*R3([i.update],l,f)}_.forEach((oe,ae)=>{let K=E(oe),de=rfe(v[ae],K,w(oe));l.set(oe.name,de===void 0?h[ae]:K(h[ae],de))}),M()}function Ffe(i,s,l){let f=fp(i),_=new Map((i.overrides??[]).map(v=>[v.name,v.default]));for(let[v,w]of Object.entries(l??{}))_.set(v,w);let h={consts:new Map,overrides:_,decls:new Map(i.funcs.map(v=>[v.name,v])),copies:new Map(i.funcs.map(v=>[v.name,due(v.params,(f.get(v.name)?.size??0)>0)])),bindings:{},vars:{},privates:{},lockstep:!1,structs:new Map(i.structs.map(v=>[v.name,v])),bindingNames:new Set(i.bindings.map(v=>v.name)),gpuStubs:s,stubHits:0,frames:[],stubbed:new Set};for(let v of i.consts)h.consts.set(v.name,v.valueExpr?LR(ml(v.valueExpr,new Map,h)):v.cpuValue);for(let v of i.vars??[])v.space==="private"?h.privates[v.name]=v.init?LR(ml(v.init,new Map,h)):yv(v.type,h.structs,h.overrides):h.vars[v.name]=yv(v.type,h.structs,h.overrides);return h}function CHt(i){let s=new Map;for(let f of i.params)s.set(f.name,f.type);let l=f=>{for(let _ of f)switch(_.s){case"let":s.set(_.name,_.expr.type);break;case"var":s.set(_.name,_.type);break;case"if":for(let h of _.arms)l(h.body);_.elseBody&&l(_.elseBody);break;case"for":l([_.init]),l([_.update]),l(_.body);break;case"switch":for(let h of _.cases)l(h.body);_.defaultBody&&l(_.defaultBody);break;default:break}};return l(i.body),s}function LR(i){let s=i.next();for(;!s.done;)s=i.next();return s.value}KNe();Bm();aG();aA();function Put(i,s){let l=i.invocations.length/i.perGroup,f=i.invocations.filter(_=>i.pcOf(_)!==i.done);if(f.length!==0){for(let _=0;_<l;_++){let h=i.invocations.slice(_*i.perGroup,(_+1)*i.perGroup),v=h.filter(U=>i.pcOf(U)!==i.done);if(v.length===0||!v.every(U=>U.waiting))continue;let w=i.pcOf(v[0]),{fn:E,line:O}=i.barrierAt(w),L=v[0].wid;if(v.length<h.length)throw new Error(`typeshade/cpu: ${E}() at ${O} was reached by ${v.length} of ${h.length} invocations of workgroup (${L.join(", ")}); ${h.length-v.length} returned before it. Every invocation of a workgroup must reach the same barrier: move it out of the branch, or the early return ahead of it.`);if(v.some(U=>i.pcOf(U)!==w))throw new Error(`typeshade/cpu: the invocations of workgroup (${L.join(", ")}) wait at different barriers (one at ${O}). Every invocation of a workgroup must reach the same barrier in the same order.`);for(let U of v)U.waiting=!1;s.barrierPhases++}return f.filter(_=>!_.waiting)}}function*wHt(i,s){for(let l of s){let f=i.pcOf(l);if(f===i.done)continue;let _=i.cutAt(f);_==="barrier"?l.waiting=!0:_==="atomic"&&(yield[l,f])}}function Iut(i){let s={passes:0,barrierPhases:0};for(let l=Put(i,s);l;l=Put(i,s)){i.pass(l),s.passes++;for(let[f,_]of wHt(i,l))i.resolve(f,_)}return s}function Out(i,s,l,f){let _=i.module,h=_.funcs.find(De=>De.name===i.entry),v=c3(h)??[64,1,1],w=typeof s=="number"?[s,1,1]:s,E=Ffe(_,f?.gpuStubs??!1,f?.overrides),O=Loe(v,h.workgroupSizeOverrides,E.overrides);for(let[De,$e]of Object.entries(l))E.bindings[De]=$e;let L=_.vars??[],U=()=>{let De={};for(let $e of L)$e.space==="private"&&(De[$e.name]=$e.init?LR(ml($e.init,new Map,E)):yv($e.type,E.structs,E.overrides));return De},M=[],oe=[];for(let De=0;De<w[2];De++)for(let $e=0;$e<w[1];$e++)for(let Ze=0;Ze<w[0];Ze++){let ht=[Ze,$e,De],ct={};for(let Oe of L)Oe.space==="workgroup"&&(ct[Oe.name]=yv(Oe.type,E.structs,E.overrides));M.push(ct);for(let Oe=0;Oe<O[2];Oe++)for(let Ge=0;Ge<O[1];Ge++)for(let dn=0;dn<O[0];dn++){let an=[dn,Ge,Oe],$n=[Ze*O[0]+dn,$e*O[1]+Ge,De*O[2]+Oe],bn=dn+Ge*O[0]+Oe*O[0]*O[1];oe.push({workgroup:M.length-1,wid:ht,gid:$n,args:h.params.map(Ot=>xPe(Ot,$n,an,bn,ht,w)),privates:U(),waiting:!1,log:[]})}}let ae=(De,$e)=>({...E,vars:M[De.workgroup],privates:De.privates,...$e?{journal:$e}:{},...f?.consoleSink?{consoleSink:f.consoleSink,invocation:De.gid}:{},frames:[],stubbed:new Set,stubHits:0}),{passes:K,barrierPhases:de}=EHt(i,oe,O,{pass(De){for(let $e of De){let Ze=[];LR(iK(h,$e.args,void 0,ae($e,Ze)));for(let ht=Ze.length-1;ht>=0;ht--)Ze[ht].undo();$e.log=Ze}for(let $e of De){for(let Ze of $e.log)Ze.redo();$e.log=[]}},resolve(De,$e){let Ze=LR(ml($e.request,new Map,ae(De,void 0)));$e.result!==void 0&&(De.privates[$e.result]=Ze)}});for(let De of Object.keys(E.bindings))l[De]=E.bindings[De];return{workgroups:w[0]*w[1]*w[2],invocations:oe.length,barrierPhases:de,passes:K}}function EHt(i,s,l,f){return Iut({invocations:s,perGroup:l[0]*l[1]*l[2],done:i.done,pcOf:_=>_.privates[i.pc],cutAt:_=>i.cuts.get(_)?.kind,barrierAt:_=>{let h=i.cuts.get(_),v=h?.kind==="barrier"&&h.stmt?Vf(h.stmt):void 0;return{fn:h?.kind==="barrier"?h.fn:"barrier",line:v===void 0?"a line without a span":`line ${v.line}`}},pass:f.pass,resolve:(_,h)=>f.resolve(_,i.cuts.get(h),h)})}var DHt=i=>i.s==="call"&&i.expr.op==="call"&&i.expr.declRef===void 0&&kh(i.expr.fn);function NHt(i){for(;;){let s=i.next();if(s.done)return s.value}}function xPe(i,s,l,f,_,h){switch(i.builtin){case"global_invocation_id":return[...s];case"local_invocation_id":return[...l];case"local_invocation_index":return f;case"workgroup_id":return[..._];case"num_workgroups":return[...h];default:return yv(i.type)}}function AHt(i){for(i.at=void 0,i.atomic=!1;;){let s=i.gen.next();if(s.done){i.done=!0;return}if(!(s.value.afterCall||s.value.atomic==="after")){if(s.value.atomic==="before"){i.atomic=!0;return}if(DHt(s.value.stmt)){i.at=s.value.stmt;return}}}}function Fut(i,s,l,f,_){lA(i);let h=Dx(i);_?.precision==="f32"&&(h=Pfe(h));let v=h.funcs.find(de=>de.name===s);if(!v)throw new Error(`typeshade/cpu: no function "${s}" in module`);if(Tc(v)!=="compute")throw new Error(`typeshade/cpu: dispatch runs a @compute entry; "${s}" is ${Tc(v)??"a helper function"}`);let w;if(_?.order!=="lockstep")try{w=ele(h,s)}catch(de){if(!(de instanceof Kh))throw de}if(w!==void 0){let de=Out(w,l,f,_);return{workgroups:de.workgroups,invocations:de.invocations,barrierPhases:de.barrierPhases}}let E=c3(v)??[64,1,1],O=typeof l=="number"?[l,1,1]:l,L=Ffe(h,_?.gpuStubs??!1,_?.overrides),U=Loe(E,v.workgroupSizeOverrides,L.overrides);for(let[de,De]of Object.entries(f))L.bindings[de]=De;let M=h.vars??[],oe=()=>{let de={};for(let De of M)De.space==="private"&&(de[De.name]=De.init?NHt(ml(De.init,new Map,L)):yv(De.type,L.structs,L.overrides));return de},ae=0,K=0;for(let de=0;de<O[2];de++)for(let De=0;De<O[1];De++)for(let $e=0;$e<O[0];$e++){let Ze=[$e,De,de];for(let ct of M)ct.space==="workgroup"&&(L.vars[ct.name]=yv(ct.type,L.structs,L.overrides));let ht=[];for(let ct=0;ct<U[2];ct++)for(let Oe=0;Oe<U[1];Oe++)for(let Ge=0;Ge<U[0];Ge++){let dn=[Ge,Oe,ct],an=[$e*U[0]+Ge,De*U[1]+Oe,de*U[2]+ct],$n=Ge+Oe*U[0]+ct*U[0]*U[1],bn=v.params.map(cn=>xPe(cn,an,dn,$n,Ze,O)),Ot={...L,privates:oe(),lockstep:!0,..._?.consoleSink?{consoleSink:_.consoleSink,invocation:an}:{},frames:[],stubbed:new Set,stubHits:0};ht.push({gen:iK(v,bn,void 0,Ot),done:!1,at:void 0,atomic:!1})}for(K+=ht.length;;){for(let Ot of ht)!Ot.done&&Ot.at===void 0&&AHt(Ot);let ct=ht.filter(Ot=>Ot.atomic);if(ct.length>0){for(let Ot of ct)Ot.atomic=!1,Ot.gen.next();continue}let Oe=ht.filter(Ot=>!Ot.done);if(Oe.length===0)break;let Ge=ht.length-Oe.length,dn=Oe[0].at,an=dn.s==="call"&&dn.expr.op==="call"?dn.expr.fn:"barrier",$n=Vf(dn),bn=$n===void 0?"a line without a span":`line ${$n.line}`;if(Ge>0)throw new Error(`typeshade/cpu: ${an}() at ${bn} was reached by ${Oe.length} of ${ht.length} invocations of workgroup (${Ze.join(", ")}); ${Ge} returned before it. Every invocation of a workgroup must reach the same barrier: move it out of the branch, or the early return ahead of it.`);if(Oe.some(Ot=>Ot.at!==dn))throw new Error(`typeshade/cpu: the invocations of workgroup (${Ze.join(", ")}) wait at different barriers (one at ${bn}). Every invocation of a workgroup must reach the same barrier in the same order.`);ae++;for(let Ot of Oe)Ot.at=void 0}}for(let de of Object.keys(L.bindings))f[de]=L.bindings[de];return{workgroups:O[0]*O[1]*O[2],invocations:K,barrierPhases:ae}}function Tu(i,s,l){switch(i.op){case"lit":return i.value;case"constref":{let f=l.consts.get(i.name);if(f===void 0)throw new Error(`typeshade/cpu: unknown const ${i.name}`);return f}case"overrideref":{let f=l.overrides.get(i.name);if(f===void 0)throw new Error(`typeshade/cpu: unknown override ${i.name}`);return f}case"externref":throw new Error(`typeshade/cpu: host-provided global '${i.name}' has no CPU value`);case"param":case"varref":{if(s.has(i.name))return s.get(i.name);if(i.name in l.bindings)return l.bindings[i.name];if(i.name in l.vars)return l.vars[i.name];throw new Error(`typeshade/cpu: unbound ${i.name}`)}case"binop":{let f=Tu(i.a,s,l),_=Tu(i.b,s,l);return i.bop==="*"&&i.a.type.kind==="mat"&&(i.b.type.kind==="vec"||i.b.type.kind==="vec64")?mue(f,_,i.a.type.cols,i.a.type.rows):i.bop==="*"&&i.a.type.kind==="mat"&&i.b.type.kind==="mat"?hue(f,_,i.a.type.cols,i.a.type.rows,i.b.type.cols):i.bop==="*"&&i.a.type.kind==="vec"&&i.b.type.kind==="mat"?gue(f,_,i.b.type.cols,i.b.type.rows):nB(i.bop,f,_,fk(i.type))}case"unop":{let f=Tu(i.a,s,l);return tB(gc(f)?f.map(_=>-_):-f,fk(i.type))}case"compare":return uue(i.cop,Tu(i.a,s,l),Tu(i.b,s,l),lue(i.a.type));case"logical":{let f=Tu(i.a,s,l);return i.lop==="&&"?f?Tu(i.b,s,l):!1:f?!0:Tu(i.b,s,l)}case"call":{if(i.declRef===void 0&&kh(i.fn))throw Woe(i.fn);if(i.declRef===void 0&&pb(i.fn))return PHt(i,s,l);let f=l.params.get(i.fn),_=[],h=i.args.map((O,L)=>{if(f?.[L]?.mode==="inout"&&(O.op==="member"||O.op==="index")){let U=Mut(O,s,l);return _[L]=U,U.get()}return Tu(O,s,l)});if(i.declRef===void 0&&i.fn.startsWith("console.")){let O=i.fn.slice(8);l.consoleSink&&l.consoleSink({method:O,args:Qle(h,i.labels,Zle(O,i.args.map(L=>L.type))),span:i.span});return}if(i.fn==="u32"||i.fn==="i32"){let O=i.args[0].type;if(O.kind==="f64"||O.kind==="scalar"&&O.scalar==="f32")return i.fn==="u32"?SH(h[0]):TH(h[0])}if(i.declRef===void 0&&i.fn==="transpose"){let O=i.args[0].type;if(O.kind==="mat")return CH(h[0],O.cols,O.rows)}if(i.declRef===void 0&&pue.has(i.fn))return T3(i.fn,h,rB(i.args[0].type)==="i32"?"i32":"u32");if(i.declRef!==void 0){let O=l.fns[i.fn];if(O)return Rut(i,O(...h),s,l,_)}let v=hR[i.fn];if(v)return tB(v(...h),fk(i.type));let w=bH[i.fn];if(w){if(!l.gpuStubs)throw new Error(`typeshade/cpu: '${i.fn}' is GPU-only and not computable here \u2014 pass compileModule(m, { gpuStubs: true }) to accept placeholder values (X-GIS #763 O3)`);return w(...h)}let E=l.fns[i.fn];if(E)return Rut(i,E(...h),s,l,_);throw new Error(`typeshade/cpu: unknown fn ${i.fn}`)}case"member":{let f=Tu(i.base,s,l);return gc(f)?i.field.length>1?[...i.field].map(_=>f[C3[_]]):f[C3[i.field]]:f[i.field]}case"construct":{if(i.type.kind==="array")return i.args.map(h=>Tu(h,s,l));if(i.type.kind==="struct"){let h=l.structs.get(i.type.name);if(h===void 0)throw new Error(`oracle: struct '${i.type.name}' not declared`);let v={};return h.fields.forEach((w,E)=>{v[w.name]=Tu(i.args[E],s,l)}),v}let f=i.type.kind==="vec"?i.type.elem:void 0,_=[];for(let h of i.args){let v=Tu(h,s,l),w=rB(h.type);if(f===void 0||w===void 0){gc(v)?_.push(...v):_.push(v);continue}gc(v)?_.push(..._ue(v,w,f)):_.push(kH(v,w,f))}return(i.type.kind==="vec"||i.type.kind==="vec64")&&_.length===1?new Array(i.type.n).fill(_[0]):_}case"select":{let f=Tu(i.cond,s,l);return gc(f)?fue(f,Tu(i.ifTrue,s,l),Tu(i.ifFalse,s,l)):Tu(f?i.ifTrue:i.ifFalse,s,l)}case"index":{let f=Tu(i.base,s,l),_=Tu(i.idx,s,l);return i.base.type.kind==="mat"?yR(f,_,i.base.type.rows):f[_]}case"matchExpr":{let f=Tu(i.scrutinee,s,l),_=i.cases.find(([h])=>h===f);return Tu(_?_[1]:i.default,s,l)}}}function Mut(i,s,l){if(i.op==="varref"||i.op==="param"){let f=i.name;if(s.has(f))return{get:()=>s.get(f),set:_=>s.set(f,_)};if(f in l.vars)return{get:()=>l.vars[f],set:_=>{l.vars[f]=_}};if(f in l.bindings)return{get:()=>l.bindings[f],set:_=>{l.bindings[f]=_}};throw new Error(`typeshade/cpu: unbound ${f}`)}if(i.op==="member"){let f=Tu(i.base,s,l),_=gc(f)?C3[i.field]:i.field,h=f;return{get:()=>h[_],set:v=>{h[_]=v}}}if(i.op==="index"){let f=Tu(i.base,s,l),_=Tu(i.idx,s,l);if(i.base.type.kind==="mat"){let h=i.base.type.rows;return{get:()=>yR(f,_,h),set:v=>vR(f,_,h,v)}}return{get:()=>f[_],set:h=>{f[_]=h}}}throw new Error(`typeshade/cpu: bad atomic location ${i.op}`)}function PHt(i,s,l){let f=i.args[0];if(f===void 0)throw new Error(`typeshade/cpu: ${i.fn} needs a location`);let _=Mut(f,s,l),h=i.args[1]===void 0?0:Tu(i.args[1],s,l),v=i.args[2]===void 0?void 0:Tu(i.args[2],s,l),w=dG(i.fn,_.get(),h,fk(f.type),v);return i.fn!=="atomicLoad"&&_.set(w.next),w.result}function Rut(i,s,l,f,_=[]){let h=f.params.get(i.fn);if(h===void 0||!h.some(w=>w.mode==="inout"))return s;let v=u6e.values;return h.forEach((w,E)=>{let O=i.args[E];w.mode!=="inout"||O===void 0||(O.op==="varref"||O.op==="param"?SPe(O,v[E],l,f):_[E]?.set(v[E]))}),s}function SPe(i,s,l,f){if(i.op==="varref"||i.op==="param"){if(!l.has(i.name)){if(i.name in f.vars){f.vars[i.name]=s;return}if(i.name in f.bindings){f.bindings[i.name]=s;return}}l.set(i.name,s);return}if(i.op==="member"){let _=Tu(i.base,l,f);gc(_)?_[C3[i.field]]=s:_[i.field]=s;return}if(i.op==="index"){let _=Tu(i.base,l,f),h=Tu(i.idx,l,f);if(i.base.type.kind==="mat"){vR(_,h,i.base.type.rows,s);return}_[h]=s;return}throw new Error(`typeshade/cpu: bad assignment target ${i.op}`)}var IHt={kind:"normal"};function Rfe(i,s){return xH(s)?k3(i):i}function OHt(i,s,l,f){let{reductions:_}=s,h=_.map(oe=>l.get(oe.name)),v=_.map(()=>[]),w=oe=>()=>ife(oe.op,oe.type),E=oe=>{let ae=sle(oe,f.f32??!1);return(K,de)=>Tu(ae,new Map([["$ta",K],["$tb",de]]),f)},O=s.scatters.length>0?s.scatters:void 0,L=O===void 0?void 0:new xB(O.map(oe=>l.get(oe)),f.f32??!1),U=O?.map(oe=>l.get(oe));O?.forEach((oe,ae)=>l.set(oe,L.view(ae)));let M=()=>{L!==void 0&&(L.finish(),O.forEach((oe,ae)=>l.set(oe,U[ae])))};for(M3([i.init],l,f);Tu(i.cond,l,f);){_.forEach(ae=>l.set(ae.name,w(ae)()));let oe=M3(i.body,l,f);if(_.forEach((ae,K)=>v[K].push(l.get(ae.name))),L?.end(),oe.kind==="return"||oe.kind==="discard")return M(),oe;M3([i.update],l,f)}_.forEach((oe,ae)=>{let K=E(oe),de=rfe(v[ae],K,w(oe));l.set(oe.name,de===void 0?h[ae]:K(h[ae],de))}),M()}function M3(i,s,l){for(let f of i)switch(f.s){case"let":s.set(f.name,Rfe(Tu(f.expr,s,l),f.expr.type));break;case"var":s.set(f.name,f.init?Rfe(Tu(f.init,s,l),f.type):yv(f.type,l.structs));break;case"assign":SPe(f.target,Rfe(Tu(f.expr,s,l),f.expr.type),s,l);break;case"assignOp":{let _=Tu(f.target,s,l),h=fk(f.target.type);SPe(f.target,nB(f.bop,_,Tu(f.expr,s,l),h),s,l);break}case"return":return{kind:"return",value:f.expr?Tu(f.expr,s,l):void 0};case"break":return{kind:"break"};case"continue":return{kind:"continue"};case"discard":return{kind:"discard"};case"call":Tu(f.expr,s,l);break;case"if":{let _=!1;for(let h of f.arms)if(Tu(h.cond,s,l)){let v=M3(h.body,s,l);if(v.kind!=="normal")return v;_=!0;break}if(!_&&f.elseBody){let h=M3(f.elseBody,s,l);if(h.kind!=="normal")return h}break}case"for":{let _=l.trees?.get(f);if(_!==void 0){let h=OHt(f,_,s,l);if(h!==void 0)return h;break}for(M3([f.init],s,l);Tu(f.cond,s,l);){let h=M3(f.body,s,l);if(h.kind==="break")break;if(h.kind==="return"||h.kind==="discard")return h;M3([f.update],s,l)}break}case"switch":{let _=Tu(f.scrut,s,l),h=f.cases.find(w=>w.values.includes(_)),v=h?h.body:f.defaultBody;if(v){let w=M3(v,s,l);if(w.kind!=="normal"&&w.kind!=="break")return w}break}case"placeholder":throw new Error(`typeshade/cpu: placeholder Stmt reached CPU backend \u2014 composer forgot to splice tag=${f.tag}`);case"raw":throw new Error("typeshade/cpu: raw Stmt reached CPU backend \u2014 raw passthrough is GPU-only")}return IHt}function Lut(i,s){lA(i),i=Dx(i);let l=i;s?.precision==="f32"&&(i=Pfe(i));let f=new Map((i.overrides??[]).map(L=>[L.name,L.default]));for(let[L,U]of Object.entries(s?.overrides??{}))f.set(L,U);let _={consts:new Map,overrides:f,fns:{},params:new Map(i.funcs.map(L=>[L.name,L.params])),bindings:{},vars:{},structs:new Map(i.structs.map(L=>[L.name,L])),gpuStubs:s?.gpuStubs??!1,consoleSink:s?.consoleSink,trees:Nrt(l,i),f32:s?.precision==="f32"};for(let L of i.consts)_.consts.set(L.name,L.valueExpr?Tu(L.valueExpr,new Map,_):L.cpuValue);let h=i.vars??[];for(let L of h)L.space==="workgroup"&&(_.vars[L.name]=yv(L.type,_.structs,_.overrides));let v=h.filter(L=>L.space==="private"),w=()=>{for(let L of v)_.vars[L.name]=L.init?Rfe(Tu(L.init,new Map,_),L.type):yv(L.type,_.structs,_.overrides)},E=fp(i);for(let L of i.funcs){let U=due(L.params,(E.get(L.name)?.size??0)>0),M=L.params.some(oe=>oe.mode==="inout");_.fns[L.name]=(...oe)=>{let ae=new Map;L.params.forEach((de,De)=>ae.set(de.name,U[De]?k3(oe[De]):oe[De]));let K=M3(L.body,ae,_);return M&&(u6e.values=L.params.map(de=>ae.get(de.name))),K.kind==="return"?K.value:void 0}}let O=_.fns;if(v.length>0){O={};for(let L of i.funcs){let U=_.fns[L.name];O[L.name]=(...M)=>(w(),U(...M))}}return{fns:O,setBinding:(L,U)=>{_.bindings[L]=U},dispatch:(L,U)=>Fut(i,L,U,_.bindings,s)}}Y$();function $ut(i,s,l=[],f){let h=Lut(i,{gpuStubs:!0,consoleSink:FHt(i,s,l,f)}).fns[s];if(!h)throw new Error(`No function "${s}" in module`);return h(...l)}function FHt(i,s,l,f){if(!f)return f;let _=i.funcs.find(v=>v.name===s),h=_&&Mat(_,l,i.structs);return h?v=>f(v.invocation?v:{...v,invocation:h}):f}Lce();GC();function TPe(i,s={}){let l=xut(i,{fileName:s.fileName,...s.deprecations===!0?{deprecations:!0}:{},...s.readDocument?{readDocument:s.readDocument}:{},...s.resolveImport?{resolveImport:s.resolveImport}:{}}),f={consts:[...l.consts],structs:cw(l.structs),bindings:[...l.bindings],funcs:[...l.funcs],overrides:[...l.overrides],vars:[...l.vars],enables:[...l.enables],...l.directives.length>0?{diagnostics:[...l.directives]}:{}},_=[...l.diagnostics],h=()=>_.find(O=>O.category==="error"),v,w,E;if(!h())try{if(s.console==="gpu"){let O=T$(f);P0(O.module,f),E=O.log;for(let L of O.notRecorded)_.push(RHt(L,l.sourceFile.fileName));v=MG(O.module)}else v=l.wgsl??MG(f)}catch(O){_.push(O$(l.sourceFile,O))}if(v!==void 0){let O=f.funcs.some(L=>L.stage==="vertex"||L.stage==="fragment");try{w=Kce(O?MHt(f):f)}catch(L){O&&_.push(O$(l.sourceFile,L,"warning"))}if(O){for(let L of f.funcs)if(!(Tc(L)!=="compute"||xP(L)))try{Qce(f,L.name)}catch(U){let M=U instanceof Error?U.message:String(U);_.push(O$(l.sourceFile,new Error(`compute entry '${L.name}' has no WebGL2 pass program: ${M}`),"warning"))}}}return{diagnostics:_,module:f,wgsl:v,glsl:w,determinism:Rrt(f),...v!==void 0&&E!==void 0?{console:E}:{},eval:(O,L=[])=>{let U=h();if(U){let M=U.code?` ${U.code}`:"";throw new Error(`Cannot evaluate "${O}": the module did not compile. ${U.fileName}:${U.line}:${U.character}${M} ${U.message}`)}return $ut(f,O,L,s.consoleSink)}}}function RHt(i,s){let l=i.span;return{message:`This console.${i.method}() is not recorded on the GPU, because ${i.reason}. It still reaches the sink when the function runs on the CPU.`,fileName:l?.file??s,line:(l?.line??0)+1,character:(l?.character??0)+1,endLine:(l?.endLine??0)+1,endCharacter:(l?.endCharacter??0)+1,category:"warning",code:Je.CONSOLE_NOT_RECORDED,start:l?.start??0,length:l?.length??0}}function MHt(i){let s=i.funcs.filter(v=>Tc(v)!==void 0),l=s.filter(v=>Tc(v)!=="compute"||xP(v));if(l.length===s.length)return i;let f=rk(i,l),_=fp(i),h=new Set(l.flatMap(v=>[..._.get(v.name)??[]]));return{...i,funcs:i.funcs.filter(v=>f.fns.has(v.name)),bindings:i.bindings.filter(v=>f.bindings.has(v.name)).map(v=>v.space==="storage"&&v.access==="read_write"&&!h.has(v.name)?{...v,access:"read"}:v)}}UNe();function kPe(i,s={}){return grt(i,s)}l3();eR();P_();w$();var But=`"use typeshade";
-import { glyphCoverage, tickNumberSized, pixelWidth } from "./font.shade.ts";
+import { glyphCoverage, glyphLayers, tickNumberLayers, numberPlate, numberWidth, tickLevels, tickOpacity, pixelWidth } from "./font.shade.ts";
 
 /** Host-controlled viewport, in data units; rotation is yaw/pitch in radians. */
 export class PlotViewport {
@@ -671,18 +671,27 @@ export class PlotViewport {
   plotBlend: f32;
   appearance: vec4;
   decorations: u32;
+  labelStyle: vec4;
+  decorationOpacity: vec3;
 }
 
 export class PlotUniforms extends PlotViewport {
   probe: f32;
   view3d: u32;
   parameterBounds: vec2;
+  parameterMode: u32;
   curveQuality: vec2u;
   curvePattern: vec4;
 }
 
 type ScalarCurve = (x: f32) => f32;
 type SpaceCurve = (t: f32) => vec3;
+
+/** Axis names use the same compact plate as single-character numeric labels. */
+function axisLabel(pixel: vec2, at: vec2, code: i32, u: PlotViewport): vec3 {
+  const local = vec2(pixel.x - at.x, at.y - pixel.y + u.appearance.w * 0.75);
+  return vec3(glyphLayers(local + vec2(u.appearance.w * 0.42, 0), code, u.appearance.w, u.labelStyle.y), numberPlate(local, 0, 1, 0.5, u.appearance.w) * u.labelStyle.z);
+}
 
 /** CSS-pixel layout keeps line widths and text stable across sizes and display density. */
 function plotSize(resolution: vec2): vec2 {
@@ -708,17 +717,23 @@ function glyph(p: vec2, origin: vec2, axis: i32, size: f32): f32 {
   return glyphCoverage(vec2(p.x - origin.x + size * 0.42, origin.y - p.y + size * 0.75), 120 + axis, size);
 }
 
-function niceSpacing(span: f32, pixels: f32): f32 {
-  const raw = span / max(4, min(12, floor(pixels / 65)));
-  const unit = pow(10, floor(log2(max(raw, 1e-30)) / log2(10)));
-  const fraction = raw / unit;
-  return (fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10) * unit;
+function axisLevels(center: f32, span: f32, pixels: f32, horizontal: bool, u: PlotViewport): vec3 {
+  const size = u.appearance.w;
+  const rough = span * size * 4 / max(pixels, 1);
+  const width = max(numberWidth(center - span * 0.5, rough, size), numberWidth(center + span * 0.5, rough, size));
+  const gap = horizontal ? max(size * 3.5, width + size * 1.3) : size * 2.6;
+  return tickLevels(span * gap / max(pixels * u.labelStyle.x, 1));
 }
 
-function numberAt(pixel: vec2, anchor: vec2, value: f32, spacing: f32, align: f32, size: f32): f32 {
+function numberAt(pixel: vec2, anchor: vec2, value: f32, spacing: f32, align: f32, size: f32, halo: f32, plate: f32): vec3 {
   const delta = vec2(pixel.x - anchor.x, anchor.y - pixel.y);
-  if (delta.y < 0 || delta.y > size * 1.5 || abs(delta.x) > size * 9) return 0;
-  return tickNumberSized(delta, value, spacing, align, size);
+  if (delta.y < 0 || delta.y > size * 1.5 || abs(delta.x) > size * 16) return vec3(0);
+  return vec3(tickNumberLayers(delta, value, spacing, align, size, halo), numberPlate(delta, value, spacing, align, size) * plate);
+}
+
+function labelColor(color: vec3, labels: vec3): vec3 {
+  const plated = mix(color, vec3(0.995), labels.z * 0.94);
+  return mix(mix(plated, vec3(0.965, 0.973, 0.985), labels.y), vec3(0.25, 0.29, 0.35), labels.x);
 }
 
 function pointColor(color: vec3, p: vec2, selected: vec2): vec3 {
@@ -729,7 +744,7 @@ function pointColor(color: vec3, p: vec2, selected: vec2): vec3 {
 }
 
 /** Shared spines, data ticks and axis glyphs for all two-dimensional plot styles. */
-function axes2D(uv: vec2, u: PlotViewport): f32 {
+function axes2D(uv: vec2, u: PlotViewport): vec4 {
   const size = plotSize(u.resolution);
   const span = max(u.plotSpan, vec2(0.00001));
   const lo = u.plotCenter - span * 0.5;
@@ -741,28 +756,34 @@ function axes2D(uv: vec2, u: PlotViewport): f32 {
     stroke(pixel, vec2(12, origin.y), vec2(size.x - 12, origin.y), u.appearance.x),
     stroke(pixel, vec2(origin.x, 12), vec2(origin.x, size.y - 12), u.appearance.x),
   );
-  const tickStep = vec2(
-    niceSpacing(span.x, size.x * 11 / u.appearance.w),
-    niceSpacing(span.y, size.y * 11 / u.appearance.w),
-  );
-  const grid = ((abs(fract(p / tickStep + 0.5) - 0.5) * tickStep) / span) * size;
-  const ticks = max(
-    distanceCoverage(grid.x, u.appearance.x) * (1 - step(4, abs(pixel.y - origin.y))),
-    distanceCoverage(grid.y, u.appearance.x) * (1 - step(4, abs(pixel.x - origin.x))),
-  );
-  axes = max(axes, ticks);
-  // Choose the nearest label column/row without a per-pixel loop over all ticks.
-  const nearest = floor(p / tickStep + 0.5) * tickStep;
-  const at = (nearest - lo) / span * size;
-  if ((u.decorations & u32(2)) != u32(0) && at.x > 28 && at.x < size.x - 28)
-    axes = max(axes, numberAt(pixel, vec2(at.x, origin.y < u.appearance.w * 2 ? origin.y + u.appearance.w * 2 : origin.y - u.appearance.w * 0.65), nearest.x, tickStep.x, 0.5, u.appearance.w));
-  if ((u.decorations & u32(2)) != u32(0) && at.y > 25 && at.y < size.y - 25 && abs(nearest.y) > tickStep.y * 0.001)
-    axes = max(axes, numberAt(pixel, vec2(origin.x < u.appearance.w * 6 ? origin.x + 8 : origin.x - 8, at.y + u.appearance.w * 0.75), nearest.y, tickStep.y, origin.x < u.appearance.w * 6 ? 0 : 1, u.appearance.w));
-  if ((u.decorations & u32(4)) != u32(0)) axes = max(axes, glyph(pixel, vec2(size.x - 12, clamp(origin.y + 30, 40, size.y - 40)), 0, u.appearance.w));
-  if ((u.decorations & u32(4)) != u32(0)) axes = max(axes, glyph(pixel, vec2(clamp(origin.x + 14, 28, size.x - 28), size.y - 40), 1, u.appearance.w));
+  const xLevels = axisLevels(u.plotCenter.x, span.x, size.x, true, u);
+  const yLevels = axisLevels(u.plotCenter.y, span.y, size.y, false, u);
+  let labels = vec3(0);
+  let backgroundGrid = 0;
+  for (let level = 0; level < 2; level++) {
+    const tickStep = level == 0 ? vec2(xLevels.x, yLevels.x) : vec2(xLevels.y, yLevels.y);
+    const nearest = floor(p / tickStep + 0.5) * tickStep;
+    const weights = level == 0 ? vec2(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, yLevels)) : vec2(1);
+    const grid = abs(p - nearest) / span * size;
+    axes = max(axes, max(
+      distanceCoverage(grid.x, u.appearance.x) * weights.x * (1 - step(4, abs(pixel.y - origin.y))),
+      distanceCoverage(grid.y, u.appearance.x) * weights.y * (1 - step(4, abs(pixel.x - origin.x)))
+    ));
+    backgroundGrid = max(backgroundGrid, max(distanceCoverage(grid.x, u.appearance.y) * weights.x, distanceCoverage(grid.y, u.appearance.y) * weights.y));
+    const at = (nearest - lo) / span * size;
+    const width = numberWidth(nearest.x, xLevels.x, u.appearance.w);
+    const xFit = smoothstep(width + 6, width + 14, tickStep.x / span.x * size.x);
+    const yFit = smoothstep(u.appearance.w * 1.6, u.appearance.w * 2.2, tickStep.y / span.y * size.y);
+    if ((u.decorations & u32(2)) != u32(0) && at.x > width * 0.5 + 6 && at.x < size.x - width * 0.5 - 6)
+      labels = max(labels, numberAt(pixel, vec2(at.x, origin.y < u.appearance.w * 2 ? origin.y + u.appearance.w * 2 : origin.y - u.appearance.w * 0.65), nearest.x, xLevels.x, 0.5, u.appearance.w, u.labelStyle.y, u.labelStyle.z) * weights.x * xFit);
+    if ((u.decorations & u32(2)) != u32(0) && at.y > 25 && at.y < size.y - 25 && abs(nearest.y) > yLevels.x * 0.001)
+      labels = max(labels, numberAt(pixel, vec2(origin.x < u.appearance.w * 6 ? origin.x + 8 : origin.x - 8, at.y + u.appearance.w * 0.75), nearest.y, yLevels.x, origin.x < u.appearance.w * 6 ? 0 : 1, u.appearance.w, u.labelStyle.y, u.labelStyle.z) * weights.y * yFit);
+  }
+  labels *= u.decorationOpacity.y;
+  if ((u.decorations & u32(4)) != u32(0)) labels = max(labels, axisLabel(pixel, vec2(size.x - 12, clamp(origin.y + 30, 40, size.y - 40)), 120, u) * u.decorationOpacity.z);
+  if ((u.decorations & u32(4)) != u32(0)) labels = max(labels, axisLabel(pixel, vec2(clamp(origin.x + 14, 28, size.x - 28), size.y - 40), 121, u) * u.decorationOpacity.z);
   // The same data-space ticks define the grid; no host-generated line geometry.
-  const backgroundGrid = max(distanceCoverage(grid.x, u.appearance.y), distanceCoverage(grid.y, u.appearance.y));
-  return max(axes, ((u.decorations & u32(1)) != u32(0) ? backgroundGrid * 0.2 : 0));
+  return vec4(max(axes, ((u.decorations & u32(1)) != u32(0) ? backgroundGrid * 0.2 * u.decorationOpacity.x : 0)), labels);
 }
 
 function curveCoverage(p: vec2, value: f32, span: vec2, size: vec2, thickness: f32): f32 {
@@ -792,7 +813,8 @@ export function plotFilled(sample: ScalarCurve, uv: vec2, u: PlotViewport): vec4
   color = mix(color, vec3(0.45), 0.35 * grid);
   const diagonal = curveCoverage(p, p.x, span, size, 1.5);
   color = mix(color, vec3(0.15), 0.6 * diagonal);
-  return vec4(mix(color, vec3(0.39, 0.43, 0.49), axes2D(uv, u)), 1);
+  const decor = axes2D(uv, u);
+  return vec4(labelColor(mix(color, vec3(0.39, 0.43, 0.49), decor.x), decor.yzw), 1);
 }
 
 /** Compare a wider blue curve with a narrow orange curve, including undefined raw pow. */
@@ -807,9 +829,10 @@ export function plotComparison(
   const size = plotSize(u.resolution);
   const blue = curveCoverage(p, first(p.x), span, size, 2.5);
   const orange = curveCoverage(p, second(p.x), span, size, 1);
-  let color = mix(vec3(0.97, 0.97, 0.98), vec3(0.39, 0.43, 0.49), axes2D(uv, u));
+  const decor = axes2D(uv, u);
+  let color = mix(vec3(0.97, 0.97, 0.98), vec3(0.39, 0.43, 0.49), decor.x);
   color = mix(color, vec3(0.09, 0.47, 1), blue);
-  return vec4(mix(color, vec3(0.98, 0.42, 0.06), orange), 1);
+  return vec4(labelColor(mix(color, vec3(0.98, 0.42, 0.06), orange), decor.yzw), 1);
 }
 
 /** A parameter-space dash field. No path mesh or cumulative length buffer. */
@@ -858,8 +881,10 @@ export function plot2D(sample: ScalarCurve, uv: vec2, u: PlotUniforms, jumps: bo
     const offset = vec2((i & 1) == 0 ? -0.25 : 0.25, (i & 2) == 0 ? -0.25 : 0.25);
     curve += scalarField(sample, p + dx * offset.x + dy * offset.y, dx, dy, u, jumps) * 0.25;
   }
-  let color = mix(vec3(0.965, 0.973, 0.985), vec3(0.39, 0.43, 0.49), axes2D(uv, u));
+  const decor = axes2D(uv, u);
+  let color = mix(vec3(0.965, 0.973, 0.985), vec3(0.39, 0.43, 0.49), decor.x);
   color = mix(color, vec3(0.09, 0.42, 0.92), curve);
+  color = labelColor(color, decor.yzw);
   const selected = ((vec2(u.probe, sample(u.probe)) - u.plotCenter) / span + 0.5) * size;
   return vec4(abs(sample(u.probe)) < 1e18 ? pointColor(color, uv * size, selected) : color, 1);
 }
@@ -930,7 +955,8 @@ function axisField(pixel: vec2, axis: vec3, ray: ViewRay, u: PlotUniforms): f32 
 }
 
 /** Intersect the camera ray with y=0, then evaluate the world lattice as a distance field. */
-function groundField(ray: ViewRay, u: PlotUniforms, spacing: vec2): f32 {
+function groundField(ray: ViewRay, u: PlotUniforms, xLevels: vec3, zLevels: vec3): f32 {
+  const spacing = vec2(xLevels.x, zLevels.x);
   const denominator = abs(ray.direction.y) < 1e-8 ? (ray.direction.y < 0 ? -1e-8 : 1e-8) : ray.direction.y;
   const depth = -ray.origin.y / denominator;
   const ground = (ray.origin + ray.direction * depth).xz;
@@ -938,84 +964,110 @@ function groundField(ray: ViewRay, u: PlotUniforms, spacing: vec2): f32 {
   const distance = abs(fract(ground / spacing + 0.5) - 0.5) * spacing / gradient * pixelWidth();
   const separation = spacing / gradient * pixelWidth();
   const fade = smoothstep(vec2(2), vec2(6), separation);
-  const field = max(distanceCoverage(distance.x, u.appearance.y) * fade.x, distanceCoverage(distance.y, u.appearance.y) * fade.y);
-  return (u.view3d != u32(2) || depth >= 0.101) && abs(ray.direction.y) >= 1e-8 && (u.decorations & u32(1)) != u32(0) ? field : 0;
+  const nearest = floor(ground / spacing + 0.5) * spacing;
+  const field = max(distanceCoverage(distance.x, u.appearance.y) * fade.x * tickOpacity(nearest.x, xLevels), distanceCoverage(distance.y, u.appearance.y) * fade.y * tickOpacity(nearest.y, zLevels));
+  return (u.view3d != u32(2) || depth >= 0.101) && abs(ray.direction.y) >= 1e-8 && (u.decorations & u32(1)) != u32(0) ? field * u.decorationOpacity.x : 0;
 }
 
-/** Shared projective grid, axes and labels, independent of the curve representation. */
-function spatialBackground(uv: vec2, u: PlotUniforms): vec4 {
+/** Invert the projected infinite axis at the perpendicular screen foot.
+ * This queries visible world ticks directly, without a camera-sized tick domain. */
+function axisParameter(pixel: vec2, axis: vec3, u: PlotUniforms): f32 {
+  const origin = homogeneous(vec3(0), u, false);
+  const direction = homogeneous(axis, u, true);
+  const line = cross(origin, direction);
+  const foot = pixel - line.xy * dot(line, vec3(pixel, 1)) / max(dot(line.xy, line.xy), 1e-20);
+  const slope = direction.xy - foot * direction.z;
+  return dot(foot * origin.z - origin.xy, slope) / max(dot(slope, slope), 1e-20);
+}
+
+function spatialLevels(axis: vec3, u: PlotUniforms): vec3 {
+  const center = axisParameter(plotSize(u.resolution) * 0.5, axis, u);
+  const span = max(u.plotSpan.x, u.plotSpan.y);
+  const h = span * 0.001;
+  const tangent = (project(axis * (center + h), u) - project(axis * (center - h), u)) / (2 * h);
+  const pixels = max(length(tangent) * span, 1);
+  const horizontal = abs(tangent.x) >= abs(tangent.y) * 0.7;
+  return axisLevels(center, span, pixels, horizontal, u);
+}
+
+/** Label fill and halo plus tick stroke. Adjacent projected boxes determine
+ * collision fading; candidates are world anchored and remain camera independent. */
+function spatialTicks(pixel: vec2, axis: vec3, levels: vec3, priority: f32, u: PlotUniforms): vec4 {
+  const size = plotSize(u.resolution);
+  const fontSize = u.appearance.w;
+  const value = axisParameter(pixel, axis, u);
+  let labels = vec3(0);
+  let ticks = 0;
+  for (let index = 0; index < 6; index++) {
+    const stride = index < 3 ? levels.x : levels.y;
+    const nearest = floor(value / stride + 0.5) * stride;
+    const t = nearest + f32(index % 3 - 1) * stride;
+    const world = axis * t;
+    if (inFront(world, u)) {
+      const at = project(world, u);
+      const before = project(axis * (t - stride), u);
+      const after = project(axis * (t + stride), u);
+      const tangent = after - before;
+      const normal = normalize(vec2(-tangent.y, tangent.x) + vec2(1e-12));
+      const sign = axis.y > 0 ? (normal.x > 0 ? -1 : 1) : (normal.y > 0 ? -1 : 1);
+      const outward = normal * sign;
+      const anchor = at + outward * (fontSize * 0.95 + 6) + vec2(0, fontSize * 0.65);
+      const width = numberWidth(t, levels.x, fontSize);
+      const room = min(min(anchor.x - width * 0.5 - 3, size.x - anchor.x - width * 0.5 - 3), min(anchor.y - fontSize * 1.5, size.y - anchor.y));
+      const separation = min(abs(at - before), abs(after - at));
+      const box = vec2(width + fontSize, fontSize * 1.8 + 6);
+      const fit = smoothstep(0.85, 1.15, max(separation.x / box.x, separation.y / box.y));
+      const visibility = (index < 3 ? tickOpacity(t, levels) : 1) * fit;
+      ticks = max(ticks, stroke(pixel, at - normal * 3, at + normal * 3, u.appearance.x) * visibility);
+      const zero = abs(t) <= levels.x * 0.001;
+      const originDistance = length(at - project(vec3(0), u));
+      const crossing = zero ? (axis.x > 0 ? 1 : 0) : smoothstep(fontSize * 2, fontSize * 4, originDistance);
+      if ((u.decorations & u32(2)) != u32(0)) {
+        labels = max(labels, numberAt(pixel, anchor, t, levels.x, 0.5, fontSize, u.labelStyle.y, u.labelStyle.z) * u.decorationOpacity.y * visibility * smoothstep(0, 6, room) * crossing * priority);
+      }
+    }
+  }
+  return vec4(ticks, labels);
+}
+
+class SpatialDecor { color: vec3; labels: vec3; }
+
+/** Shared projection, nested grid and labels. No finite tick list or path mesh. */
+function spatialBackground(uv: vec2, u: PlotUniforms): SpatialDecor {
   const size = plotSize(u.resolution);
   const pixel = uv * size;
-  const half = u.plotSpan * 0.5;
-  const x0 = project(vec3(u.plotCenter.x - half.x, 0, 0), u);
-  const x1 = project(vec3(u.plotCenter.x + half.x, 0, 0), u);
-  const y0 = project(vec3(0, u.plotCenter.y - half.y, 0), u);
-  const y1 = project(vec3(0, u.plotCenter.y + half.y, 0), u);
-  const z0 = project(vec3(0, 0, -max(half.x, half.y)), u);
-  const z1 = project(vec3(0, 0, max(half.x, half.y)), u);
-  let color = vec3(0.965, 0.973, 0.985);
-  // Tick multiples are anchored in world coordinates. Their projected locations move
-  // with camera zoom/pan; subdividing the current span would cancel that movement.
-  const xStep = niceSpacing(u.plotSpan.x, length(x1 - x0) * 11 / u.appearance.w);
-  const yStep = niceSpacing(u.plotSpan.y, length(y1 - y0) * 11 / u.appearance.w);
-  const depthSpan = max(u.plotSpan.x, u.plotSpan.y);
-  const zStep = niceSpacing(depthSpan, length(z1 - z0) * 11 / u.appearance.w);
-  const lowX = u.plotCenter.x - half.x;
-  const lowY = u.plotCenter.y - half.y;
-  const lowZ = -depthSpan * 0.5;
-  const firstX = ceil(lowX / xStep) * xStep;
-  const firstY = ceil(lowY / yStep) * yStep;
-  const firstZ = ceil(lowZ / zStep) * zStep;
+  const xLevels = spatialLevels(vec3(1, 0, 0), u);
+  const yLevels = spatialLevels(vec3(0, 1, 0), u);
+  const zLevels = spatialLevels(vec3(0, 0, 1), u);
   const ray = viewRay(uv, u);
-  const grid = groundField(ray, u, vec2(xStep, zStep));
-  let labels = 0;
-  let ticks = 0;
-  for (let index = 0; index < 16; index++) {
-    const x = firstX + f32(index) * xStep;
-    const y = firstY + f32(index) * yStep;
-    const z = firstZ + f32(index) * zStep;
-    if (x <= lowX + u.plotSpan.x) {
-      const world = vec3(x, 0, 0);
-      if (inFront(world, u)) {
-        const at = project(world, u);
-        ticks = max(ticks, stroke(pixel, at - vec2(0, 3), at + vec2(0, 3), u.appearance.x));
-        if ((u.decorations & u32(2)) != u32(0)) labels = max(labels, numberAt(pixel, at - vec2(0, u.appearance.w * 0.7), x, xStep, 0.5, u.appearance.w));
-      }
-    }
-    if (z <= -lowZ) {
-      const world = vec3(0, 0, z);
-      if (inFront(world, u)) {
-        const at = project(world, u);
-        ticks = max(ticks, stroke(pixel, at - vec2(0, 3), at + vec2(0, 3), u.appearance.x));
-        if (abs(z) > zStep * 0.001) if ((u.decorations & u32(2)) != u32(0)) labels = max(labels, numberAt(pixel, at - vec2(0, u.appearance.w * 0.7), z, zStep, 0.5, u.appearance.w));
-      }
-    }
-    if (y <= lowY + u.plotSpan.y) {
-      const world = vec3(0, y, 0);
-      if (inFront(world, u)) {
-        const at = project(world, u);
-        ticks = max(ticks, stroke(pixel, at - vec2(3, 0), at + vec2(3, 0), u.appearance.x));
-        if (abs(y) > yStep * 0.001) if ((u.decorations & u32(2)) != u32(0)) labels = max(labels, numberAt(pixel, at + vec2(-8, u.appearance.w * 0.75), y, yStep, 1, u.appearance.w));
-      }
-    }
-  }
-  color = mix(color, vec3(0.8, 0.82, 0.85), ((u.decorations & u32(1)) != u32(0) ? grid * 0.65 : 0));
-  let xAxis = axisField(pixel, vec3(1, 0, 0), ray, u);
-  let yAxis = axisField(pixel, vec3(0, 1, 0), ray, u);
-  let zAxis = axisField(pixel, vec3(0, 0, 1), ray, u);
+  const grid = groundField(ray, u, xLevels, zLevels);
+  const xTicks = spatialTicks(pixel, vec3(1, 0, 0), xLevels, 1, u);
+  const yTicks = spatialTicks(pixel, vec3(0, 1, 0), yLevels, 1, u);
+  const origin = project(vec3(0), u);
+  const xDirection = homogeneous(vec3(1, 0, 0), u, true);
+  const zDirection = homogeneous(vec3(0, 0, 1), u, true);
+  const xTangent = normalize(xDirection.xy - origin * xDirection.z + vec2(1e-12));
+  const zTangent = normalize(zDirection.xy - origin * zDirection.z + vec2(1e-12));
+  const angle = abs(xTangent.x * zTangent.y - xTangent.y * zTangent.x);
+  const zTicks = spatialTicks(pixel, vec3(0, 0, 1), zLevels, smoothstep(0.08, 0.25, angle), u);
+  let labels = max(max(xTicks.yzw, yTicks.yzw), zTicks.yzw);
+  let color = mix(vec3(0.965, 0.973, 0.985), vec3(0.8, 0.82, 0.85), grid * 0.65);
+  color = mix(color, vec3(0.67, 0.28, 0.25), axisField(pixel, vec3(1, 0, 0), ray, u));
+  color = mix(color, vec3(0.23, 0.47, 0.3), axisField(pixel, vec3(0, 1, 0), ray, u));
+  color = mix(color, vec3(0.4, 0.35, 0.62), axisField(pixel, vec3(0, 0, 1), ray, u));
+  color = mix(color, vec3(0.25, 0.29, 0.35), max(max(xTicks.x, yTicks.x), zTicks.x));
   if ((u.decorations & u32(4)) != u32(0)) {
-    const labelX = vec3(u.plotCenter.x + half.x, 0, 0);
-    const labelY = vec3(0, u.plotCenter.y + half.y, 0);
-    const labelZ = vec3(0, 0, -lowZ);
-    if (inFront(labelX, u)) xAxis = max(xAxis, glyph(pixel, clamp(project(labelX, u) + vec2(12, 10), vec2(14), size - vec2(14)), 0, u.appearance.w));
-    if (inFront(labelY, u)) yAxis = max(yAxis, glyph(pixel, clamp(project(labelY, u) + vec2(10, 12), vec2(14), size - vec2(14)), 1, u.appearance.w));
-    if (inFront(labelZ, u)) zAxis = max(zAxis, glyph(pixel, clamp(project(labelZ, u) + vec2(12, 10), vec2(14), size - vec2(14)), 2, u.appearance.w));
+    for (let index = 0; index < 3; index++) {
+      const axis = index == 0 ? vec3(1, 0, 0) : index == 1 ? vec3(0, 1, 0) : vec3(0, 0, 1);
+      const edge = index == 1 ? vec2(size.x * 0.5, size.y - 30) : vec2(size.x - 30, size.y * 0.5);
+      const world = axis * axisParameter(edge, axis, u);
+      if (inFront(world, u)) {
+        const at = clamp(project(world, u) + vec2(10, 18), vec2(18), size - vec2(18));
+        labels = max(labels, axisLabel(pixel, at, 120 + index, u) * u.decorationOpacity.z);
+      }
+    }
   }
-  color = mix(color, vec3(0.67, 0.28, 0.25), xAxis);
-  color = mix(color, vec3(0.23, 0.47, 0.3), yAxis);
-  color = mix(color, vec3(0.4, 0.35, 0.62), zAxis);
-  color = mix(color, vec3(0.25, 0.29, 0.35), max(ticks, labels));
-  return vec4(color, labels);
+  return { color, labels };
 }
 
 /** The graph y=f(x), z=0 is an implicit mathematical field on an infinite plane.
@@ -1041,8 +1093,8 @@ export function plotScalar3D(sample: ScalarCurve, trajectory: SpaceCurve, uv: ve
     curve = distanceCoverage(trajectoryDistance(trajectory, uv * plotSize(u.resolution), u, vec2(u.plotCenter.x - extent, u.plotCenter.x + extent), jumps), u.appearance.z);
   }
   const visible = edgeOn || (abs(ray.direction.z) >= 1e-8 && (u.view3d != u32(2) || depth >= 0.101));
-  let color = mix(background.xyz, vec3(0.09, 0.42, 0.92), visible ? curve : 0);
-  color = mix(color, vec3(0.25, 0.29, 0.35), background.w);
+  let color = mix(background.color, vec3(0.09, 0.42, 0.92), visible ? curve : 0);
+  color = labelColor(color, background.labels);
   const selected = vec3(u.probe, sample(u.probe), 0);
   return vec4(abs(selected.y) < 1e18 && inFront(selected, u) ? pointColor(color, uv * plotSize(u.resolution), project(selected, u)) : color, 1);
 }
@@ -1120,6 +1172,41 @@ function intervalDistance(trajectory: SpaceCurve, pixel: vec2, low: f32, high: f
   return continuous ? min(refined, min(length(pixel - pa), length(pixel - pb))) : 1e20;
 }
 
+/** Compactify unbounded parameter space instead of clipping to a finite domain.
+ * The mathematical tails approach infinity; f32 precision and numerical quality
+ * still bound the detail any finite GPU invocation can resolve. */
+function parameterAt(q: f32, scale: f32, center: f32, u: PlotUniforms): f32 {
+  const safe = clamp(q, -0.99999, 0.99999);
+  if (u.parameterMode == u32(3)) return center + scale * safe / (1 - abs(safe));
+  const positive = (safe + 1) * 0.5;
+  if (u.parameterMode == u32(2)) return u.parameterBounds.x + scale * positive / max(1 - positive, 0.00001);
+  return u.parameterBounds.y - scale * (1 - positive) / max(positive, 0.00001);
+}
+
+/** Local world-space focus controls where the compactified search spends detail.
+ * This seed is numerical; an arbitrary callback has no guaranteed global inverse. */
+function parameterFocus(trajectory: SpaceCurve, u: PlotUniforms): vec2 {
+  const size = plotSize(u.resolution);
+  const screen = -u.plotPan * vec2(size.x / size.y, 1) * (3 * tan(0.3926990817));
+  const focus = inverseCamera(vec3(screen, 0), u) + vec3(u.plotCenter, 0);
+  const span = vec3(u.plotSpan, max(u.plotSpan.x, u.plotSpan.y));
+  let center = u.probe;
+  let speed = 1;
+  for (let i = 0; i < 4; i++) {
+    const h = max(abs(center) * 1e-5, 0.001);
+    const at = trajectory(center);
+    const tangent = (trajectory(center + h) - trajectory(center - h)) / (2 * h);
+    const normalized = tangent / span;
+    const norm = dot(normalized, normalized);
+    if (all(abs(at) < vec3(1e18)) && norm > 1e-16 && norm < 1e30) {
+      speed = sqrt(norm);
+      const correction = dot((focus - at) / span, normalized) / norm;
+      center += clamp(correction, -32 / speed, 32 / speed);
+    }
+  }
+  return vec2(center, clamp(2 / max(speed, 1e-10), 0.00001, 1e10));
+}
+
 /** Inspect every projected interval that can cover this fragment. Ranking a
  * fixed number of midpoint samples drops valid branches at folds/crossings.
  * Bounds use sampled bending as a numerical guard, not a proof for an arbitrary
@@ -1127,12 +1214,18 @@ function intervalDistance(trajectory: SpaceCurve, pixel: vec2, low: f32, high: f
 function trajectoryDistance(trajectory: SpaceCurve, pixel: vec2, u: PlotUniforms, bounds: vec2, jumps: bool): f32 {
   const requested = f32(u.curveQuality.x);
   const range = bounds.y - bounds.x;
-  const count = i32(min(512, u.curvePattern.x == 0 ? requested : max(requested, ceil(range / u.curvePattern.y * 4))));
+  const unbounded = u.parameterMode != u32(0);
+  const focus = unbounded ? parameterFocus(trajectory, u) : vec2(0, 1);
+  const count = i32(min(512, unbounded || u.curvePattern.x == 0 ? requested : max(requested, ceil(range / u.curvePattern.y * 4))));
   const stepSize = range / f32(count);
   let distance = 1e20;
   for (let i = 0; i < count; i++) {
     let low = bounds.x + f32(i) * stepSize;
     let high = min(bounds.y, low + stepSize);
+    if (unbounded) {
+      low = parameterAt(-1 + 2 * f32(i) / f32(count), focus.y, focus.x, u);
+      high = parameterAt(-1 + 2 * f32(i + 1) / f32(count), focus.y, focus.x, u);
+    }
     let t = (low + high) * 0.5;
     if (u.curvePattern.x != 0) {
       const period = u.curvePattern.y;
@@ -1166,10 +1259,10 @@ export function plot3D(trajectory: SpaceCurve, uv: vec2, u: PlotUniforms, jumps:
   const background = spatialBackground(uv, u);
   const pixel = uv * plotSize(u.resolution);
   const distance = trajectoryDistance(trajectory, pixel, u, u.parameterBounds, jumps);
-  let color = mix(background.xyz, vec3(0.09, 0.42, 0.92), distanceCoverage(distance, u.appearance.z));
-  color = mix(color, vec3(0.25, 0.29, 0.35), background.w);
+  let color = mix(background.color, vec3(0.09, 0.42, 0.92), distanceCoverage(distance, u.appearance.z));
+  color = labelColor(color, background.labels);
   const selected = trajectory(u.probe);
-  const visible = u.probe >= u.parameterBounds.x && u.probe <= u.parameterBounds.y && all(abs(selected) < vec3(1e18)) && inFront(selected, u);
+  const visible = ((u.parameterMode & u32(1)) != u32(0) || u.probe >= u.parameterBounds.x) && ((u.parameterMode & u32(2)) != u32(0) || u.probe <= u.parameterBounds.y) && all(abs(selected) < vec3(1e18)) && inFront(selected, u);
   return vec4(visible ? pointColor(color, pixel, project(selected, u)) : color, 1);
 }
 `;var jut=`"use typeshade";
@@ -1191,7 +1284,7 @@ export function glyphIndex(code: i32): i32 {
   return 12404;
 }
 
-export function glyphCoverage(p: vec2, code: i32, fontSize: f32): f32 {
+export function glyphLayers(p: vec2, code: i32, fontSize: f32, halo: f32): vec2 {
   // Match the physical display size to a native hinted glyph bucket. This
   // follows X-GIS's local-glyph size routing while keeping the atlas offline.
   const index = glyphIndex(code);
@@ -1211,7 +1304,7 @@ export function glyphCoverage(p: vec2, code: i32, fontSize: f32): f32 {
     }
   }
   const q = p * (referenceSize / fontSize) - vec2(0.5);
-  if (q.x < 0 || q.y < 0 || q.x >= cell.x - 1 || q.y >= cell.y - 1) return 0;
+  if (q.x < 0 || q.y < 0 || q.x >= cell.x - 1 || q.y >= cell.y - 1) return vec2(0);
   const base = vec2i(floor(q));
   const t = fract(q);
   const a = textureLoad(glyphAtlas, origin + base, 0).r;
@@ -1223,7 +1316,14 @@ export function glyphCoverage(p: vec2, code: i32, fontSize: f32): f32 {
   // Explicit physical size keeps the rule valid inside numeric label branches.
   const edge = 0.75;
   const width = max(2.52 / max(fontSize * font.pixelRatio, 1), 1 / 255);
-  return smoothstep(edge - width, edge + width, distance);
+  const fill = smoothstep(edge - width, edge + width, distance);
+  // Atlas radius is one third em. Expand the same distance field in CSS pixels.
+  const outerEdge = edge - min(halo, fontSize * 0.1) * 3 / fontSize;
+  return vec2(fill, smoothstep(outerEdge - width, outerEdge + width, distance));
+}
+
+export function glyphCoverage(p: vec2, code: i32, fontSize: f32): f32 {
+  return glyphLayers(p, code, fontSize, 0).x;
 }
 
 class NumberFormat {
@@ -1244,15 +1344,22 @@ function numberFormat(input: f32, spacing: f32): NumberFormat {
   let decimals = i32(clamp(ceil(-log2(max(abs(spacing), 1e-30)) / log2(10)), 0, 6));
   let digits: i32 = 1;
   if (scientific) {
-    magnitude = floor(magnitude / pow(10, f32(exponent)) * 10 + 0.5);
-    if (magnitude >= 100) { magnitude = 10; exponent = exponent + 1; }
-    decimals = 1;
+    decimals = i32(clamp(ceil(f32(exponent) - log2(max(abs(spacing), 1e-30)) / log2(10)), 0, 6));
+    const scale = pow(10, f32(decimals));
+    magnitude = floor(magnitude / pow(10, f32(exponent)) * scale + 0.5);
+    if (magnitude >= 10 * scale) { magnitude = scale; exponent = exponent + 1; }
   } else {
     magnitude = floor(magnitude * pow(10, f32(decimals)) + 0.5);
     digits = i32(floor(log2(max(floor(magnitude / pow(10, f32(decimals))), 1)) / log2(10))) + 1;
   }
+  for (let i = 0; i < 6; i++) {
+    if (decimals > 0 && abs(magnitude - floor(magnitude / 10) * 10) < 0.01) {
+      magnitude /= 10;
+      decimals -= 1;
+    }
+  }
   const negative = value < 0;
-  const length: i32 = scientific ? 7 + (negative ? i32(1) : i32(0)) : digits + (decimals > 0 ? 1 + decimals : 0) + (negative ? i32(1) : i32(0));
+  const length: i32 = scientific ? 5 + (decimals > 0 ? 1 + decimals : 0) + (negative ? i32(1) : i32(0)) : digits + (decimals > 0 ? 1 + decimals : 0) + (negative ? i32(1) : i32(0));
   return { value: magnitude, negative, scientific, decimals, digits, exponent, length };
 }
 
@@ -1262,12 +1369,16 @@ function numberGlyph(n: NumberFormat, column: i32): i32 {
   if (n.negative && i == 0) return 45;
   i = i - (n.negative ? i32(1) : i32(0));
   if (n.scientific) {
-    if (i == 0) return 48 + i32(floor(n.value / 10));
-    if (i == 1) return 46;
-    if (i == 2) return 48 + i32(n.value) % 10;
-    if (i == 3) return 101;
-    if (i == 4) return n.exponent < 0 ? 45 : 43;
-    if (i == 5) return 48 + abs(n.exponent) / 10;
+    const mantissaLength = 1 + (n.decimals > 0 ? 1 + n.decimals : 0);
+    if (i < mantissaLength) {
+      if (n.decimals > 0 && i == 1) return 46;
+      const digit = i - (i > 1 ? i32(1) : i32(0));
+      return 48 + i32(floor(n.value / pow(10, f32(n.decimals - digit)))) % 10;
+    }
+    const suffix = i - mantissaLength;
+    if (suffix == 0) return 101;
+    if (suffix == 1) return n.exponent < 0 ? 45 : 43;
+    if (suffix == 2) return 48 + abs(n.exponent) / 10;
     return 48 + abs(n.exponent) % 10;
   }
   if (n.decimals > 0 && i == n.digits) return 46;
@@ -1277,19 +1388,19 @@ function numberGlyph(n: NumberFormat, column: i32): i32 {
 
 /** Keep full SDF padding at character boundaries, as X-GIS glyph slots do.
  * Advance locates each glyph; it must never act as a clipping rectangle. */
-export function tickNumberSized(p: vec2, value: f32, spacing: f32, align: f32, fontSize: f32): f32 {
+export function tickNumberLayers(p: vec2, value: f32, spacing: f32, align: f32, fontSize: f32, halo: f32): vec2 {
   const n = numberFormat(value, spacing);
   const advance = fontSize * 0.625;
   const offset = p + vec2(f32(n.length) * advance * align, 0);
-  if (offset.y < 0 || offset.y > fontSize * 1.5) return 0;
+  if (offset.y < 0 || offset.y > fontSize * 1.5) return vec2(0);
   const column = i32(floor(offset.x / advance));
   const atlasBearing = fontSize * (3 / 24);
-  let coverage = 0;
+  let coverage = vec2(0);
   for (let neighbor = -1; neighbor <= 1; neighbor++) {
     const index = column + neighbor;
     if (index >= 0 && index < n.length) {
       const local = vec2(offset.x - f32(index) * advance + atlasBearing, offset.y);
-      coverage = max(coverage, glyphCoverage(local, numberGlyph(n, index), fontSize));
+      coverage = max(coverage, glyphLayers(local, numberGlyph(n, index), fontSize, halo));
     }
   }
   return coverage;
@@ -1298,8 +1409,42 @@ export function tickNumberSized(p: vec2, value: f32, spacing: f32, align: f32, f
 export function tickNumber(p: vec2, value: f32, spacing: f32, align: f32): f32 {
   return tickNumberSized(p, value, spacing, align, 11);
 }
+
+export function tickNumberSized(p: vec2, value: f32, spacing: f32, align: f32, fontSize: f32): f32 {
+  return tickNumberLayers(p, value, spacing, align, fontSize, 0).x;
+}
+
+export function numberWidth(value: f32, spacing: f32, size: f32): f32 {
+  return f32(numberFormat(value, spacing).length) * size * 0.625;
+}
+
+/** Nested decimal lattices: shared ticks retain full opacity at every LOD boundary.
+ * Intermediate ticks fade as a continuous function of scale, without camera lag. */
+export function tickLevels(raw: f32): vec3 {
+  const safe = max(raw, 1e-25);
+  const unit = pow(10, floor(log2(safe) / log2(10)));
+  const fine = safe < unit * 2 ? unit : unit * 2;
+  const coarse = safe < unit * 2 ? unit * 2 : unit * 10;
+  const phase = log2(safe / fine) / log2(coarse / fine);
+  return vec3(fine, coarse, 1 - smoothstep(0, 1, phase));
+}
+
+export function tickOpacity(value: f32, levels: vec3): f32 {
+  const multiple = value / levels.y;
+  return abs(multiple - floor(multiple + 0.5)) < 0.001 ? 1 : levels.z;
+}
+
+/** Compact rounded label plate, using the exact formatted numeric advance. */
+export function numberPlate(p: vec2, value: f32, spacing: f32, align: f32, size: f32): f32 {
+  const width = numberWidth(value, spacing, size);
+  const center = vec2(width * (0.5 - align), size * 0.76);
+  const half = vec2(width * 0.5 + 3.5, size * 0.55 + 2);
+  const q = abs(p - center) - half + vec2(3);
+  const distance = length(max(q, vec2(0))) + min(max(q.x, q.y), 0) - 3;
+  return 1 - smoothstep(-pixelWidth() * 0.5, pixelWidth() * 0.5, distance);
+}
 `;var CPe=class extends Error{constructor(l){super(l.map(f=>`${f.fileName??"shader"}:${f.line}:${f.character}: ${f.message}`).join(`
-`));this.diagnostics=l;this.name="PlotCompileError"}},jHt=/^[A-Za-z_$][\w$]*$/,zHt=new Set(["resolution","plotCenter","plotSpan","plotRotation","plotPan","plotBlend","probe","view3d","appearance","decorations","parameterBounds","curveQuality","curvePattern"]);function thn(i,s={}){let l=s.entry??"sample",f=s.kind??"scalar";if(!jHt.test(l))throw new TypeError("entry must be a TypeScript identifier.");if(f!=="scalar"&&f!=="parametric")throw new TypeError("kind must be scalar or parametric.");let _=Object.fromEntries(Object.entries(s.parameters??{}));for(let[ht,ct]of Object.entries(_)){if(!/^[A-Za-z_]\w*$/.test(ht)||zHt.has(ht))throw new TypeError(`Invalid plot parameter: ${ht}`);if(!Number.isFinite(ct)||Math.abs(ct)>3402823466e29)throw new RangeError(`${ht} must be a finite f32 value.`)}let h=x2.resolve(s.fileName??"curve.shade.ts"),v=x2.join(x2.dirname(h),"__typeplot-shared.shade.ts"),w=x2.join(x2.dirname(h),"__typeplot-entry.shade.ts");if([v,w].includes(h))throw new TypeError("fileName uses a reserved TypePlot file name.");let E=Object.keys(_),O=["t",...E.map(ht=>`u.${ht}`)].join(", "),L=f==="scalar"?`function sample(t: f32): f32 { return callback(${O}); }
+`));this.diagnostics=l;this.name="PlotCompileError"}},jHt=/^[A-Za-z_$][\w$]*$/,zHt=new Set(["resolution","plotCenter","plotSpan","plotRotation","plotPan","plotBlend","probe","view3d","appearance","decorations","labelStyle","decorationOpacity","parameterBounds","parameterMode","curveQuality","curvePattern"]);function thn(i,s={}){let l=s.entry??"sample",f=s.kind??"scalar";if(!jHt.test(l))throw new TypeError("entry must be a TypeScript identifier.");if(f!=="scalar"&&f!=="parametric")throw new TypeError("kind must be scalar or parametric.");let _=Object.fromEntries(Object.entries(s.parameters??{}));for(let[ht,ct]of Object.entries(_)){if(!/^[A-Za-z_]\w*$/.test(ht)||zHt.has(ht))throw new TypeError(`Invalid plot parameter: ${ht}`);if(!Number.isFinite(ct)||Math.abs(ct)>3402823466e29)throw new RangeError(`${ht} must be a finite f32 value.`)}let h=x2.resolve(s.fileName??"curve.shade.ts"),v=x2.join(x2.dirname(h),"__typeplot-shared.shade.ts"),w=x2.join(x2.dirname(h),"__typeplot-entry.shade.ts");if([v,w].includes(h))throw new TypeError("fileName uses a reserved TypePlot file name.");let E=Object.keys(_),O=["t",...E.map(ht=>`u.${ht}`)].join(", "),L=f==="scalar"?`function sample(t: f32): f32 { return callback(${O}); }
 function trajectory(t: f32): vec3 { return vec3(t, sample(t), 0.); }`:`function trajectory(t: f32): vec3 { return callback(${O}); }`,U=s.discontinuous===!0,M=f==="scalar"?`if (u.plotBlend >= 1.) { return plotScalar3D(sample, trajectory, uv, u, ${U}); }
   const flat = plot2D(sample, uv, u, ${U});
   if (u.plotBlend <= 0.) { return flat; }

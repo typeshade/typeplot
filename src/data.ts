@@ -1,3 +1,4 @@
+import { OpacityFade } from "./fade.js";
 import { createPlotInteraction } from "./interaction.js";
 import { GpuRenderer, type RenderAxes, type Scene } from "./gpu-renderer.js";
 import { encodePng } from "./png.js";
@@ -40,7 +41,16 @@ export interface AxesOptions {
   readonly xScale?: AxisScale;
   readonly yScale?: AxisScale;
   readonly grid?: boolean;
-  readonly legend?: boolean;
+  /** Tick label size, 6–24 CSS pixels. Default 11. */
+  readonly labelSize?: number;
+  /** Relative tick density, 0.25–4. Default 1. */
+  readonly tickDensity?: number;
+  /** SDF tick label halo, 0–2 CSS pixels. Default 0.8. */
+  readonly labelHalo?: number;
+  /** Rounded label plates. Default false; halo remains enabled. */
+  readonly labelBackground?: boolean;
+  /** true draws a GPU legend; "html" uses an accessible HTML legend on screen. */
+  readonly legend?: boolean | "html";
 }
 export interface FigureOptions {
   readonly backend?: "auto" | "webgpu" | "webgl2";
@@ -54,6 +64,10 @@ export interface FigureOptions {
   readonly title?: string;
   readonly background?: string;
   readonly interactive?: boolean;
+  /** Released-drag inertia. Default true; disabled by reduced-motion preferences. */
+  readonly inertia?: boolean;
+  /** Double-click restores the home camera. Default true. */
+  readonly doubleClickReset?: boolean;
   readonly toolbar?: boolean;
 }
 export interface QuickPlotOptions
@@ -229,6 +243,10 @@ export class Axes {
   private readonly controller: ReturnType<typeof createPlotInteraction>;
   private readonly artists: Series[] = [];
   private settings: AxesOptions = {};
+  private readonly gridFade = new OpacityFade(0);
+  private fadeFrame = 0;
+  private htmlLegend?: HTMLUListElement;
+  private legendSignature = "";
   private colorIndex = 0;
   private disposed = false;
   /** @internal */
@@ -243,7 +261,7 @@ export class Axes {
     this.canvas.setAttribute("role", "img");
     this.canvas.setAttribute("aria-label", `Subplot ${index + 1}`);
     this.canvas.title =
-      "Drag to pan; scroll to zoom; arrow keys to move; +/− to zoom; Home to reset.";
+      "Drag to pan; scroll to zoom; double-click or Home to reset; Escape stops inertia; arrow keys move; +/− zoom.";
     this.canvas.textContent =
       "Chart. Provide a data table or description alongside this figure for access to the underlying values.";
     this.controller = createPlotInteraction(
@@ -259,6 +277,10 @@ export class Axes {
           width: Math.max(1, rect.width - PAD.left - PAD.right),
           height: Math.max(1, rect.height - PAD.top - PAD.bottom),
         };
+      },
+      {
+        inertia: figure.options.inertia,
+        doubleClickReset: figure.options.doubleClickReset,
       },
     );
     this.canvas.addEventListener("focus", this.redraw);
@@ -396,9 +418,42 @@ export class Axes {
       const range = next[`${axis}Limits`];
       if (range) next[`${axis}Limits`] = limits(range, scale, `${axis}Limits`);
     }
+    for (const [key, low, high] of [
+      ["labelSize", 6, 24],
+      ["tickDensity", 0.25, 4],
+      ["labelHalo", 0, 2],
+    ] as const) {
+      const value = next[key];
+      if (
+        value !== undefined &&
+        (!Number.isFinite(value) || value < low || value > high)
+      )
+        throw new RangeError(`${key} must be between ${low} and ${high}.`);
+    }
+    if (
+      next.labelBackground !== undefined &&
+      typeof next.labelBackground !== "boolean"
+    )
+      throw new TypeError("labelBackground must be a boolean.");
+    if (
+      next.legend !== undefined &&
+      next.legend !== true &&
+      next.legend !== false &&
+      next.legend !== "html"
+    )
+      throw new TypeError("legend must be a boolean or html.");
     const previous = this.settings;
     this.settings = next;
     try {
+      if (options.legend !== undefined) this.updateHtmlLegend();
+      if (options.grid !== undefined) {
+        const win = this.canvas.ownerDocument.defaultView!;
+        this.gridFade.set(
+          options.grid ? 1 : 0,
+          win.performance.now(),
+          win.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
+        );
+      }
       if (
         ["xLimits", "yLimits", "xScale", "yScale"].some((key) =>
           Object.hasOwn(options, key),
@@ -437,16 +492,10 @@ export class Axes {
     return this.set({ yScale: value });
   }
   grid(visible = true): this {
-    this.assertAlive();
-    this.settings = { ...this.settings, grid: visible };
-    this.redraw();
-    return this;
+    return this.set({ grid: visible });
   }
-  legend(visible = true): this {
-    this.assertAlive();
-    this.settings = { ...this.settings, legend: visible };
-    this.redraw();
-    return this;
+  legend(visible: boolean | "html" = true): this {
+    return this.set({ legend: visible });
   }
   /** Restore automatic limits for both axes. */
   autoscale(): this {
@@ -462,6 +511,8 @@ export class Axes {
   clear(): this {
     this.assertAlive();
     this.artists.forEach((series) => series.detach());
+    this.htmlLegend?.remove();
+    this.htmlLegend = undefined;
     this.artists.length = 0;
     this.colorIndex = 0;
     this.settings = {};
@@ -567,11 +618,77 @@ export class Axes {
   readonly redraw = (): void => {
     if (!this.disposed) this.figure.redraw();
   };
+  private updateHtmlLegend(): void {
+    if (this.settings.legend !== "html") {
+      this.htmlLegend?.remove();
+      this.htmlLegend = undefined;
+      this.legendSignature = "";
+      return;
+    }
+    const entries = this.artists.filter(
+      (series) => series.style.label && !series.style.label.startsWith("_"),
+    );
+    const signature = JSON.stringify(
+      entries.map((series) => [
+        series.style.label,
+        series.style.color,
+        series.style.lineStyle,
+        series.style.alpha,
+      ]),
+    );
+    if (!this.htmlLegend) {
+      const list = this.canvas.ownerDocument.createElement("ul");
+      this.htmlLegend = list;
+      list.className = "typeplot-html-legend";
+      list.setAttribute("aria-label", "Legend");
+      list.style.cssText =
+        "position:absolute;z-index:2;list-style:none;margin:0;padding:6px 9px;border:1px solid #dce2e9;border-radius:6px;background:#ffffffef;color:#334155;font:12px system-ui,sans-serif;transform:translateX(-100%);max-width:45%;pointer-events:auto";
+      this.canvas.parentElement?.appendChild(list);
+    }
+    if (signature !== this.legendSignature) {
+      this.htmlLegend.replaceChildren();
+      for (const series of entries) {
+        const item = this.canvas.ownerDocument.createElement("li");
+        item.style.cssText =
+          "display:flex;align-items:center;gap:8px;padding:3px 0";
+        const sample = this.canvas.ownerDocument.createElement("span");
+        sample.setAttribute("aria-hidden", "true");
+        sample.style.cssText = `display:inline-block;flex:0 0 18px;border-top:2px ${series.style.lineStyle === "--" ? "dashed" : series.style.lineStyle === ":" ? "dotted" : "solid"}`;
+        sample.style.borderColor = series.style.color;
+        sample.style.opacity = String(series.style.alpha);
+        const label = this.canvas.ownerDocument.createElement("span");
+        label.textContent = series.style.label;
+        item.append(sample, label);
+        this.htmlLegend.appendChild(item);
+      }
+      this.legendSignature = signature;
+    }
+    this.htmlLegend.hidden = !entries.length;
+    this.htmlLegend.style.left = `${this.canvas.offsetLeft + this.canvas.clientWidth - PAD.right - 8}px`;
+    this.htmlLegend.style.top = `${this.canvas.offsetTop + PAD.top + 8}px`;
+  }
   /** @internal GPU input only; axes/grid/ticks/glyphs are generated by the shaders. */
-  snapshot(): RenderAxes {
+  snapshot(settled = false): RenderAxes {
+    if (!settled) this.updateHtmlLegend();
+    const now = this.canvas.ownerDocument.defaultView!.performance.now();
+    if (!settled && this.gridFade.active(now) && !this.fadeFrame) {
+      this.fadeFrame =
+        this.canvas.ownerDocument.defaultView!.requestAnimationFrame(() => {
+          this.fadeFrame = 0;
+          this.redraw();
+        });
+    }
     return {
+      gridOpacity: settled
+        ? this.settings.grid
+          ? 1
+          : 0
+        : this.gridFade.value(now),
       bounds: this.controller.bounds(),
-      settings: this.settings,
+      settings:
+        this.settings.legend === "html"
+          ? { ...this.settings, legend: settled }
+          : this.settings,
       series: this.artists,
       focused: this.canvas.matches(":focus-visible"),
     };
@@ -580,6 +697,10 @@ export class Axes {
   destroy(): void {
     if (this.disposed) return;
     this.disposed = true;
+    if (this.fadeFrame)
+      this.canvas.ownerDocument.defaultView!.cancelAnimationFrame(
+        this.fadeFrame,
+      );
     this.controller.destroy();
     this.canvas.removeEventListener("focus", this.redraw);
     this.canvas.removeEventListener("blur", this.redraw);
@@ -753,7 +874,7 @@ export class Figure {
         if (this.renderer) void this.paint().catch(this.report);
       });
   };
-  private snapshot(width: number, height: number): Scene {
+  private snapshot(width: number, height: number, settled = false): Scene {
     return {
       width,
       height,
@@ -764,7 +885,7 @@ export class Figure {
         : 0,
       title: this.options.title,
       background: this.options.background,
-      axes: this.axes.map((ax) => ax.snapshot()),
+      axes: this.axes.map((ax) => ax.snapshot(settled)),
     };
   }
   private paint(): Promise<void> {
@@ -802,7 +923,7 @@ export class Figure {
       );
     if (this.disposed) throw new Error("This figure has been destroyed.");
     const pixels = await this.renderer!.pixels(
-      this.snapshot(width, height),
+      this.snapshot(width, height, true),
       ratio,
     );
     return encodePng(pixels.bytes, pixels.width, pixels.height);

@@ -8,7 +8,8 @@ Ant Design v5, IBM Plex fonts, English at `/` and separately authored Korean at 
 Deploy only at `plot.typeshade.dev` using Cloudflare Worker static assets.
 
 The data API renders arrays and host-sampled JavaScript functions through precompiled TypeShade shaders.
-All grids, axes, ticks, text and series are shader-generated. TypeShade scalar
+All grids, axes, ticks, chart text and series are shader-generated. HTML camera controls
+and opt-in HTML legends are supported host UI; PNG export retains a GPU legend. TypeShade scalar
 and parametric callbacks compile at build time and render through WebGPU or WebGL2. Keep
 these paths explicit: ordinary JavaScript callbacks are not compiled shaders. Do not claim
 full matplotlib compatibility, compilation of ordinary JavaScript callbacks, or fabricated benchmarks.

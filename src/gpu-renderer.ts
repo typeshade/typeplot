@@ -27,6 +27,7 @@ export interface RenderAxes {
     y: readonly [number, number];
   };
   readonly settings: AxesOptions;
+  readonly gridOpacity: number;
   readonly series: readonly RenderSeries[];
   readonly focused: boolean;
 }
@@ -149,6 +150,7 @@ export class GpuRenderer {
   private axes!: RenderPipeline;
   private series!: RenderPipeline;
   private text!: RenderPipeline;
+  private labelPlate!: RenderPipeline;
   private glyphs!: Texture;
   private device?: Device;
   private samples = new Map<RenderSeries, SampleResource>();
@@ -226,6 +228,7 @@ export class GpuRenderer {
     this.axes = await make("surfaceVertex", "axesFragment");
     this.series = await make("surfaceVertex", "seriesFragment");
     this.text = await make("textVertex", "textFragment");
+    this.labelPlate = await make("surfaceVertex", "labelPlateFragment");
     if (this.backend === "webgpu")
       this.device = await createDevice({ runtime: this.runtime });
     this.glyphs = await loadGlyphAtlas(this.runtime);
@@ -249,7 +252,13 @@ export class GpuRenderer {
         axes.settings.xScale === "log" ? 1 : 0,
         axes.settings.yScale === "log" ? 1 : 0,
       ],
-      grid: axes.settings.grid ? 1 : 0,
+      grid: axes.gridOpacity,
+      labelStyle: [
+        axes.settings.labelSize ?? 11,
+        axes.settings.tickDensity ?? 1,
+        axes.settings.labelHalo ?? 0.8,
+        axes.settings.labelBackground ? 1 : 0,
+      ],
       layer: 0,
       background,
       legend,
@@ -350,12 +359,31 @@ export class GpuRenderer {
       tint = ink,
     ) => {
       if (!value) return;
+      const layout = u as { labelStyle: number[] };
+      const width = textWidth(value, size);
+      const center = rotate
+        ? [x + size * 0.76, y - width * (0.5 - align)]
+        : [x + width * (0.5 - align), y + size * 0.76];
+      const half = rotate
+        ? [size * 0.55 + 2, width * 0.5 + 3.5]
+        : [width * 0.5 + 3.5, size * 0.55 + 2];
+      const box = [...center, ...half];
+      if (layout.labelStyle[3] > 0 && value !== "—")
+        pass.draw(
+          this.labelPlate,
+          {
+            u,
+            text: { color: tint, box },
+            font: { pixelRatio: Math.min(ratioX, ratioY) },
+          } as never,
+          { count: 3 },
+        );
       const data = letters(value, x, y, size, align, rotate);
       pass.draw(
         this.text,
         {
           u,
-          text: { color: tint },
+          text: { color: tint, box },
           glyphAtlas: this.glyphs,
           font: { pixelRatio: Math.min(ratioX, ratioY) },
         } as never,

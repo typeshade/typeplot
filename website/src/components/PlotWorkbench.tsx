@@ -10,6 +10,7 @@ import {
 } from "../vendor/typeplot/data.js";
 import {
   createPlot,
+  ViewControl,
   type Plot,
   type PlotProgram,
   type PlotProjection,
@@ -29,6 +30,9 @@ const DEFAULT_STYLE: Required<PlotStyle> = {
   dashPeriod: 0.2,
   dashOffset: 0,
   labelSize: 11,
+  tickDensity: 1,
+  labelHalo: 0.8,
+  labelBackground: false,
   grid: true,
   tickLabels: true,
   axisLabels: true,
@@ -42,9 +46,11 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
   const [exponent, setExponent] = useState(2);
   const [backend, setBackend] = useState<Backend>("auto");
   const [threeD, setThreeD] = useState(false);
+  const [htmlLegend, setHtmlLegend] = useState(false);
   const [projection, setProjection] = useState<PlotProjection>("perspective");
   const [style, setStyle] = useState(DEFAULT_STYLE);
   const [domainExtent, setDomainExtent] = useState(6.28);
+  const [unbounded, setUnbounded] = useState(true);
   const [samples, setSamples] = useState(128);
   const [dark, setDark] = useState(false);
   const [status, setStatus] = useState(
@@ -66,6 +72,7 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
     projection,
     style,
     domainExtent,
+    unbounded,
     samples,
   });
   desired.current = {
@@ -75,6 +82,7 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
     projection,
     style,
     domainExtent,
+    unbounded,
     samples,
   };
   const gpu = preset === "power" || preset === "sine" || preset === "helix";
@@ -197,7 +205,11 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
               ? { x: [0, 1], y: [0, 1] }
               : { x: [-6.28, 6.28], y: [-1.5, 1.5] },
           domain:
-            preset === "helix" ? [-domainExtent, domainExtent] : undefined,
+            preset === "helix"
+              ? unbounded
+                ? [-Infinity, Infinity]
+                : [-domainExtent, domainExtent]
+              : undefined,
           quality: preset === "helix" ? { samples } : undefined,
           backend,
           mode: preset === "helix" || threeD ? "3d" : "2d",
@@ -229,6 +241,16 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
             return;
           }
           plot = result;
+          result.addControl(
+            new ViewControl({
+              language: locale,
+              onChange: (view) => {
+                setThreeD(view.mode === "3d");
+                setProjection(view.projection);
+              },
+            }),
+            "top-right",
+          );
           const current = desired.current;
           result.setStyle(current.style);
           result.setMode(preset === "helix" || current.threeD ? "3d" : "2d");
@@ -239,7 +261,11 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
           if (preset === "sine")
             result.setParameters({ frequency: current.frequency });
           if (preset === "helix") {
-            result.setDomain([-current.domainExtent, current.domainExtent]);
+            result.setDomain(
+              current.unbounded
+                ? [-Infinity, Infinity]
+                : [-current.domainExtent, current.domainExtent],
+            );
             result.setQuality({ samples: current.samples });
           }
           active.current = { gpu: result };
@@ -277,7 +303,9 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
     if (preset === "power") plot.setParameters({ exponent });
     if (preset === "sine") plot.setParameters({ frequency });
     if (preset === "helix") {
-      plot.setDomain([-domainExtent, domainExtent]);
+      plot.setDomain(
+        unbounded ? [-Infinity, Infinity] : [-domainExtent, domainExtent],
+      );
       plot.setQuality({ samples });
     }
   }, [
@@ -288,9 +316,16 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
     projection,
     style,
     domainExtent,
+    unbounded,
     samples,
     ready,
   ]);
+  useEffect(() => {
+    if (!gpu && ready)
+      active.current.figure?.axes.forEach((axes) =>
+        axes.legend(htmlLegend ? "html" : true),
+      );
+  }, [gpu, ready, htmlLegend, preset]);
   async function save() {
     if (!active.current.figure) return;
     setSaving(true);
@@ -318,7 +353,7 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
 plot.setStyle(${JSON.stringify(style, null, 2)});` +
       (preset === "helix"
         ? `
-plot.setDomain([-${domainExtent}, ${domainExtent}]);
+plot.setDomain(${unbounded ? "[-Infinity, Infinity]" : `[-${domainExtent}, ${domainExtent}]`});
 plot.setQuality({ samples: ${samples}, refinements: 5 });`
         : "")
     : sourceCode;
@@ -470,11 +505,22 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
           {preset === "helix" && (
             <>
               <div className="plot-field">
+                <span id="unbounded-label">
+                  {ko ? "무한 정의역" : "Unbounded domain"}
+                </span>
+                <Switch
+                  checked={unbounded}
+                  onChange={setUnbounded}
+                  aria-labelledby="unbounded-label"
+                />
+              </div>
+              <div className="plot-field">
                 <label id="domain-label">
-                  {ko ? "매개변수 구간" : "Parameter domain"}: ±
-                  {domainExtent.toFixed(2)}
+                  {ko ? "매개변수 구간" : "Parameter domain"}:{" "}
+                  {unbounded ? "(−∞, ∞)" : `±${domainExtent.toFixed(2)}`}
                 </label>
                 <Slider
+                  disabled={unbounded}
                   min={3.14}
                   max={31.4}
                   step={3.14}
@@ -499,6 +545,22 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
               </div>
             </>
           )}
+          {!gpu && (
+            <div className="plot-field">
+              <label htmlFor="legend-renderer">
+                {ko ? "범례 표시" : "Legend display"}
+              </label>
+              <Select
+                id="legend-renderer"
+                value={htmlLegend ? "html" : "gpu"}
+                onChange={(value) => setHtmlLegend(value === "html")}
+                options={[
+                  { value: "gpu", label: ko ? "차트 내부" : "In chart" },
+                  { value: "html", label: "HTML" },
+                ]}
+              />
+            </div>
+          )}
           <div className="plot-actions">
             <Button
               disabled={!ready}
@@ -514,7 +576,11 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
                   if (preset === "power") plot.setParameters({ exponent });
                   if (preset === "sine") plot.setParameters({ frequency });
                   if (preset === "helix") {
-                    plot.setDomain([-domainExtent, domainExtent]);
+                    plot.setDomain(
+                      unbounded
+                        ? [-Infinity, Infinity]
+                        : [-domainExtent, domainExtent],
+                    );
                     plot.setQuality({ samples });
                   }
                 }
@@ -578,11 +644,20 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
                   ["gridWidth", ko ? "격자 굵기" : "Grid width", 0, 4, 0.25],
                   ["curveWidth", ko ? "곡선 굵기" : "Curve width", 0, 8, 0.25],
                   ["labelSize", ko ? "글자 크기" : "Label size", 8, 24, 1],
+                  [
+                    "tickDensity",
+                    ko ? "눈금 밀도" : "Tick density",
+                    0.25,
+                    4,
+                    0.25,
+                  ],
+                  ["labelHalo", ko ? "글자 외곽선" : "Label halo", 0, 2, 0.1],
                 ] as const
               ).map(([key, label, min, max, step]) => (
                 <div className="plot-field" key={key}>
                   <label id={`style-${key}`}>
-                    {label}: {style[key]} px
+                    {label}: {style[key]}
+                    {key === "tickDensity" ? "×" : " px"}
                   </label>
                   <Slider
                     min={min}
@@ -601,6 +676,7 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
                   ["grid", ko ? "격자" : "Grid"],
                   ["tickLabels", ko ? "눈금 숫자" : "Tick labels"],
                   ["axisLabels", ko ? "축 이름" : "Axis labels"],
+                  ["labelBackground", ko ? "라벨 배경" : "Label backgrounds"],
                 ] as const
               ).map(([key, label]) => (
                 <div className="plot-field" key={key}>
@@ -638,7 +714,7 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
         )}
         <p id="plot-help" className="plot-help">
           {ko
-            ? "왼쪽 드래그로 이동하거나 회전하고, 오른쪽 드래그로 이동하며, 스크롤로 확대합니다. 그래프에 초점을 맞추면 방향키, +/−, Home을 사용할 수 있습니다. PNG 저장은 데이터 예제에서 지원합니다."
+            ? "왼쪽 드래그로 이동하거나 회전하고, 오른쪽 드래그로 이동하며, 스크롤로 확대합니다. 놓으면 관성으로 감속하며 더블 클릭으로 뷰를 초기화합니다. 그래프에 초점을 맞추면 방향키, +/−, Home, Escape를 사용할 수 있습니다. PNG 저장은 데이터 예제에서 지원합니다."
             : "Left-drag to pan or orbit. Right-drag to pan. Scroll to zoom. Focus the plot for arrow keys, +/− and Home. PNG export is available for data examples."}
         </p>
       </div>

@@ -18,8 +18,12 @@ Arrays are finite observations. JavaScript callbacks on supplied x arrays remain
 data. Extending a mathematical function requires a named TypeShade scalar callback; the
 renderer must not invent observations by extrapolating finite arrays.
 
-General spatial callbacks use an independent parameter domain, frozen at creation and
-editable with setDomain. Camera zoom/pan affects only the view. A configurable candidate
+General spatial callbacks use an independent mathematical parameter domain, defaulting to
+[-Infinity, Infinity] for newly compiled programs and editable with setDomain. Unbounded
+search uses a rational compactification around a local camera-focus seed. Its tails approach
+infinity, but the f32 endpoint guard and finite numerical quality limit resolved coverage;
+it does not guarantee that all branches of an arbitrary callback are found. Explicit finite
+domains retain their endpoints. Camera zoom/pan affects only the view. A configurable candidate
 search locates parameter intervals, then local projected closest-point iterations evaluate
 the callback itself. Every projected interval within a sampled-bending guard is queried;
 there is no global top-three midpoint ranking. Each interval's two halves get
