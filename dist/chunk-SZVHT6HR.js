@@ -167,6 +167,18 @@ fn pixelWidth() -> f32 {
   return (1.0 / max(font.pixelRatio, 0.0001));
 }
 
+fn tickMark(pixel: vec2<f32>, center: vec2<f32>, tangent: vec2<f32>, halfLength: f32, width: f32) -> f32 {
+  if (((width <= 0.0) || (halfLength <= 0.0))) {
+    return 0.0;
+  }
+  let delta = (pixel - center);
+  let normal = vec2<f32>((-tangent.y), tangent.x);
+  let q = (abs(vec2<f32>(dot(delta, tangent), dot(delta, normal))) - vec2<f32>((width * 0.5), halfLength));
+  let distance = (length(max(q, vec2<f32>(0.0, 0.0))) + min(max(q.x, q.y), 0.0));
+  let aa = (pixelWidth() * 0.5);
+  return (1.0 - smoothstep((-aa), aa, distance));
+}
+
 fn glyphIndex(code: i32) -> i32 {
   if (((code >= 32) && (code < 256))) {
     return (code - 32);
@@ -437,15 +449,17 @@ fn labelColor(color: vec3<f32>, labels: vec3<f32>) -> vec3<f32> {
 }
 
 fn axes2D(uv: vec2<f32>, typeplot_shared_u_3: PlotViewport, vertical: i32) -> vec4<f32> {
-  let _licm0 = typeplot_shared_u_3.appearance.x;
-  let _licm1 = typeplot_shared_u_3.appearance.y;
-  let _licm2 = typeplot_shared_u_3.appearance.w;
-  let _licm3 = (typeplot_shared_u_3.appearance.w * 1.6);
-  let _licm4 = (typeplot_shared_u_3.appearance.w * 2.2);
-  let _licm5 = (typeplot_shared_u_3.appearance.w * 0.65);
-  let _licm6 = typeplot_shared_u_3.labelStyle.y;
-  let _licm7 = typeplot_shared_u_3.labelStyle.z;
-  let _licm8 = (typeplot_shared_u_3.appearance.w * 0.75);
+  let _licm0 = vec2<f32>(1.0, 0.0);
+  let _licm1 = typeplot_shared_u_3.appearance.x;
+  let _licm2 = vec2<f32>(0.0, 1.0);
+  let _licm3 = typeplot_shared_u_3.appearance.y;
+  let _licm4 = typeplot_shared_u_3.appearance.w;
+  let _licm5 = (typeplot_shared_u_3.appearance.w * 1.6);
+  let _licm6 = (typeplot_shared_u_3.appearance.w * 2.2);
+  let _licm7 = (typeplot_shared_u_3.appearance.w * 0.65);
+  let _licm8 = typeplot_shared_u_3.labelStyle.y;
+  let _licm9 = typeplot_shared_u_3.labelStyle.z;
+  let _licm10 = (typeplot_shared_u_3.appearance.w * 0.75);
   let size = plotSize(typeplot_shared_u_3.resolution);
   let span = max(typeplot_shared_u_3.plotSpan, vec2<f32>(0.00001, 0.00001));
   let lo = (typeplot_shared_u_3.plotCenter - (span * 0.5));
@@ -454,32 +468,32 @@ fn axes2D(uv: vec2<f32>, typeplot_shared_u_3: PlotViewport, vertical: i32) -> ve
   let _cse0 = vec2<f32>(14.0, 14.0);
   let origin = clamp((((-lo) / span) * size), _cse0, (size - _cse0));
   let _gv0 = (size.x - 12.0);
-  var axes: f32 = max(stroke(pixel, vec2<f32>(12.0, origin.y), vec2<f32>(_gv0, origin.y), _licm0), stroke(pixel, vec2<f32>(origin.x, 12.0), vec2<f32>(origin.x, (size.y - 12.0)), _licm0));
+  var axes: f32 = max(stroke(pixel, vec2<f32>(12.0, origin.y), vec2<f32>(_gv0, origin.y), _licm1), stroke(pixel, vec2<f32>(origin.x, 12.0), vec2<f32>(origin.x, (size.y - 12.0)), _licm1));
   let xLevels = axisLevels(typeplot_shared_u_3.plotCenter.x, span.x, size.x, true, typeplot_shared_u_3);
   let yLevels = axisLevels(typeplot_shared_u_3.plotCenter.y, span.y, size.y, false, typeplot_shared_u_3);
   var labels: vec3<f32> = vec3<f32>(0.0, 0.0, 0.0);
   var backgroundGrid: f32 = 0.0;
   let _cse1 = ((typeplot_shared_u_3.decorations & 2u) != 0u);
-  let _cse2 = (_licm2 * 2.0);
-  let _cse3 = (_licm2 * 6.0);
+  let _cse2 = (_licm4 * 2.0);
+  let _cse3 = (_licm4 * 6.0);
   for (var level: i32 = 0; (level < 2); level = (level + 1)) {
     let _gv1 = (level == 0);
     let tickStep = select(vec2<f32>(xLevels.y, yLevels.y), vec2<f32>(xLevels.x, yLevels.x), _gv1);
     let nearest = (floor(((p / tickStep) + 0.5)) * tickStep);
     let weights = select(vec2<f32>(coarseTickOpacity(nearest.x, xLevels), coarseTickOpacity(nearest.y, yLevels)), vec2<f32>(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, yLevels)), _gv1);
     let grid = ((abs((p - nearest)) / span) * size);
-    axes = max(axes, max(((distanceCoverage(grid.x, _licm0) * weights.x) * (1.0 - step(4.0, abs((pixel.y - origin.y))))), ((distanceCoverage(grid.y, _licm0) * weights.y) * (1.0 - step(4.0, abs((pixel.x - origin.x)))))));
-    backgroundGrid = max(backgroundGrid, max((distanceCoverage(grid.x, _licm1) * weights.x), (distanceCoverage(grid.y, _licm1) * weights.y)));
     let at = (((nearest - lo) / span) * size);
-    let width = numberWidth(nearest.x, xLevels.x, _licm2);
+    axes = max(axes, max((tickMark(pixel, vec2<f32>(at.x, origin.y), _licm0, 4.0, _licm1) * weights.x), (tickMark(pixel, vec2<f32>(origin.x, at.y), _licm2, 4.0, _licm1) * weights.y)));
+    backgroundGrid = max(backgroundGrid, max((distanceCoverage(grid.x, _licm3) * weights.x), (distanceCoverage(grid.y, _licm3) * weights.y)));
+    let width = numberWidth(nearest.x, xLevels.x, _licm4);
     let xFit = smoothstep((width + 6.0), (width + 14.0), ((tickStep.x / span.x) * size.x));
-    let yFit = smoothstep(_licm3, _licm4, ((tickStep.y / span.y) * size.y));
+    let yFit = smoothstep(_licm5, _licm6, ((tickStep.y / span.y) * size.y));
     if (((_cse1 && (at.x > ((width * 0.5) + 6.0))) && (at.x < ((size.x - (width * 0.5)) - 6.0)))) {
-      labels = max(labels, ((numberAt(pixel, vec2<f32>(at.x, select((origin.y - _licm5), (origin.y + _cse2), (origin.y < _cse2))), nearest.x, xLevels.x, 0.5, _licm2, _licm6, _licm7) * weights.x) * xFit));
+      labels = max(labels, ((numberAt(pixel, vec2<f32>(at.x, select((origin.y - _licm7), (origin.y + _cse2), (origin.y < _cse2))), nearest.x, xLevels.x, 0.5, _licm4, _licm8, _licm9) * weights.x) * xFit));
     }
     if ((((_cse1 && (at.y > 25.0)) && (at.y < (size.y - 25.0))) && (abs(nearest.y) > (yLevels.x * 0.001)))) {
       let _lc0 = (origin.x < _cse3);
-      labels = max(labels, ((numberAt(pixel, vec2<f32>(select((origin.x - 8.0), (origin.x + 8.0), _lc0), (at.y + _licm8)), nearest.y, yLevels.x, select(1.0, 0.0, _lc0), _licm2, _licm6, _licm7) * weights.y) * yFit));
+      labels = max(labels, ((numberAt(pixel, vec2<f32>(select((origin.x - 8.0), (origin.x + 8.0), _lc0), (at.y + _licm10)), nearest.y, yLevels.x, select(1.0, 0.0, _lc0), _licm4, _licm8, _licm9) * weights.y) * yFit));
     }
   }
   labels *= typeplot_shared_u_3.decorationOpacity.y;
@@ -641,6 +655,7 @@ fn spatialTicks(pixel: vec2<f32>, axis: vec3<f32>, levels: vec3<f32>, priority: 
     return vec4<f32>(0.0, 0.0, 0.0, 0.0);
   }
   let normal = (axisLine.xy / magnitude);
+  let tangent = vec2<f32>(normal.y, (-normal.x));
   let sign = select(select(1.0, -1.0, (normal.y > 0.0)), select(1.0, -1.0, (normal.x > 0.0)), (axis.y > 0.0));
   let outward = (normal * sign);
   let value = axisParameter(pixel, axis, typeplot_shared_u_18);
@@ -672,8 +687,7 @@ fn spatialTicks(pixel: vec2<f32>, axis: vec3<f32>, levels: vec3<f32>, priority: 
       let box = vec2<f32>((width + fontSize), ((fontSize * 1.8) + 6.0));
       let fit = smoothstep(0.85, 1.15, max((separation.x / box.x), (separation.y / box.y)));
       let visibility = (select(coarseTickOpacity(t, levels), tickOpacity(t, levels), _gv0) * fit);
-      let _lc1 = (normal * 3.0);
-      ticks = max(ticks, (stroke(pixel, (at - _lc1), (at + _lc1), _licm3) * visibility));
+      ticks = max(ticks, (tickMark(pixel, at, tangent, 3.0, _licm3) * visibility));
       let zero = (abs(t) <= _licm4);
       let originDistance = length((at - project(_cse0, typeplot_shared_u_18)));
       let crossing = select(smoothstep((fontSize * 2.0), (fontSize * 4.0), originDistance), _licm5, zero);
@@ -849,8 +863,7 @@ fn cachedSpatialTicks(pixel: vec2<f32>, axis: vec3<f32>, index: i32, typeplot_sh
     }
     let style = textureLoad(spatialLabels, vec2<i32>(column, (row + 1)), 0u);
     if ((nearTick && (style.z > 0.0))) {
-      let _lc0 = (outward * 3.0);
-      ticks = max(ticks, (stroke(pixel, (at - _lc0), (at + _lc0), _licm5) * style.z));
+      ticks = max(ticks, (tickMark(pixel, at, tangent, 3.0, _licm5) * style.z));
     }
     if ((nearLabel && (style.w > 0.0))) {
       labels = max(labels, ((numberAt(pixel, anchor, style.x, style.y, 0.5, fontSize, _licm6, _licm7) * style.w) * _licm8));
@@ -1376,6 +1389,18 @@ float pixelWidth() {
   return (1.0 / max(font.pixelRatio, 0.0001));
 }
 
+float tickMark(vec2 pixel, vec2 center, vec2 tangent, float halfLength, float width) {
+  if (((width <= 0.0) || (halfLength <= 0.0))) {
+    return 0.0;
+  }
+  vec2 delta = (pixel - center);
+  vec2 normal = vec2((-tangent.y), tangent.x);
+  vec2 q = (abs(vec2(dot(delta, tangent), dot(delta, normal))) - vec2((width * 0.5), halfLength));
+  float distance = (length(max(q, vec2(0.0, 0.0))) + min(max(q.x, q.y), 0.0));
+  float aa = (pixelWidth() * 0.5);
+  return (1.0 - smoothstep((-aa), aa, distance));
+}
+
 int glyphIndex(int code) {
   if (((code >= 32) && (code < 256))) {
     return (code - 32);
@@ -1646,15 +1671,17 @@ vec3 labelColor(vec3 color, vec3 labels) {
 }
 
 vec4 axes2D(vec2 uv, PlotViewport typeplot_shared_u_3, int vertical) {
-  float _licm0 = typeplot_shared_u_3.appearance.x;
-  float _licm1 = typeplot_shared_u_3.appearance.y;
-  float _licm2 = typeplot_shared_u_3.appearance.w;
-  float _licm3 = (typeplot_shared_u_3.appearance.w * 1.6);
-  float _licm4 = (typeplot_shared_u_3.appearance.w * 2.2);
-  float _licm5 = (typeplot_shared_u_3.appearance.w * 0.65);
-  float _licm6 = typeplot_shared_u_3.labelStyle.y;
-  float _licm7 = typeplot_shared_u_3.labelStyle.z;
-  float _licm8 = (typeplot_shared_u_3.appearance.w * 0.75);
+  vec2 _licm0 = vec2(1.0, 0.0);
+  float _licm1 = typeplot_shared_u_3.appearance.x;
+  vec2 _licm2 = vec2(0.0, 1.0);
+  float _licm3 = typeplot_shared_u_3.appearance.y;
+  float _licm4 = typeplot_shared_u_3.appearance.w;
+  float _licm5 = (typeplot_shared_u_3.appearance.w * 1.6);
+  float _licm6 = (typeplot_shared_u_3.appearance.w * 2.2);
+  float _licm7 = (typeplot_shared_u_3.appearance.w * 0.65);
+  float _licm8 = typeplot_shared_u_3.labelStyle.y;
+  float _licm9 = typeplot_shared_u_3.labelStyle.z;
+  float _licm10 = (typeplot_shared_u_3.appearance.w * 0.75);
   vec2 size = plotSize(typeplot_shared_u_3.resolution);
   vec2 span = max(typeplot_shared_u_3.plotSpan, vec2(0.00001, 0.00001));
   vec2 lo = (typeplot_shared_u_3.plotCenter - (span * 0.5));
@@ -1663,32 +1690,32 @@ vec4 axes2D(vec2 uv, PlotViewport typeplot_shared_u_3, int vertical) {
   vec2 _cse0 = vec2(14.0, 14.0);
   vec2 origin = clamp((((-lo) / span) * size), _cse0, (size - _cse0));
   float _gv0 = (size.x - 12.0);
-  float axes = max(stroke(pixel, vec2(12.0, origin.y), vec2(_gv0, origin.y), _licm0), stroke(pixel, vec2(origin.x, 12.0), vec2(origin.x, (size.y - 12.0)), _licm0));
+  float axes = max(stroke(pixel, vec2(12.0, origin.y), vec2(_gv0, origin.y), _licm1), stroke(pixel, vec2(origin.x, 12.0), vec2(origin.x, (size.y - 12.0)), _licm1));
   vec3 xLevels = axisLevels(typeplot_shared_u_3.plotCenter.x, span.x, size.x, true, typeplot_shared_u_3);
   vec3 yLevels = axisLevels(typeplot_shared_u_3.plotCenter.y, span.y, size.y, false, typeplot_shared_u_3);
   vec3 labels = vec3(0.0, 0.0, 0.0);
   float backgroundGrid = 0.0;
   bool _cse1 = ((typeplot_shared_u_3.decorations & 2u) != 0u);
-  float _cse2 = (_licm2 * 2.0);
-  float _cse3 = (_licm2 * 6.0);
+  float _cse2 = (_licm4 * 2.0);
+  float _cse3 = (_licm4 * 6.0);
   for (int level = 0; (level < 2); level = (level + 1)) {
     bool _gv1 = (level == 0);
     vec2 tickStep = (_gv1 ? vec2(xLevels.x, yLevels.x) : vec2(xLevels.y, yLevels.y));
     vec2 nearest = (floor(((p / tickStep) + 0.5)) * tickStep);
     vec2 weights = (_gv1 ? vec2(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, yLevels)) : vec2(coarseTickOpacity(nearest.x, xLevels), coarseTickOpacity(nearest.y, yLevels)));
     vec2 grid = ((abs((p - nearest)) / span) * size);
-    axes = max(axes, max(((distanceCoverage(grid.x, _licm0) * weights.x) * (1.0 - step(4.0, abs((pixel.y - origin.y))))), ((distanceCoverage(grid.y, _licm0) * weights.y) * (1.0 - step(4.0, abs((pixel.x - origin.x)))))));
-    backgroundGrid = max(backgroundGrid, max((distanceCoverage(grid.x, _licm1) * weights.x), (distanceCoverage(grid.y, _licm1) * weights.y)));
     vec2 at = (((nearest - lo) / span) * size);
-    float width = numberWidth(nearest.x, xLevels.x, _licm2);
+    axes = max(axes, max((tickMark(pixel, vec2(at.x, origin.y), _licm0, 4.0, _licm1) * weights.x), (tickMark(pixel, vec2(origin.x, at.y), _licm2, 4.0, _licm1) * weights.y)));
+    backgroundGrid = max(backgroundGrid, max((distanceCoverage(grid.x, _licm3) * weights.x), (distanceCoverage(grid.y, _licm3) * weights.y)));
+    float width = numberWidth(nearest.x, xLevels.x, _licm4);
     float xFit = smoothstep((width + 6.0), (width + 14.0), ((tickStep.x / span.x) * size.x));
-    float yFit = smoothstep(_licm3, _licm4, ((tickStep.y / span.y) * size.y));
+    float yFit = smoothstep(_licm5, _licm6, ((tickStep.y / span.y) * size.y));
     if (((_cse1 && (at.x > ((width * 0.5) + 6.0))) && (at.x < ((size.x - (width * 0.5)) - 6.0)))) {
-      labels = max(labels, ((numberAt(pixel, vec2(at.x, ((origin.y < _cse2) ? (origin.y + _cse2) : (origin.y - _licm5))), nearest.x, xLevels.x, 0.5, _licm2, _licm6, _licm7) * weights.x) * xFit));
+      labels = max(labels, ((numberAt(pixel, vec2(at.x, ((origin.y < _cse2) ? (origin.y + _cse2) : (origin.y - _licm7))), nearest.x, xLevels.x, 0.5, _licm4, _licm8, _licm9) * weights.x) * xFit));
     }
     if ((((_cse1 && (at.y > 25.0)) && (at.y < (size.y - 25.0))) && (abs(nearest.y) > (yLevels.x * 0.001)))) {
       bool _lc0 = (origin.x < _cse3);
-      labels = max(labels, ((numberAt(pixel, vec2((_lc0 ? (origin.x + 8.0) : (origin.x - 8.0)), (at.y + _licm8)), nearest.y, yLevels.x, (_lc0 ? 0.0 : 1.0), _licm2, _licm6, _licm7) * weights.y) * yFit));
+      labels = max(labels, ((numberAt(pixel, vec2((_lc0 ? (origin.x + 8.0) : (origin.x - 8.0)), (at.y + _licm10)), nearest.y, yLevels.x, (_lc0 ? 0.0 : 1.0), _licm4, _licm8, _licm9) * weights.y) * yFit));
     }
   }
   labels *= typeplot_shared_u_3.decorationOpacity.y;
@@ -1850,6 +1877,7 @@ vec4 spatialTicks(vec2 pixel, vec3 axis, vec3 levels, float priority, PlotUnifor
     return vec4(0.0, 0.0, 0.0, 0.0);
   }
   vec2 normal = (axisLine.xy / magnitude);
+  vec2 tangent = vec2(normal.y, (-normal.x));
   float sign = ((axis.y > 0.0) ? ((normal.x > 0.0) ? -1.0 : 1.0) : ((normal.y > 0.0) ? -1.0 : 1.0));
   vec2 outward = (normal * sign);
   float value = axisParameter(pixel, axis, typeplot_shared_u_18);
@@ -1881,8 +1909,7 @@ vec4 spatialTicks(vec2 pixel, vec3 axis, vec3 levels, float priority, PlotUnifor
       vec2 box = vec2((width + fontSize), ((fontSize * 1.8) + 6.0));
       float fit = smoothstep(0.85, 1.15, max((separation.x / box.x), (separation.y / box.y)));
       float visibility = ((_gv0 ? tickOpacity(t, levels) : coarseTickOpacity(t, levels)) * fit);
-      vec2 _lc1 = (normal * 3.0);
-      ticks = max(ticks, (stroke(pixel, (at - _lc1), (at + _lc1), _licm3) * visibility));
+      ticks = max(ticks, (tickMark(pixel, at, tangent, 3.0, _licm3) * visibility));
       bool zero = (abs(t) <= _licm4);
       float originDistance = length((at - project(_cse0, typeplot_shared_u_18)));
       float crossing = (zero ? _licm5 : smoothstep((fontSize * 2.0), (fontSize * 4.0), originDistance));
@@ -1979,8 +2006,7 @@ vec4 cachedSpatialTicks(vec2 pixel, vec3 axis, int index, PlotUniforms typeplot_
     }
     vec4 style = texelFetch(spatialLabels, ivec2(column, (row + 1)), int(0u));
     if ((nearTick && (style.z > 0.0))) {
-      vec2 _lc0 = (outward * 3.0);
-      ticks = max(ticks, (stroke(pixel, (at - _lc0), (at + _lc0), _licm5) * style.z));
+      ticks = max(ticks, (tickMark(pixel, at, tangent, 3.0, _licm5) * style.z));
     }
     if ((nearLabel && (style.w > 0.0))) {
       labels = max(labels, ((numberAt(pixel, anchor, style.x, style.y, 0.5, fontSize, _licm6, _licm7) * style.w) * _licm8));
@@ -2457,6 +2483,18 @@ float pixelWidth() {
   return (1.0 / max(font.pixelRatio, 0.0001));
 }
 
+float tickMark(vec2 pixel, vec2 center, vec2 tangent, float halfLength, float width) {
+  if (((width <= 0.0) || (halfLength <= 0.0))) {
+    return 0.0;
+  }
+  vec2 delta = (pixel - center);
+  vec2 normal = vec2((-tangent.y), tangent.x);
+  vec2 q = (abs(vec2(dot(delta, tangent), dot(delta, normal))) - vec2((width * 0.5), halfLength));
+  float distance = (length(max(q, vec2(0.0, 0.0))) + min(max(q.x, q.y), 0.0));
+  float aa = (pixelWidth() * 0.5);
+  return (1.0 - smoothstep((-aa), aa, distance));
+}
+
 int glyphIndex(int code) {
   if (((code >= 32) && (code < 256))) {
     return (code - 32);
@@ -2727,15 +2765,17 @@ vec3 labelColor(vec3 color, vec3 labels) {
 }
 
 vec4 axes2D(vec2 uv, PlotViewport typeplot_shared_u_3, int vertical) {
-  float _licm0 = typeplot_shared_u_3.appearance.x;
-  float _licm1 = typeplot_shared_u_3.appearance.y;
-  float _licm2 = typeplot_shared_u_3.appearance.w;
-  float _licm3 = (typeplot_shared_u_3.appearance.w * 1.6);
-  float _licm4 = (typeplot_shared_u_3.appearance.w * 2.2);
-  float _licm5 = (typeplot_shared_u_3.appearance.w * 0.65);
-  float _licm6 = typeplot_shared_u_3.labelStyle.y;
-  float _licm7 = typeplot_shared_u_3.labelStyle.z;
-  float _licm8 = (typeplot_shared_u_3.appearance.w * 0.75);
+  vec2 _licm0 = vec2(1.0, 0.0);
+  float _licm1 = typeplot_shared_u_3.appearance.x;
+  vec2 _licm2 = vec2(0.0, 1.0);
+  float _licm3 = typeplot_shared_u_3.appearance.y;
+  float _licm4 = typeplot_shared_u_3.appearance.w;
+  float _licm5 = (typeplot_shared_u_3.appearance.w * 1.6);
+  float _licm6 = (typeplot_shared_u_3.appearance.w * 2.2);
+  float _licm7 = (typeplot_shared_u_3.appearance.w * 0.65);
+  float _licm8 = typeplot_shared_u_3.labelStyle.y;
+  float _licm9 = typeplot_shared_u_3.labelStyle.z;
+  float _licm10 = (typeplot_shared_u_3.appearance.w * 0.75);
   vec2 size = plotSize(typeplot_shared_u_3.resolution);
   vec2 span = max(typeplot_shared_u_3.plotSpan, vec2(0.00001, 0.00001));
   vec2 lo = (typeplot_shared_u_3.plotCenter - (span * 0.5));
@@ -2744,32 +2784,32 @@ vec4 axes2D(vec2 uv, PlotViewport typeplot_shared_u_3, int vertical) {
   vec2 _cse0 = vec2(14.0, 14.0);
   vec2 origin = clamp((((-lo) / span) * size), _cse0, (size - _cse0));
   float _gv0 = (size.x - 12.0);
-  float axes = max(stroke(pixel, vec2(12.0, origin.y), vec2(_gv0, origin.y), _licm0), stroke(pixel, vec2(origin.x, 12.0), vec2(origin.x, (size.y - 12.0)), _licm0));
+  float axes = max(stroke(pixel, vec2(12.0, origin.y), vec2(_gv0, origin.y), _licm1), stroke(pixel, vec2(origin.x, 12.0), vec2(origin.x, (size.y - 12.0)), _licm1));
   vec3 xLevels = axisLevels(typeplot_shared_u_3.plotCenter.x, span.x, size.x, true, typeplot_shared_u_3);
   vec3 yLevels = axisLevels(typeplot_shared_u_3.plotCenter.y, span.y, size.y, false, typeplot_shared_u_3);
   vec3 labels = vec3(0.0, 0.0, 0.0);
   float backgroundGrid = 0.0;
   bool _cse1 = ((typeplot_shared_u_3.decorations & 2u) != 0u);
-  float _cse2 = (_licm2 * 2.0);
-  float _cse3 = (_licm2 * 6.0);
+  float _cse2 = (_licm4 * 2.0);
+  float _cse3 = (_licm4 * 6.0);
   for (int level = 0; (level < 2); level = (level + 1)) {
     bool _gv1 = (level == 0);
     vec2 tickStep = (_gv1 ? vec2(xLevels.x, yLevels.x) : vec2(xLevels.y, yLevels.y));
     vec2 nearest = (floor(((p / tickStep) + 0.5)) * tickStep);
     vec2 weights = (_gv1 ? vec2(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, yLevels)) : vec2(coarseTickOpacity(nearest.x, xLevels), coarseTickOpacity(nearest.y, yLevels)));
     vec2 grid = ((abs((p - nearest)) / span) * size);
-    axes = max(axes, max(((distanceCoverage(grid.x, _licm0) * weights.x) * (1.0 - step(4.0, abs((pixel.y - origin.y))))), ((distanceCoverage(grid.y, _licm0) * weights.y) * (1.0 - step(4.0, abs((pixel.x - origin.x)))))));
-    backgroundGrid = max(backgroundGrid, max((distanceCoverage(grid.x, _licm1) * weights.x), (distanceCoverage(grid.y, _licm1) * weights.y)));
     vec2 at = (((nearest - lo) / span) * size);
-    float width = numberWidth(nearest.x, xLevels.x, _licm2);
+    axes = max(axes, max((tickMark(pixel, vec2(at.x, origin.y), _licm0, 4.0, _licm1) * weights.x), (tickMark(pixel, vec2(origin.x, at.y), _licm2, 4.0, _licm1) * weights.y)));
+    backgroundGrid = max(backgroundGrid, max((distanceCoverage(grid.x, _licm3) * weights.x), (distanceCoverage(grid.y, _licm3) * weights.y)));
+    float width = numberWidth(nearest.x, xLevels.x, _licm4);
     float xFit = smoothstep((width + 6.0), (width + 14.0), ((tickStep.x / span.x) * size.x));
-    float yFit = smoothstep(_licm3, _licm4, ((tickStep.y / span.y) * size.y));
+    float yFit = smoothstep(_licm5, _licm6, ((tickStep.y / span.y) * size.y));
     if (((_cse1 && (at.x > ((width * 0.5) + 6.0))) && (at.x < ((size.x - (width * 0.5)) - 6.0)))) {
-      labels = max(labels, ((numberAt(pixel, vec2(at.x, ((origin.y < _cse2) ? (origin.y + _cse2) : (origin.y - _licm5))), nearest.x, xLevels.x, 0.5, _licm2, _licm6, _licm7) * weights.x) * xFit));
+      labels = max(labels, ((numberAt(pixel, vec2(at.x, ((origin.y < _cse2) ? (origin.y + _cse2) : (origin.y - _licm7))), nearest.x, xLevels.x, 0.5, _licm4, _licm8, _licm9) * weights.x) * xFit));
     }
     if ((((_cse1 && (at.y > 25.0)) && (at.y < (size.y - 25.0))) && (abs(nearest.y) > (yLevels.x * 0.001)))) {
       bool _lc0 = (origin.x < _cse3);
-      labels = max(labels, ((numberAt(pixel, vec2((_lc0 ? (origin.x + 8.0) : (origin.x - 8.0)), (at.y + _licm8)), nearest.y, yLevels.x, (_lc0 ? 0.0 : 1.0), _licm2, _licm6, _licm7) * weights.y) * yFit));
+      labels = max(labels, ((numberAt(pixel, vec2((_lc0 ? (origin.x + 8.0) : (origin.x - 8.0)), (at.y + _licm10)), nearest.y, yLevels.x, (_lc0 ? 0.0 : 1.0), _licm4, _licm8, _licm9) * weights.y) * yFit));
     }
   }
   labels *= typeplot_shared_u_3.decorationOpacity.y;
@@ -2931,6 +2971,7 @@ vec4 spatialTicks(vec2 pixel, vec3 axis, vec3 levels, float priority, PlotUnifor
     return vec4(0.0, 0.0, 0.0, 0.0);
   }
   vec2 normal = (axisLine.xy / magnitude);
+  vec2 tangent = vec2(normal.y, (-normal.x));
   float sign = ((axis.y > 0.0) ? ((normal.x > 0.0) ? -1.0 : 1.0) : ((normal.y > 0.0) ? -1.0 : 1.0));
   vec2 outward = (normal * sign);
   float value = axisParameter(pixel, axis, typeplot_shared_u_18);
@@ -2962,8 +3003,7 @@ vec4 spatialTicks(vec2 pixel, vec3 axis, vec3 levels, float priority, PlotUnifor
       vec2 box = vec2((width + fontSize), ((fontSize * 1.8) + 6.0));
       float fit = smoothstep(0.85, 1.15, max((separation.x / box.x), (separation.y / box.y)));
       float visibility = ((_gv0 ? tickOpacity(t, levels) : coarseTickOpacity(t, levels)) * fit);
-      vec2 _lc1 = (normal * 3.0);
-      ticks = max(ticks, (stroke(pixel, (at - _lc1), (at + _lc1), _licm3) * visibility));
+      ticks = max(ticks, (tickMark(pixel, at, tangent, 3.0, _licm3) * visibility));
       bool zero = (abs(t) <= _licm4);
       float originDistance = length((at - project(_cse0, typeplot_shared_u_18)));
       float crossing = (zero ? _licm5 : smoothstep((fontSize * 2.0), (fontSize * 4.0), originDistance));
@@ -3060,8 +3100,7 @@ vec4 cachedSpatialTicks(vec2 pixel, vec3 axis, int index, PlotUniforms typeplot_
     }
     vec4 style = texelFetch(spatialLabels, ivec2(column, (row + 1)), int(0u));
     if ((nearTick && (style.z > 0.0))) {
-      vec2 _lc0 = (outward * 3.0);
-      ticks = max(ticks, (stroke(pixel, (at - _lc0), (at + _lc0), _licm5) * style.z));
+      ticks = max(ticks, (tickMark(pixel, at, tangent, 3.0, _licm5) * style.z));
     }
     if ((nearLabel && (style.w > 0.0))) {
       labels = max(labels, ((numberAt(pixel, anchor, style.x, style.y, 0.5, fontSize, _licm6, _licm7) * style.w) * _licm8));

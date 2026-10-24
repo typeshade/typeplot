@@ -6,6 +6,19 @@ declare const font: uniform<FontUniforms>;
 
 export function pixelWidth(): f32 { return 1 / max(font.pixelRatio, 0.0001); }
 
+/** A square-ended tick in the screen-axis frame, with physical-pixel AA.
+ * The long edge follows the exact perpendicular of the projected axis tangent.
+ * Evaluate locally instead of subtracting short, rounded segment endpoints. */
+export function tickMark(pixel: vec2, center: vec2, tangent: vec2, halfLength: f32, width: f32): f32 {
+  if (width <= 0 || halfLength <= 0) return 0;
+  const delta = pixel - center;
+  const normal = vec2(-tangent.y, tangent.x);
+  const q = abs(vec2(dot(delta, tangent), dot(delta, normal))) - vec2(width * 0.5, halfLength);
+  const distance = length(max(q, vec2(0))) + min(max(q.x, q.y), 0);
+  const aa = pixelWidth() * 0.5;
+  return 1 - smoothstep(-aa, aa, distance);
+}
+
 /** X-GIS/TinySDF distance encoding over licensed IBM Plex input glyphs.
  * Source conventions: X-GIS/X-GIS map/src/shaders/dsl/text.ts (MIT). */
 export function glyphIndex(code: i32): i32 {

@@ -1,6 +1,6 @@
 "use typeshade";
 import { colorMap } from "./palette.shade.ts";
-import { glyphCoverage, glyphLayers, tickNumberLayers, numberPlate, numberWidth, tickLevels, tickOpacity, coarseTickOpacity, pixelWidth } from "./font.shade.ts";
+import { glyphCoverage, glyphLayers, tickNumberLayers, numberPlate, numberWidth, tickLevels, tickOpacity, coarseTickOpacity, pixelWidth, tickMark } from "./font.shade.ts";
 
 class DataUniforms {
   resolution: vec2;
@@ -99,7 +99,7 @@ function dataTickLevels(lower: f32, span: f32, pixels: f32, logarithmic: f32, ho
     grid = max(grid, max(line(p, vec2(tick.x, lo.y), vec2(tick.x, hi.y), 0.5) * weights.x, line(p, vec2(lo.x, tick.y), vec2(hi.x, tick.y), 0.5) * weights.y));
     if (u.layer > 0.5) {
       if (tick.x >= lo.x - 0.01 && tick.x <= hi.x + 0.01) {
-        coverage = max(coverage, line(p, vec2(tick.x, hi.y), vec2(tick.x, hi.y + 5), 0.5) * weights.x);
+        coverage = max(coverage, tickMark(p, vec2(tick.x, hi.y + 2.5), vec2(1, 0), 2.5, 1) * weights.x);
         const n = u.logarithmic.x > 0 ? pow(10, nearest.x) : nearest.x;
         const step = u.logarithmic.x > 0 ? max(n * (pow(10, xLevels.x) - 1), 1e-30) : xLevels.x;
         const width = numberWidth(n, step, u.labelStyle.x);
@@ -110,7 +110,7 @@ function dataTickLevels(lower: f32, span: f32, pixels: f32, logarithmic: f32, ho
         labels = max(labels, vec3(tickNumberLayers(local, n, step, 0.5, u.labelStyle.x, u.labelStyle.z), numberPlate(local, n, step, 0.5, u.labelStyle.x) * u.labelStyle.w) * opacity);
       }
       if (tick.y >= lo.y - 0.01 && tick.y <= hi.y + 0.01) {
-        coverage = max(coverage, line(p, vec2(lo.x - 5, tick.y), vec2(lo.x, tick.y), 0.5) * weights.y);
+        coverage = max(coverage, tickMark(p, vec2(lo.x - 2.5, tick.y), vec2(0, 1), 2.5, 1) * weights.y);
         const n = u.logarithmic.y > 0 ? pow(10, nearest.y) : nearest.y;
         const step = u.logarithmic.y > 0 ? max(n * (pow(10, yLevels.x) - 1), 1e-30) : yLevels.x;
         const width = numberWidth(n, step, u.labelStyle.x);

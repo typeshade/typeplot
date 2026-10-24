@@ -1,5 +1,5 @@
 "use typeshade";
-import { glyphCoverage, glyphLayers, tickNumberLayers, numberPlate, numberWidth, tickLevels, tickOpacity, coarseTickOpacity, pixelWidth } from "./font.shade.ts";
+import { glyphCoverage, glyphLayers, tickNumberLayers, numberPlate, numberWidth, tickLevels, tickOpacity, coarseTickOpacity, pixelWidth, tickMark } from "./font.shade.ts";
 import { colorMap } from "./palette.shade.ts";
 
 /** Host-controlled viewport, in data units; rotation is yaw/pitch in radians. */
@@ -127,12 +127,12 @@ function axes2D(uv: vec2, u: PlotViewport, vertical: i32): vec4 {
     const nearest = floor(p / tickStep + 0.5) * tickStep;
     const weights = level == 0 ? vec2(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, yLevels)) : vec2(coarseTickOpacity(nearest.x, xLevels), coarseTickOpacity(nearest.y, yLevels));
     const grid = abs(p - nearest) / span * size;
+    const at = (nearest - lo) / span * size;
     axes = max(axes, max(
-      distanceCoverage(grid.x, u.appearance.x) * weights.x * (1 - step(4, abs(pixel.y - origin.y))),
-      distanceCoverage(grid.y, u.appearance.x) * weights.y * (1 - step(4, abs(pixel.x - origin.x)))
+      tickMark(pixel, vec2(at.x, origin.y), vec2(1, 0), 4, u.appearance.x) * weights.x,
+      tickMark(pixel, vec2(origin.x, at.y), vec2(0, 1), 4, u.appearance.x) * weights.y
     ));
     backgroundGrid = max(backgroundGrid, max(distanceCoverage(grid.x, u.appearance.y) * weights.x, distanceCoverage(grid.y, u.appearance.y) * weights.y));
-    const at = (nearest - lo) / span * size;
     const width = numberWidth(nearest.x, xLevels.x, u.appearance.w);
     const xFit = smoothstep(width + 6, width + 14, tickStep.x / span.x * size.x);
     const yFit = smoothstep(u.appearance.w * 1.6, u.appearance.w * 2.2, tickStep.y / span.y * size.y);
@@ -370,6 +370,7 @@ function spatialTicks(pixel: vec2, axis: vec3, levels: vec3, priority: f32, u: P
   const magnitude = length(axisLine.xy);
   if (magnitude <= 1e-12 || abs(dot(axisLine, vec3(pixel, 1))) / magnitude > fontSize * 6 + 12) return vec4(0);
   const normal = axisLine.xy / magnitude;
+  const tangent = vec2(normal.y, -normal.x);
   const sign = axis.y > 0 ? (normal.x > 0 ? -1 : 1) : (normal.y > 0 ? -1 : 1);
   const outward = normal * sign;
   const value = axisParameter(pixel, axis, u);
@@ -395,7 +396,7 @@ function spatialTicks(pixel: vec2, axis: vec3, levels: vec3, priority: f32, u: P
       const box = vec2(width + fontSize, fontSize * 1.8 + 6);
       const fit = smoothstep(0.85, 1.15, max(separation.x / box.x, separation.y / box.y));
       const visibility = (index < 3 ? tickOpacity(t, levels) : coarseTickOpacity(t, levels)) * fit;
-      ticks = max(ticks, stroke(pixel, at - normal * 3, at + normal * 3, u.appearance.x) * visibility);
+      ticks = max(ticks, tickMark(pixel, at, tangent, 3, u.appearance.x) * visibility);
       const zero = abs(t) <= levels.x * 0.001;
       const originDistance = length(at - project(vec3(0), u));
       const crossing = zero ? (axis.x > 0 ? 1 : 0) : smoothstep(fontSize * 2, fontSize * 4, originDistance);
@@ -961,7 +962,7 @@ function cachedSpatialTicks(pixel: vec2, axis: vec3, index: i32, u: PlotUniforms
     const nearTick = u.appearance.x > 0 && all(abs(pixel - at) <= vec2(u.appearance.x * 0.5 + 4 + pixelWidth()));
     if (!nearLabel && !nearTick) continue;
     const style = textureLoad(spatialLabels, vec2i(column, row + 1), 0);
-    if (nearTick && style.z > 0) ticks = max(ticks, stroke(pixel, at - outward * 3, at + outward * 3, u.appearance.x) * style.z);
+    if (nearTick && style.z > 0) ticks = max(ticks, tickMark(pixel, at, tangent, 3, u.appearance.x) * style.z);
     if (nearLabel && style.w > 0) labels = max(labels, numberAt(pixel, anchor, style.x, style.y, 0.5, fontSize, u.labelStyle.y, u.labelStyle.z) * style.w * u.decorationOpacity.y);
   }
   return vec4(ticks, labels);
