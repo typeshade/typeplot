@@ -1,0 +1,69 @@
+name: release
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing reviewed version tag
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+jobs:
+  github:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+      - name: Validate release source
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          git merge-base --is-ancestor HEAD origin/main
+          node --input-type=module -e 'import {readFileSync} from "node:fs"; const pkg=JSON.parse(readFileSync("package.json","utf8")); if (`v${pkg.version}`!==process.env.RELEASE_TAG) throw new Error("Tag and package versions differ");'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Build committed package
+        run: |
+          npm ci
+          npm run check
+          npm run build
+          npm run examples
+          git diff --exit-code -- dist examples/generated
+      - name: Package release and checksum
+        run: |
+          mkdir -p .build/release
+          npm pack --pack-destination .build/release --json > .build/release/pack.json
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          import { createHash } from "node:crypto";
+          const root = ".build/release/";
+          const [pack] = JSON.parse(readFileSync(root + "pack.json", "utf8"));
+          const digest = createHash("sha256").update(readFileSync(root + pack.filename)).digest("hex");
+          writeFileSync(root + "SHA256SUMS", `${digest}  ${pack.filename}\n`);
+          const marker = `## ${process.env.RELEASE_TAG}\n\n`;
+          const changelog = readFileSync("CHANGELOG.md", "utf8");
+          if (!changelog.includes(marker)) throw new Error("Release notes are missing");
+          const notes = changelog.split(marker)[1].split("\n## ")[0].trim();
+          writeFileSync(root + "notes.md", notes + "\n\nThe attached npm-compatible package archive includes its SHA-256 checksum.\n");
+          NODE
+      - name: Publish GitHub release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          archive=".build/release/typeplot-${RELEASE_TAG#v}.tgz"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$archive" .build/release/SHA256SUMS --clobber
+            gh release edit "$RELEASE_TAG" --draft=false
+          else
+            gh release create "$RELEASE_TAG" "$archive" .build/release/SHA256SUMS \
+              --verify-tag --title "TypePlot $RELEASE_TAG" --notes-file .build/release/notes.md --latest
+          fi
