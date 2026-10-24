@@ -3,6 +3,7 @@ export type { AnimationClip, AnimationOptions, TimelineOptions, TweenOptions, Ea
 export { identityMatrix, multiplyMatrices, translationMatrix, scaleMatrix, rotationMatrix, } from "./transform.js";
 export type { Matrix4 } from "./transform.js";
 export { createSurface } from "./grid-surface.js";
+export { preloadFonts } from "./resources.js";
 export type { GridSurface, GridSurfaceOptions } from "./grid-surface.js";
 export { ViewControl } from "./controls.js";
 export type { PlotControl, ControlPosition } from "./controls.js";

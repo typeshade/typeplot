@@ -12,7 +12,7 @@ import {
   type RenderPass,
 } from "typeshade/runtime";
 import manifest from "../.build/data-program.json";
-import { loadGlyphAtlas } from "./font.js";
+import { loadGlyphAtlas, prepareGlyphAtlas } from "./font.js";
 import type {
   AxesOptions,
   SeriesOptions,
@@ -217,6 +217,7 @@ export class GpuRenderer {
       throw new TypeError("Unknown plot backend.");
     const win = canvas.ownerDocument.defaultView!;
     const program = manifest as Pack;
+    const glyphSource = prepareGlyphAtlas();
     if (backend !== "webgl2") {
       let runtime: Runtime | undefined, renderer: GpuRenderer | undefined;
       try {
@@ -227,7 +228,7 @@ export class GpuRenderer {
         const format = win.navigator.gpu.getPreferredCanvasFormat();
         renderer = new GpuRenderer(canvas, runtime, undefined, format);
         // Validate pipelines and resources before committing this canvas to a backend.
-        await renderer.initialize();
+        await renderer.initialize(glyphSource);
         const context = canvas.getContext("webgpu");
         if (!context) throw new Error("This canvas has no WebGPU context.");
         context.configure({
@@ -255,15 +256,27 @@ export class GpuRenderer {
     });
     const renderer = new GpuRenderer(canvas, runtime, context, "rgba8unorm");
     try {
-      await renderer.initialize();
+      await renderer.initialize(glyphSource);
       return renderer;
     } catch (error) {
       renderer.destroy();
       throw error;
     }
   }
-  private async initialize(): Promise<void> {
+  private async initialize(glyphSource: Promise<Blob>): Promise<void> {
     this.program = this.runtime.load(manifest as Pack);
+    const glyphs = loadGlyphAtlas(
+      this.runtime,
+      false,
+      undefined,
+      () => !this.destroyed,
+      glyphSource,
+    ).then((value) => {
+      this.glyphs = value;
+    });
+    // Let an already-fetched atlas start its off-thread bitmap decoder before
+    // invoking a backend whose pipeline creation may run synchronously.
+    await Promise.resolve();
     // Start the atlas request alongside pipeline creation. Settle every resource
     // before cleanup so a failed initialization cannot leave late allocations.
     const results = await Promise.allSettled([
@@ -276,9 +289,7 @@ export class GpuRenderer {
       this.pipeline("textFragment", "textVertex").then((value) => {
         this.text = value;
       }),
-      loadGlyphAtlas(this.runtime).then((value) => {
-        this.glyphs = value;
-      }),
+      glyphs,
       this.backend === "webgpu"
         ? createDevice({ runtime: this.runtime }).then((value) => {
             this.device = value;

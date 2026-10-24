@@ -829,6 +829,8 @@ export class Axes {
     return this.set({ grid: visible });
   }
   legend(visible: boolean | "html" = true): this {
+    this.assertAlive();
+    if (this.settings.legend === visible) return this;
     return this.set({ legend: visible });
   }
   /** Restore automatic limits for both axes. */

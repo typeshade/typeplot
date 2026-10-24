@@ -28,8 +28,11 @@ const assets = (await readdir(resolve(root, "dist/assets")))
   .map((name) => `assets/${name}`)
   .sort();
 const runtimeFiles = [
+  "browser-load.json",
   "index.js",
   "data.js",
+  "resources.js",
+  "resources.d.ts",
   "index.d.ts",
   "data.d.ts",
   "types.d.ts",
@@ -47,7 +50,7 @@ for (const name of runtimeFiles) {
   await copyFile(resolve(root, "dist", name), resolve(target, name));
 }
 for (const name of await readdir(resolve(root, "dist"))) {
-  if (/^(index|data|chunk-.*)\.js\.LEGAL\.txt$/.test(name))
+  if (/^(index|data|resources|chunk-.*)\.js\.LEGAL\.txt$/.test(name))
     await copyFile(resolve(root, "dist", name), resolve(target, name));
 }
 for (const name of ["curve", "helix", "sine", "surface"])

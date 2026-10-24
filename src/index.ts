@@ -47,6 +47,7 @@ export {
 } from "./transform.js";
 export type { Matrix4 } from "./transform.js";
 export { createSurface } from "./grid-surface.js";
+export { preloadFonts } from "./resources.js";
 export type { GridSurface, GridSurfaceOptions } from "./grid-surface.js";
 import { PlotControlHost } from "./controls.js";
 export { ViewControl } from "./controls.js";
@@ -61,8 +62,9 @@ import {
   type Pack,
   type Runtime,
   type Texture,
+  type RenderPipeline,
 } from "typeshade/runtime";
-import { loadGlyphAtlas } from "./font.js";
+import { loadGlyphAtlas, prepareGlyphAtlas } from "./font.js";
 import { createPlotInteraction } from "./interaction.js";
 import type {
   Plot,
@@ -571,6 +573,8 @@ export async function createPlot(
   let controller: ReturnType<typeof createPlotInteraction> | undefined;
   let controls: PlotControlHost | undefined;
   let picker: PointerPicker<PlotPick> | undefined;
+  let pickPipeline: RenderPipeline | undefined;
+  let pickPreparation: Promise<RenderPipeline> | undefined;
   const animations = new Set<Timeline>();
   const pauseAnimations = () => {
     for (const animation of animations) animation.pause();
@@ -646,13 +650,18 @@ export async function createPlot(
       delete inputs[name];
     }
     dataArrays.clear();
-    if (dataDevice) {
-      const runtime = rt;
-      void dataDevice.dispose().then(
-        () => runtime?.destroy(),
-        () => runtime?.destroy(),
-      );
-    } else rt?.destroy();
+    const releaseRuntime = () => {
+      if (dataDevice) {
+        const runtime = rt;
+        void dataDevice.dispose().then(
+          () => runtime?.destroy(),
+          () => runtime?.destroy(),
+        );
+      } else rt?.destroy();
+    };
+    if (pickPreparation)
+      void pickPreparation.then(releaseRuntime, releaseRuntime);
+    else releaseRuntime();
     restoreCanvas();
   }
   function alive(): void {
@@ -679,6 +688,11 @@ export async function createPlot(
   }
 
   try {
+    const glyphSource = manifest.bindings.some(
+      (binding) => binding.name === "glyphAtlas",
+    )
+      ? prepareGlyphAtlas()
+      : undefined;
     if (backend !== "webgl2") {
       try {
         rt = await createRuntime({ prefer: ["webgpu"], programs: [manifest] });
@@ -710,10 +724,6 @@ export async function createPlot(
       rt = await createRuntime({ device: gl, programs: [manifest] });
     }
     const runtime = rt;
-    if (dataArrays.size && runtime.tier === "webgpu")
-      dataDevice = await createDevice({ runtime });
-    for (const [name, values] of dataArrays)
-      inputs[name] = dataDevice ? dataDevice.array(values) : resident(values);
     const target = context;
     completion = new GpuCompletion(
       win,
@@ -732,45 +742,90 @@ export async function createPlot(
         !!(target as WebGL2RenderingContext).getExtension(
           "EXT_color_buffer_float",
         ));
-    const pipeline = await loaded.render({
-      targets: [format],
-      ...(hasCache || program.picking === "point-v1"
-        ? {
-            vertex: "fullscreen",
-            fragment: hasCache && !accelerated ? "drawReference" : "draw",
-          }
-        : {}),
-    });
     const curveCache = accelerated && program.kind === "parametric";
-    const pickPipeline =
-      program.picking === "point-v1"
-        ? await loaded.render({
+    const glyphWork = glyphSource
+      ? loadGlyphAtlas(
+          runtime,
+          false,
+          undefined,
+          () => !destroyed,
+          glyphSource,
+        ).then((value) => {
+          glyphs = value;
+        })
+      : Promise.resolve();
+    await Promise.resolve();
+    // WebGPU compiles these independent pipelines concurrently. All resources
+    // settle before cleanup, including when a sibling pipeline fails.
+    const prepared = await Promise.allSettled([
+      glyphWork,
+      dataArrays.size && runtime.tier === "webgpu"
+        ? createDevice({ runtime }).then((value) => {
+            dataDevice = value;
+          })
+        : Promise.resolve(),
+      loaded.render({
+        targets: [format],
+        ...(hasCache || program.picking === "point-v1"
+          ? {
+              vertex: "fullscreen",
+              fragment: hasCache && !accelerated ? "drawReference" : "draw",
+            }
+          : {}),
+      }),
+      curveCache
+        ? loaded.render({
+            vertex: "fullscreen",
+            fragment: "buildCurveIntervals",
+            targets: ["rgba32float"],
+          })
+        : Promise.resolve(undefined),
+      accelerated
+        ? loaded.render({
+            vertex: "fullscreen",
+            fragment: "buildSpatialLabels",
+            targets: ["rgba32float"],
+          })
+        : Promise.resolve(undefined),
+      curveCache
+        ? loaded.render({
+            vertex: "fullscreen",
+            fragment: "buildCurveCandidates",
+            targets: ["rgba32uint"],
+          })
+        : Promise.resolve(undefined),
+    ]);
+    function result<T>(value: PromiseSettledResult<T>): T {
+      if (value.status === "rejected") throw value.reason;
+      return value.value;
+    }
+    result(prepared[0]);
+    result(prepared[1]);
+    const pipeline = result(prepared[2]);
+    const intervalPipeline = result(prepared[3]);
+    const labelPipeline = result(prepared[4]);
+    const candidatePipeline = result(prepared[5]);
+    for (const [name, values] of dataArrays)
+      inputs[name] = dataDevice ? dataDevice.array(values) : resident(values);
+    const preparePicking = (): Promise<RenderPipeline> => {
+      if (pickPipeline) return Promise.resolve(pickPipeline);
+      if (!pickPreparation) {
+        pickPreparation = loaded
+          .render({
             vertex: "fullscreen",
             fragment: "pick",
             targets: ["rgba32uint"],
           })
-        : undefined;
-    const intervalPipeline = curveCache
-      ? await loaded.render({
-          vertex: "fullscreen",
-          fragment: "buildCurveIntervals",
-          targets: ["rgba32float"],
-        })
-      : undefined;
-    const labelPipeline = accelerated
-      ? await loaded.render({
-          vertex: "fullscreen",
-          fragment: "buildSpatialLabels",
-          targets: ["rgba32float"],
-        })
-      : undefined;
-    const candidatePipeline = curveCache
-      ? await loaded.render({
-          vertex: "fullscreen",
-          fragment: "buildCurveCandidates",
-          targets: ["rgba32uint"],
-        })
-      : undefined;
+          .then((value) => {
+            pickPipeline = value;
+            return value;
+          });
+        void pickPreparation.catch(() => {
+          pickPreparation = undefined;
+        });
+      }
+      return pickPreparation;
+    };
     if (curveCache) {
       intervals = runtime.texture({
         size: [1024, 6],
@@ -782,9 +837,6 @@ export async function createPlot(
       labels = runtime.texture({ size: [1, 38], format: "rgba32float" });
     let preparedKey = "";
     let preparedLabelsKey = "";
-    // Older manifests have no font binding and remain usable without recompilation.
-    if (manifest.bindings.some((binding) => binding.name === "glyphAtlas"))
-      glyphs = await loadGlyphAtlas(runtime);
     let preparedSizing = false;
     controller = createPlotInteraction(
       canvas,
@@ -1347,7 +1399,7 @@ export async function createPlot(
       },
       async pick(position, radius = 8) {
         alive();
-        if (!pickPipeline)
+        if (program.picking !== "point-v1")
           throw new Error("Recompile this program to enable GPU picking.");
         if (
           !Array.isArray(position) ||
@@ -1370,13 +1422,17 @@ export async function createPlot(
           position[1] > box.height
         )
           return null;
-        await currentFrame();
+        const [, picking] = await Promise.all([
+          currentFrame(),
+          preparePicking(),
+        ]);
+        alive();
         const output = runtime.texture({ size: [2, 1], format: "rgba32uint" });
         try {
           const frame = runtime.frame();
           frame.pass({ color: [output] }, (pass) =>
             pass.draw(
-              pickPipeline,
+              picking,
               {
                 u: lastUniforms,
                 ...inputs,
@@ -1406,7 +1462,7 @@ export async function createPlot(
       },
       on(type, listener) {
         alive();
-        if (!pickPipeline)
+        if (program.picking !== "point-v1")
           throw new Error("Recompile this program to enable GPU picking.");
         picker!.on(type, listener);
         return plot;

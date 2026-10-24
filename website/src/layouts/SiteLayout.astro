@@ -16,8 +16,6 @@ const links = [
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
 const enPath = ko ? Astro.url.pathname.replace(/^\/ko/, "") || "/" : Astro.url.pathname;
 const koPath = `/ko${enPath}`;
-const baseAtlases = import.meta.glob<string>("../vendor/typeplot/assets/typeplot-font-base-*.png", { eager: true, query: "?url", import: "default" });
-const baseAtlas = Object.values(baseAtlases)[0];
 ---
 <!doctype html>
 <html lang={locale}>
@@ -35,7 +33,6 @@ const baseAtlas = Object.values(baseAtlases)[0];
     <link rel="alternate" hreflang="ko" href={new URL(koPath, Astro.site).href} />
     <link rel="alternate" hreflang="x-default" href={new URL(enPath, Astro.site).href} />
     <link rel="icon" href="/mark.svg" type="image/svg+xml" />
-    {active === "playground" && baseAtlas && <link rel="preload" href={baseAtlas} as="fetch" crossorigin="anonymous" />}
     <title>{title}</title>
     <script is:inline>
       try { const saved = localStorage.getItem("typeplot-theme"); document.documentElement.dataset.theme = saved === "dark" || (saved !== "light" && matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light"; } catch { document.documentElement.dataset.theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; }

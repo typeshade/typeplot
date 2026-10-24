@@ -21,9 +21,14 @@ visitor-provided source. See PRODUCT.md and DESIGN.md for product and visual rul
 
 The shared ESM graph and font assets are synced together. The default data chart does not
 load GPU example programs; selecting a GPU preset imports its runtime and program on demand.
-The Playground preloads the common SDF atlas. Figures request the full Hangul atlas only
+The Playground starts a shared font download from a small resource entry. Figures request the full Hangul atlas only
 when their plotted text needs it. Hashed `/_astro/` assets use immutable caching; HTML keeps
 the hosting platform's revalidation behavior. See [loading behavior](../docs/loading.md).
+
+A small module starts the real default figure before the React controls hydrate. React
+adopts that same figure through an immutable Astro HTML slot. The build integration derives
+module preloads from Rollup's static dependency graph and the library's backend metadata;
+visibility/idle islands, optional examples and live code highlighting remain deferred.
 
 Cloudflare Workers serves `website/dist` as static assets through the root `wrangler.jsonc`.
 The only public hostname is `plot.typeshade.dev`; workers.dev is disabled. The deployment

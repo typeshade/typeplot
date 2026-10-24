@@ -60,7 +60,7 @@ execFileSync(process.execPath, ["scripts/compile-grid.mjs"], {
 for (const name of await readdir("dist"))
   if (
     /^chunk-.*\.js(?:\.LEGAL\.txt)?$/.test(name) ||
-    /^(index|data|interaction|shaders|animation|transform)\.js\.LEGAL\.txt$/.test(
+    /^(index|data|interaction|shaders|animation|transform|resources)\.js\.LEGAL\.txt$/.test(
       name,
     )
   )
@@ -88,6 +88,7 @@ const assetPlugin = {
 await build({
   entryPoints: [
     "src/index.ts",
+    "src/resources.ts",
     "src/interaction.ts",
     "src/shaders.ts",
     "src/data.ts",
@@ -119,6 +120,25 @@ await build({
   );
   if (leaked.length)
     throw new Error(`Compiler leaked into browser entry: ${leaked.join(", ")}`);
+  const webgl2 = Object.entries(result.metafile.outputs)
+    .filter(
+      ([name, output]) =>
+        name.endsWith(".js") &&
+        Object.entries(output.inputs).some(
+          ([input, usage]) =>
+            input.endsWith("/runtime/gl.ts") && usage.bytesInOutput > 0,
+        ),
+    )
+    .map(([name]) => path.basename(name))
+    .sort();
+  if (!webgl2.length)
+    throw new Error(
+      "The deferred WebGL2 runtime was not found in the browser graph.",
+    );
+  await writeFile(
+    "dist/browser-load.json",
+    JSON.stringify({ webgl2 }, null, 2) + "\n",
+  );
 });
 execFileSync("node_modules/.bin/tsc", [], { stdio: "inherit" });
 

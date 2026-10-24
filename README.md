@@ -66,6 +66,8 @@ Both browser entries share the TypeShade runtime and precompiled shaders, withou
 The ESM build includes shared chunks and cacheable SDF font assets. A bundler such as Vite
 resolves these assets automatically; when serving the built modules directly, preserve the
 entire `dist/` directory, including `dist/assets/`. See [loading behavior](docs/loading.md).
+For early browser startup, `preloadFonts` from the small `typeplot/resources` entry
+starts shared font downloads without creating a GPU device or loading the plotting API.
 JavaScript callbacks are sampled on the host; all visible chart graphics are rendered by TypeShade.
 Figure handles are created synchronously. Await `fig.ready` for backend initialization and the first
 complete frame, and handle rejection or pass `onError`. `fig.backend` reports the actual backend.

@@ -37,6 +37,10 @@
       "types": "./dist/data.d.ts",
       "import": "./dist/data.js"
     },
+    "./resources": {
+      "types": "./dist/resources.d.ts",
+      "import": "./dist/resources.js"
+    },
     "./shaders": {
       "types": "./dist/shaders.d.ts",
       "import": "./dist/shaders.js"

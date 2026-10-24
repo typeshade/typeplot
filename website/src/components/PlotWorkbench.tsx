@@ -1,13 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { claimInitialPlot, signalPlot } from "./initial-plot";
 import { Button, ConfigProvider, Select, Slider, Switch, theme } from "antd";
-import Prism from "prismjs";
-import "prismjs/components/prism-typescript";
-import {
-  subplots,
-  linspace,
-  type Figure,
-  type Series,
-} from "../vendor/typeplot/data.js";
+import LiveCode from "./LiveCode";
+import { subplots, linspace, type Figure } from "../vendor/typeplot/data.js";
 import type {
   Plot,
   PlotProgram,
@@ -37,7 +32,13 @@ const DEFAULT_STYLE: Required<PlotStyle> = {
 };
 
 type Backend = "auto" | "webgpu" | "webgl2";
-export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
+export default function PlotWorkbench({
+  locale,
+  stage,
+}: {
+  locale: "en" | "ko";
+  stage?: ReactNode;
+}) {
   const ko = locale === "ko";
   const [preset, setPreset] = useState<Preset>("signals");
   const [frequency, setFrequency] = useState(1);
@@ -70,7 +71,7 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
   const active = useRef<{
     figure?: Figure;
     gpu?: Plot;
-    signal?: { x: Float64Array; lines: Series[] };
+    signal?: ReturnType<typeof signalPlot>;
   }>({});
   const desired = useRef({
     exponent,
@@ -105,11 +106,11 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
     return () => window.removeEventListener("typeplot-theme-change", update);
   }, []);
   useEffect(() => {
-    const target = mount.current;
+    const target = mount.current?.querySelector<HTMLDivElement>(".plot-mount");
     if (!target) return;
     let disposed = false;
     let fig: Figure | undefined, plot: Plot | undefined;
-    let signal: { x: Float64Array; lines: Series[] } | undefined;
+    let signal: ReturnType<typeof signalPlot> | undefined;
     setError("");
     setReady(false);
     setStatus(ko ? "렌더러를 준비하고 있습니다…" : "Preparing the renderer…");
@@ -122,34 +123,29 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
         );
       }
     };
+    const initial = claimInitialPlot(target, fail);
+    const prepared =
+      preset === "signals" && backend === "auto" ? initial : undefined;
+    if (initial && !prepared) {
+      initial.fig.destroy();
+      target.replaceChildren();
+    }
     if (!gpu) {
       try {
-        const result = subplots(1, 1, {
-          target,
-          width: 900,
-          height: 440,
-          toolbar: false,
-          backend,
-          onError: fail,
-        });
+        const result =
+          prepared ??
+          subplots(1, 1, {
+            target,
+            width: 900,
+            height: 440,
+            toolbar: false,
+            backend,
+            onError: fail,
+          });
         fig = result.fig;
         const ax = result.axes[0];
         if (preset === "signals") {
-          const x = linspace(0, Math.PI * 2, 200);
-          const sine = ax.plot(x, (v) => Math.sin(v * frequency), {
-            label: "Sine",
-          });
-          const cosine = ax.plot(x, (v) => Math.cos(v * frequency), {
-            label: "Cosine",
-            lineStyle: "--",
-          });
-          signal = { x, lines: [sine, cosine] };
-          ax.set({
-            xLabel: "Angle (radians)",
-            yLabel: "Amplitude",
-            grid: true,
-            legend: true,
-          });
+          signal = prepared?.signal ?? signalPlot(ax, frequency);
         } else if (preset === "scatter") {
           const x = linspace(0, 4, 35);
           ax.scatter(
@@ -383,7 +379,7 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
   }, [preset, backend, ko, gpu]);
   useEffect(() => {
     const signal = active.current.signal;
-    if (!signal) return;
+    if (!signal || signal.frequency === frequency) return;
     signal.lines[0].setData(
       signal.x,
       signal.x.map((v) => Math.sin(v * frequency)),
@@ -392,6 +388,7 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
       signal.x,
       signal.x.map((v) => Math.cos(v * frequency)),
     );
+    signal.frequency = frequency;
   }, [frequency, ready]);
   useEffect(() => {
     const plot = active.current.gpu;
@@ -466,10 +463,6 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
     (isSurface
       ? `\nplot.setMode("${threeD ? "3d" : "2d"}");\nplot.setSurface(${JSON.stringify(surfaceStyle, null, 2)});\nplot.setQuality({ samples: ${samples} });`
       : "");
-  const highlightedCode = useMemo(
-    () => Prism.highlight(code, Prism.languages.typescript, "typescript"),
-    [code],
-  );
   const descriptions: Record<Preset, string> = ko
     ? {
         signals:
@@ -921,8 +914,8 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
             locale={locale}
           />
         )}
-        <div className="plot-stage">
-          <div className="plot-mount" ref={mount} />
+        <div className="plot-stage" ref={mount}>
+          {stage ?? <div className="plot-mount" />}
         </div>
         <PickReadout
           plot={ready ? active.current.gpu : undefined}
@@ -957,11 +950,7 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
           </span>
         </figcaption>
         <pre>
-          <code
-            dangerouslySetInnerHTML={{
-              __html: highlightedCode,
-            }}
-          />
+          <LiveCode code={code} ready={ready} />
         </pre>
       </figure>
       <p className="source-meta">

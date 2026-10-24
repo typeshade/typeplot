@@ -17,15 +17,21 @@ function resource(url: string): Promise<Blob> {
   return pending;
 }
 
+/** Start I/O before choosing a backend; it owns no decoded image or GPU object. */
+export function prepareGlyphAtlas(full = false): Promise<Blob> {
+  return resource(full ? atlasUrl : baseAtlasUrl);
+}
+
 /** Upload the offline SDF resource; all glyph reconstruction runs in TypeShade. */
 export async function loadGlyphAtlas(
   runtime: Runtime,
   full = false,
   target?: Texture,
   active: () => boolean = () => true,
+  prepared?: Promise<Blob>,
 ): Promise<Texture> {
   const image = await createImageBitmap(
-    await resource(full ? atlasUrl : baseAtlasUrl),
+    await (prepared ?? prepareGlyphAtlas(full)),
     {
       premultiplyAlpha: "none",
       colorSpaceConversion: "none",
