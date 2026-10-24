@@ -1,4 +1,12 @@
-import { signalCode, gpuCode, helixCode } from "./samples";
+import {
+  signalCode,
+  gpuCode,
+  helixCode,
+  surfaceCode,
+  sampledSurfaceCode,
+  uncertaintyCode,
+  fieldCode,
+} from "./samples";
 import version from "../vendor/typeplot/version.json";
 export type Locale = "en" | "ko";
 export type PageKey = "guide" | "gpu" | "api" | "examples";
@@ -35,7 +43,9 @@ export default defineConfig({
   plugins: [typeplot({
     configure: file => file.endsWith("curve.shade.ts")
       ? { parameters: { exponent: 2 } }
-      : {},
+      : file.endsWith("surface.shade.ts")
+        ? { parameters: { phase: 0, amplitude: 1 } }
+        : {},
   })],
 });`;
 const chartApi: [string, string][] = [
@@ -67,6 +77,18 @@ const chartApi: [string, string][] = [
   [
     "ax.setXLimits / setYLimits",
     "Fix a range. autoscale() restores automatic ranges.",
+  ],
+  [
+    "ax.barh / step / stem / fillBetween / errorbar",
+    "Add scientific data artists with resident GPU coverage.",
+  ],
+  [
+    "ax.imshow / contour / contourf / colorbar",
+    "Render scalar fields and their color scale.",
+  ],
+  [
+    "ax.text / annotate / on / off / pick",
+    "Add SDF annotations and GPU data events.",
   ],
   ["series.setData / remove", "Replace copied data or remove one series."],
   [
@@ -104,6 +126,18 @@ const chartApiKo: [string, string][] = [
     "ax.setXLimits / setYLimits",
     "축 범위를 고정합니다. autoscale()로 자동 범위로 돌아갑니다.",
   ],
+  [
+    "ax.barh / step / stem / fillBetween / errorbar",
+    "GPU 과학 그래프 계열을 추가합니다.",
+  ],
+  [
+    "ax.imshow / contour / contourf / colorbar",
+    "스칼라 필드와 색상 눈금을 표시합니다.",
+  ],
+  [
+    "ax.text / annotate / on / off / pick",
+    "SDF 주석과 GPU 데이터 이벤트를 사용합니다.",
+  ],
   ["series.setData / remove", "계열 데이터를 교체하거나 계열을 제거합니다."],
   [
     "fig.saveImage / toBlob / destroy",
@@ -132,6 +166,16 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
           title: "Add curves on the same axes",
           text: "A Figure owns its DOM. Each Axes owns its ranges, color cycle and interaction. There is no global current figure to keep track of. subplots returns the same flat array shape for one or many axes.",
           code: signalCode,
+        },
+        {
+          title: "Scientific charts and annotations",
+          text: "barh, step, stem, fillBetween and errorbar add scientific data artists. Errors accept scalars, arrays or { lower, upper }; capSize is in CSS pixels. Series support setStyle, setVisible and setAlpha. text/annotate render data-anchored SDF glyphs and implicit arrows with rotation and offsets. on/off and pick expose GPU hover/click results.",
+          code: uncertaintyCode,
+        },
+        {
+          title: "Images, contours and colorbars",
+          text: "imshow, contour and contourf use resident row-major arrays. shape is [rows, columns], extent is [xMin, xMax, yMin, yMax], and origin defaults to upper. Configure colorMap, valueRange, interpolation, alpha, visible and levels. Contour lines require linear interpolation and 2–64 distinguishable f32 levels. Missing values are transparent. field.setData preserves shape and updates automatic color limits; colorbar links a scale to a field. No host contour mesh is generated.",
+          code: fieldCode,
         },
         {
           title: "Update, save and release",
@@ -180,8 +224,26 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
           text: "New spatial programs cache projected search intervals, tile candidate masks and axis-label layout in GPU textures. Pixels refine nearby candidates against the original callback; the cache does not become a rendered polyline. Changed camera, domain or parameters update the affected cache, and unchanged redraws reuse it. Search quality, display density and parameter-based dashes retain their settings. Enabled by default on WebGPU and WebGL2 with EXT_color_buffer_float. acceleration: false selects the reference query; older programs need recompilation to gain acceleration. This reduces repeated work without removing the numerical limits of arbitrary or unbounded curves.",
         },
         {
+          title: "Height fields and camera animation",
+          text: "Compile ?plot=surface or kind: surface for y = f(x, z); TypePlot uses y-up. The GPU finds ray/height-field crossings without triangle meshes. surface configures colorMap, valueRange, colorBar, shading, wireframe, contours, contourInterval, filled and opacity. Color limits do not clip geometry. setMode(2d) shows the same x/z color field. surfaceDomain is independent of the camera and defaults to unbounded; this example explicitly displays a finite patch. quality controls a finite ray/refinement budget, so thin branches, tangencies and arbitrary high frequencies are not guaranteed. setCamera exposes center, z focus, span, rotation, pan, fov in radians and distance. New pointer input pauses owned motion. plot.animate and transition use captured endpoints and absolute time; Timeline, ValueTracker, parallel and sequence compose motion with seek, pause, repeat and yoyo. Reduced motion completes a requested animation without looping.",
+          code: surfaceCode,
+        },
+        {
+          title: "Surfaces from observation arrays",
+          text: "createSurface accepts row-major observations, shape [rows, columns], and extent [xMin, xMax, zMin, zMax]. Rows progress from zMin to zMax. A precompiled TypeShade callback bilinearly evaluates resident values; camera changes reuse data. setValues replaces observations without rebuilding the plot. Its second argument true rescales colors. heightScale and heightOffset are animatable parameters. Missing cells are not extrapolated. Affine setTransform applies to 3D plots, grids and axes together; picking returns local mathematical coordinates. General callbacks may receive read-only f32 storage arrays through data and setData.",
+          code: sampledSurfaceCode,
+        },
+        {
+          title: "Picking and GPU PNG export",
+          text: "on/off subscribe to hover and click. pick([x, y], radius) queries CSS pixels from the top-left and returns local point coordinates, distance and a curve parameter when applicable. Hover is opt-in, coalesces events and keeps one readback in flight. Function queries have finite numerical quality; surface picking queries the underlying field. toBlob and saveImage redraw the same programs with caches at export density. Width/height are CSS sizes; pixelRatio is at most four within device and 16-megapixel limits. A nonzero-size frame must have rendered. No CPU geometry search or Canvas2D export renderer is involved.",
+          code: `plot.on("click", event => console.log(event.result?.point));
+const point = await plot.pick([120, 90]);
+await plot.saveImage("surface.png", { pixelRatio: 2 });
+// Unmount: plot.destroy();`,
+        },
+        {
           title: "Shader appearance and navigation",
-          text: "Axes and ticks default to 1 CSS px. style and setStyle configure axisWidth, gridWidth, curveWidth, labelSize, tickDensity, labelHalo, labelBackground, grid, tickLabels and axisLabels. Widths stay independent of zoom and display density. lineStyle, dashPeriod and dashOffset define a procedural pattern in callback parameter coordinates, without cumulative path lengths. Left-drag orbits in 3D, right-drag pans, and both buttons pan in 2D. Touchscreens support one-finger pan/orbit, two-finger pinch/pan and double-tap reset. Released drags coast with damping; new input or Escape stops them. Double-click restores the home camera. inertia: false and doubleClickReset: false disable these gestures. Attach ViewControl with plot.addControl(new ViewControl(), \"top-right\"); removeControl cleans up the HTML camera UI. Spatial axes and the ground lattice are implicit distance fields using the same camera as the curve. Hierarchical world-coordinate ticks fade continuously with zoom. Numeric labels and axis names use a thin SDF halo by default, with optional rounded backgrounds. Their density follows projected spacing and formatted text width. Grid and GPU-label visibility changes fade over 160 ms, respecting reduced-motion preferences. Text uses X-GIS computeSDF encoding and its analytic antialiasing rule, with complete glyph padding at character boundaries.",
+          text: 'Axes and ticks default to 1 CSS px. style and setStyle configure axisWidth, gridWidth, curveWidth, labelSize, tickDensity, labelHalo, labelBackground, grid, tickLabels and axisLabels. Widths stay independent of zoom and display density. lineStyle, dashPeriod and dashOffset define a procedural pattern in callback parameter coordinates, without cumulative path lengths. Left-drag orbits in 3D, right-drag pans, and both buttons pan in 2D. Touchscreens support one-finger pan/orbit, two-finger pinch/pan and double-tap reset. Released drags coast with damping; new input or Escape stops them. Double-click restores the home camera. inertia: false and doubleClickReset: false disable these gestures. Attach ViewControl with plot.addControl(new ViewControl(), "top-right"); removeControl cleans up the HTML camera UI. Spatial axes and the ground lattice are implicit distance fields using the same camera as the curve. Hierarchical world-coordinate ticks fade continuously with zoom. Numeric labels and axis names use a thin SDF halo by default, with optional rounded backgrounds. Their density follows projected spacing and formatted text width. Grid and GPU-label visibility changes fade over 160 ms, respecting reduced-motion preferences. Text uses X-GIS computeSDF encoding and its analytic antialiasing rule, with complete glyph padding at character boundaries.',
           code: `plot.setStyle({ axisWidth: 1, gridWidth: 0.5, curveWidth: 2, labelSize: 12, tickDensity: 1.25, labelHalo: 0.8, labelBackground: false, tickLabels: true });`,
         },
         {
@@ -192,7 +254,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
             "auto attempts WebGPU and falls back to WebGL2. Explicit backends report failures.",
             "Add typeplot/client to host declarations and exclude **/*.shade.ts from the host tsconfig.",
             "Returning a hidden point does not replace all discontinuity handling. Compile with discontinuous: true when needed.",
-            "PNG export through Figure is currently for data figures, not GPU canvases.",
+            "Figure and GPU plots both support toBlob/saveImage through TypeShade rendering, including 3D surfaces.",
           ],
         },
       ],
@@ -209,7 +271,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "Style and axes options",
-          text: "Series styles use label, color, lineWidth, lineStyle, marker, markerSize and alpha. Procedural dashes repeat in parameter coordinates: parameter selects auto/x/index, dashPeriod sets the period, and dashOffset shifts it. Without an explicit dashPeriod, automatic density adjusts the parameter period by powers of two in both zoom directions: magnification keeps visible gaps, and minification keeps rounded ends separated. Explicit periods retain fixed parameter spacing. Line styles are -, --, : and none. Markers are o, s and none. Axes can have linear or log xScale/yScale, fixed xLimits/yLimits, titles, labels, grids and legends. legend: \"html\" selects an HTML legend on screen; PNG retains a GPU legend.",
+          text: 'Series styles use label, color, lineWidth, lineStyle, marker, markerSize and alpha. Procedural dashes repeat in parameter coordinates: parameter selects auto/x/index, dashPeriod sets the period, and dashOffset shifts it. Without an explicit dashPeriod, automatic density adjusts the parameter period by powers of two in both zoom directions: magnification keeps visible gaps, and minification keeps rounded ends separated. Explicit periods retain fixed parameter spacing. Line styles are -, --, : and none. Markers are o, s and none. Axes can have linear or log xScale/yScale, fixed xLimits/yLimits, titles, labels, grids and legends. legend: "html" selects an HTML legend on screen; PNG retains a GPU legend.',
           code: `ax.plot(x, y, {\n  label: "Measurements", color: "#1677ff",\n  lineWidth: 2, lineStyle: "--", marker: "o", markerSize: 3,\n});\nax.set({ xScale: "log", xLimits: [1, 100], grid: true });`,
         },
         {
@@ -222,7 +284,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
           api: [
             [
               "compilePlot(source, options)",
-              "Build-time scalar or parametric callback compilation.",
+              "Build-time scalar, parametric or surface callback compilation.",
             ],
             [
               "createPlot(canvas, program, options)",
@@ -243,6 +305,22 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
             [
               "plot.setDomain / domain / setQuality",
               "Change or read the spatial parameter domain; configure GPU closest-point search without resetting the view.",
+            ],
+            [
+              "createSurface / setSurface / setSurfaceDomain",
+              "Render resident height grids or GPU height functions and configure their appearance/domain.",
+            ],
+            [
+              "getCamera / setCamera / getTransform / setTransform",
+              "Control a shared 3D camera and invertible affine scene transform.",
+            ],
+            [
+              "animate / transition / Timeline / ValueTracker",
+              "Coordinate captured camera/function state with absolute time, seek and playback.",
+            ],
+            [
+              "on / off / pick / toBlob / saveImage",
+              "Query GPU points, handle hover/click and export the original shaders to PNG.",
             ],
             [
               "plot.reset / redraw / destroy",
@@ -278,7 +356,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "Current scope",
-          text: "Both data figures and function plots use TypeShade-generated WebGPU or WebGL2 shaders. This site makes no hardware performance claim and does not present browser output as a GPU benchmark. The current renderer does not implement implicit surfaces, meshes, date/category axes, or full matplotlib compatibility.",
+          text: "Both data figures and function plots use TypeShade-generated WebGPU or WebGL2 shaders. This site makes no hardware performance claim and does not present browser output as a GPU benchmark. Height fields and camera/function animation are available in the Playground. General 3D volumes, unstructured meshes, date/category axes and full matplotlib API compatibility remain separate work.",
         },
       ],
     },
@@ -304,6 +382,16 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
           title: "같은 축에 곡선 추가",
           text: "Figure는 DOM을 관리하고, Axes는 범위·색 순서·상호작용을 관리합니다. 전역의 현재 그래프 상태를 추적할 필요가 없습니다. subplots는 그래프 수와 관계없이 항상 1차원 axes 배열을 반환합니다.",
           code: signalCode,
+        },
+        {
+          title: "과학 그래프와 주석",
+          text: "barh, step, stem, fillBetween, errorbar로 과학 그래프를 추가합니다. 오차는 스칼라, 배열 또는 { lower, upper }를 받으며 capSize는 CSS 픽셀입니다. 계열은 setStyle, setVisible, setAlpha를 지원합니다. text와 annotate는 데이터 좌표의 SDF 글자와 암시적 화살표·회전·오프셋을 사용합니다. on/off와 pick으로 GPU hover/click 결과를 받습니다.",
+          code: uncertaintyCode,
+        },
+        {
+          title: "히트맵·등고선·컬러바",
+          text: "imshow, contour, contourf는 행 우선 배열을 GPU에 유지해 표시합니다. shape는 [행, 열], extent는 [xMin, xMax, yMin, yMax]이며 origin 기본값은 upper입니다. colorMap, valueRange, interpolation, alpha, visible, levels를 설정합니다. 등고선은 선형 보간과 f32에서 구분되는 2–64개 수준을 사용합니다. 누락값은 투명합니다. field.setData는 크기를 유지하며 자동 색상 범위를 갱신하고 colorbar는 필드에 눈금을 연결합니다. 호스트에서 등고선 메시를 만들지 않습니다.",
+          code: fieldCode,
         },
         {
           title: "갱신, 저장, 해제",
@@ -352,8 +440,26 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
           text: "새 공간 곡선 프로그램은 투영된 탐색 구간, 타일별 후보 목록과 축 라벨 배치를 GPU 텍스처에 보관합니다. 픽셀에서는 가까운 후보만 원래 콜백으로 보정하며 캐시를 선분으로 그리지 않습니다. 카메라·정의역·매개변수가 바뀌면 해당 캐시를 갱신하고 같은 상태의 재그리기에서는 재사용합니다. 탐색 품질, 화면 배율과 매개변수 기준 대시 설정을 유지합니다. WebGPU와 EXT_color_buffer_float를 지원하는 WebGL2에서 기본으로 활성화됩니다. acceleration: false로 참조 탐색을 선택할 수 있으며 이전 프로그램은 재컴파일해야 가속됩니다. 반복 연산을 줄이는 기능이며 임의의 곡선이나 무한 정의역에 대한 수치 탐색의 한계를 없애지는 않습니다.",
         },
         {
+          title: "곡면과 카메라 애니메이션",
+          text: "?plot=surface 또는 kind: surface로 y = f(x, z)를 컴파일합니다. TypePlot은 y-up 좌표계를 사용합니다. GPU가 광선과 곡면의 교차점을 직접 찾으며 삼각형 메시를 만들지 않습니다. surface에서 colorMap, valueRange, colorBar, shading, wireframe, contours, contourInterval, filled, opacity를 설정합니다. 색상 범위는 기하를 자르지 않습니다. setMode(2d)는 같은 함수를 x/z 색상장으로 표시합니다. surfaceDomain의 기본값은 무한 정의역이며 카메라와 독립됩니다. 이 예제는 유한 패치를 명시합니다. quality는 유한 광선 탐색·보정 예산이므로 얇은 가지나 접점, 임의의 고주파를 모두 찾는 보장은 아닙니다. setCamera는 center, z 초점, span, rotation, pan, 라디안 fov와 distance를 제어합니다. 새 포인터 입력은 재생을 멈춥니다. animate와 transition은 시작 상태와 절대 시간으로 보간하며 Timeline, ValueTracker, parallel, sequence로 되감기·일시정지·반복·왕복 재생을 구성합니다. 모션 감소 설정에서는 반복하지 않고 최종 상태로 이동합니다.",
+          code: surfaceCode,
+        },
+        {
+          title: "관측 배열 곡면",
+          text: "createSurface는 행 우선 배열과 shape [행, 열], extent [xMin, xMax, zMin, zMax]를 받습니다. 행은 zMin부터 zMax 방향입니다. 미리 컴파일한 TypeShade 콜백이 GPU에 유지한 값을 보간하므로 카메라 변경 시 데이터를 재사용합니다. setValues로 관측값을 교체하고 두 번째 인수 true로 색상 범위도 다시 맞춥니다. heightScale과 heightOffset을 애니메이션으로 제어할 수 있습니다. 누락된 셀을 외삽하지 않습니다. setTransform은 3D 그래프·격자·축에 같은 아핀 행렬을 적용하며 picking은 원래 수학 좌표를 반환합니다. 일반 콜백도 data와 setData로 읽기 전용 f32 저장 배열을 전달할 수 있습니다.",
+          code: sampledSurfaceCode,
+        },
+        {
+          title: "Picking과 GPU PNG 저장",
+          text: "on/off로 hover와 click 이벤트를 연결합니다. pick([x, y], radius)는 왼쪽 위부터의 CSS 픽셀 좌표로 질의하며 원래 점 좌표, 거리와 곡선 매개변수를 반환합니다. hover는 구독할 때만 동작하고 이벤트를 합쳐 readback 하나만 실행합니다. 함수 질의에는 수치 탐색의 한계가 있고 곡면은 내부 높이장을 질의합니다. toBlob과 saveImage는 저장 배율에 맞춘 캐시와 같은 셰이더로 다시 그립니다. width/height는 CSS 크기이며 pixelRatio는 최대 4, 기기 한계와 16메가픽셀 이내입니다. 크기가 0이 아닌 프레임이 한 번은 그려져야 합니다. CPU 기하 탐색이나 Canvas2D 저장 렌더러를 사용하지 않습니다.",
+          code: `plot.on("click", event => console.log(event.result?.point));
+const point = await plot.pick([120, 90]);
+await plot.saveImage("surface.png", { pixelRatio: 2 });
+// Unmount: plot.destroy();`,
+        },
+        {
           title: "셰이더 스타일과 탐색",
-          text: "축과 눈금의 기본 굵기는 1 CSS px입니다. style과 setStyle에서 axisWidth, gridWidth, curveWidth, labelSize, tickDensity, labelHalo, labelBackground, grid, tickLabels, axisLabels를 설정합니다. 데이터 범례는 legend: \"html\"로 HTML 표시를 선택할 수 있으며 PNG에는 GPU 범례를 포함합니다. 굵기는 줌과 화면 배율에 영향을 받지 않습니다. lineStyle, dashPeriod, dashOffset은 콜백 매개변수 좌표에서 절차형 대시를 정의하며 경로 길이를 누적하지 않습니다. 3D에서는 왼쪽 드래그로 회전하고 오른쪽 드래그로 이동하며, 2D에서는 양쪽 버튼으로 이동합니다. 터치에서는 한 손가락으로 이동·회전하고 두 손가락으로 확대·이동하며 두 번 탭하면 초기화합니다. 드래그를 놓으면 관성으로 감속하고 새 입력이나 Escape로 멈춥니다. 더블 클릭은 카메라를 초기화합니다. inertia: false와 doubleClickReset: false로 각 동작을 끌 수 있습니다. plot.addControl(new ViewControl(), \"top-right\")으로 HTML 카메라 조작 UI를 추가하고 removeControl로 제거합니다. 공간 축과 바닥 격자는 곡선과 같은 카메라를 사용하는 암시적 거리장입니다. 월드 좌표에 고정된 계층형 눈금은 줌에 따라 연속적으로 페이드됩니다. 숫자와 축 이름은 기본적으로 얇은 SDF 외곽선을 사용하며, 둥근 배경은 옵션입니다. 투영 간격과 숫자 폭으로 밀도를 조절합니다. 격자와 GPU 라벨의 표시 전환은 160ms 동안 페이드되며 모션 감소 설정을 존중합니다. 글자는 X-GIS computeSDF 인코딩과 크기별 안티앨리어싱 규칙을 사용하며 글자 경계의 SDF 여백을 보존합니다.",
+          text: '축과 눈금의 기본 굵기는 1 CSS px입니다. style과 setStyle에서 axisWidth, gridWidth, curveWidth, labelSize, tickDensity, labelHalo, labelBackground, grid, tickLabels, axisLabels를 설정합니다. 데이터 범례는 legend: "html"로 HTML 표시를 선택할 수 있으며 PNG에는 GPU 범례를 포함합니다. 굵기는 줌과 화면 배율에 영향을 받지 않습니다. lineStyle, dashPeriod, dashOffset은 콜백 매개변수 좌표에서 절차형 대시를 정의하며 경로 길이를 누적하지 않습니다. 3D에서는 왼쪽 드래그로 회전하고 오른쪽 드래그로 이동하며, 2D에서는 양쪽 버튼으로 이동합니다. 터치에서는 한 손가락으로 이동·회전하고 두 손가락으로 확대·이동하며 두 번 탭하면 초기화합니다. 드래그를 놓으면 관성으로 감속하고 새 입력이나 Escape로 멈춥니다. 더블 클릭은 카메라를 초기화합니다. inertia: false와 doubleClickReset: false로 각 동작을 끌 수 있습니다. plot.addControl(new ViewControl(), "top-right")으로 HTML 카메라 조작 UI를 추가하고 removeControl로 제거합니다. 공간 축과 바닥 격자는 곡선과 같은 카메라를 사용하는 암시적 거리장입니다. 월드 좌표에 고정된 계층형 눈금은 줌에 따라 연속적으로 페이드됩니다. 숫자와 축 이름은 기본적으로 얇은 SDF 외곽선을 사용하며, 둥근 배경은 옵션입니다. 투영 간격과 숫자 폭으로 밀도를 조절합니다. 격자와 GPU 라벨의 표시 전환은 160ms 동안 페이드되며 모션 감소 설정을 존중합니다. 글자는 X-GIS computeSDF 인코딩과 크기별 안티앨리어싱 규칙을 사용하며 글자 경계의 SDF 여백을 보존합니다.',
           code: `plot.setStyle({ axisWidth: 1, gridWidth: 0.5, curveWidth: 2, labelSize: 12, tickDensity: 1.25, labelHalo: 0.8, labelBackground: false, tickLabels: true });`,
         },
         {
@@ -364,7 +470,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
             "auto는 WebGPU를 시도한 뒤 WebGL2로 대체합니다. 백엔드를 명시하면 해당 경로의 오류를 보고합니다.",
             "호스트 선언에 typeplot/client를 추가하고 tsconfig에서 **/*.shade.ts를 제외합니다.",
             "점을 생략하는 것만으로 모든 불연속을 처리하지는 않습니다. 필요하면 discontinuous: true로 컴파일합니다.",
-            "Figure의 PNG 저장 기능은 현재 데이터 그래프에 적용되며 GPU canvas에는 적용되지 않습니다.",
+            "Figure와 GPU 그래프 모두 TypeShade 렌더링으로 toBlob/saveImage를 지원하며 3D 곡면도 저장할 수 있습니다.",
           ],
         },
       ],
@@ -450,7 +556,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "현재 지원 범위",
-          text: "데이터 Figure와 함수 그래프 모두 TypeShade로 생성한 WebGPU 또는 WebGL2 셰이더로 그립니다. 이 사이트는 하드웨어 성능을 주장하거나 브라우저 출력을 GPU 벤치마크로 제시하지 않습니다. 암시적 곡면, 메시, 날짜·범주형 축, 전체 matplotlib 호환은 구현하지 않았습니다.",
+          text: "데이터 Figure와 함수 그래프 모두 TypeShade로 생성한 WebGPU 또는 WebGL2 셰이더로 그립니다. 이 사이트는 하드웨어 성능을 주장하거나 브라우저 출력을 GPU 벤치마크로 제시하지 않습니다. 일반 3D 부피장, 비정형 메시, 날짜·범주형 축과 전체 matplotlib API 호환은 별도 확장 범위입니다. 높이 곡면·카메라·함수 애니메이션은 직접 실행 페이지에서 사용할 수 있습니다.",
         },
       ],
     },

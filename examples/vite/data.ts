@@ -1,4 +1,4 @@
-import { subplots, linspace, type Figure } from "typeplot/data";
+import { subplots, linspace, type Figure } from "typeplot";
 
 let fig: Figure | undefined;
 const status = document.querySelector<HTMLParagraphElement>("#data-status")!;

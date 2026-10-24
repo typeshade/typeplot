@@ -7,18 +7,23 @@ import {
   linspace,
   type Figure,
   type Series,
-} from "../vendor/typeplot/data.js";
+} from "../vendor/typeplot/index.js";
 import {
   createPlot,
+  createSurface,
   ViewControl,
   type Plot,
   type PlotProgram,
   type PlotProjection,
   type PlotStyle,
+  type SurfaceOptions,
 } from "../vendor/typeplot/index.js";
 import power from "../vendor/typeplot/curve.js";
 import sine from "../vendor/typeplot/sine.js";
 import helix from "../vendor/typeplot/helix.js";
+import surface from "../vendor/typeplot/surface.js";
+import MotionControls from "./MotionControls";
+import PickReadout from "./PickReadout";
 import { exampleCode, type Preset } from "../content/samples";
 import version from "../vendor/typeplot/version.json";
 
@@ -52,6 +57,15 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
   const [domainExtent, setDomainExtent] = useState(6.28);
   const [unbounded, setUnbounded] = useState(true);
   const [samples, setSamples] = useState(128);
+  const [motionEpoch, setMotionEpoch] = useState(0);
+  const [surfaceStyle, setSurfaceStyle] = useState<SurfaceOptions>({
+    colorMap: "viridis",
+    valueRange: [-1.25, 1.25],
+    colorBar: true,
+    wireframe: false,
+    contours: false,
+    filled: true,
+  });
   const [dark, setDark] = useState(false);
   const [status, setStatus] = useState(
     ko ? "그래프를 준비하고 있습니다…" : "Preparing the plot…",
@@ -74,6 +88,7 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
     domainExtent,
     unbounded,
     samples,
+    surfaceStyle,
   });
   desired.current = {
     exponent,
@@ -84,8 +99,11 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
     domainExtent,
     unbounded,
     samples,
+    surfaceStyle,
   };
-  const gpu = preset === "power" || preset === "sine" || preset === "helix";
+  const isSurface = preset === "surface" || preset === "sampledSurface";
+  const gpu =
+    preset === "power" || preset === "sine" || preset === "helix" || isSurface;
   useEffect(() => {
     const update = () =>
       setDark(document.documentElement.dataset.theme === "dark");
@@ -159,6 +177,48 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
             label: "Observations",
           });
           ax.set({ xLabel: "Group", yLabel: "Count", legend: true });
+        } else if (preset === "uncertainty") {
+          const x = linspace(0, 6, 25),
+            y = x.map(Math.sin);
+          ax.fillBetween(
+            x,
+            y.map((v) => v + 0.2),
+            y.map((v) => v - 0.2),
+            { label: ko ? "구간" : "Band" },
+          );
+          ax.errorbar(x, y, {
+            yError: 0.2,
+            capSize: 3,
+            label: ko ? "관측값" : "Measurements",
+          });
+          ax.annotate(ko ? "최댓값" : "Peak", [Math.PI / 2, 1], {
+            xyText: [2.5, 1.3],
+            arrow: true,
+          });
+          ax.set({
+            xLabel: "x",
+            yLabel: ko ? "값" : "Value",
+            grid: true,
+            legend: true,
+          });
+        } else if (preset === "field") {
+          const rows = 48,
+            columns = 64,
+            values = Float32Array.from(
+              { length: rows * columns },
+              (_, i) =>
+                Math.sin(-3 + (6 * (i % columns)) / (columns - 1)) *
+                Math.cos(-2 + (4 * Math.floor(i / columns)) / (rows - 1)),
+            );
+          const field = ax.contourf(values, {
+            shape: [rows, columns],
+            extent: [-3, 3, -2, 2],
+            origin: "lower",
+            levels: 14,
+            colorMap: "viridis",
+          });
+          ax.colorbar(field);
+          ax.set({ xLabel: "x", yLabel: "y" });
         } else {
           const values = Array.from(
             { length: 600 },
@@ -187,53 +247,90 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
       const canvas = target.ownerDocument.createElement("canvas");
       canvas.className = "gpu-canvas";
       canvas.setAttribute("aria-describedby", "plot-help");
-      canvas.textContent =
-        preset === "power"
+      canvas.textContent = isSurface
+        ? "A height field y = f(x, z), with interactive camera and function animation."
+        : preset === "power"
           ? "y = x raised to the selected exponent, over x from zero to one."
           : "Helix: x = 2 cos(t), y = sin(t), z = 0.4t.";
       target.appendChild(canvas);
-      void createPlot(
-        canvas,
-        (preset === "power"
-          ? power
-          : preset === "sine"
-            ? sine
-            : helix) as PlotProgram,
-        {
-          bounds:
-            preset === "power"
-              ? { x: [0, 1], y: [0, 1] }
-              : { x: [-6.28, 6.28], y: [-1.5, 1.5] },
-          domain:
-            preset === "helix"
-              ? unbounded
-                ? [-Infinity, Infinity]
-                : [-domainExtent, domainExtent]
-              : undefined,
-          quality: preset === "helix" ? { samples } : undefined,
-          backend,
-          mode: preset === "helix" || threeD ? "3d" : "2d",
-          projection: preset === "helix" || threeD ? projection : undefined,
-          label:
-            preset === "power"
-              ? ko
-                ? "거듭제곱 함수"
-                : "Power function"
-              : preset === "sine"
-                ? ko
-                  ? "연속 사인 함수"
-                  : "Continuous sine function"
-                : ko
-                  ? "3차원 나선"
-                  : "Spatial helix",
-          parameters:
-            preset === "power"
-              ? { exponent }
-              : preset === "sine"
-                ? { frequency }
-                : undefined,
-          onError: fail,
-        },
+      void (
+        preset === "sampledSurface"
+          ? createSurface(
+              canvas,
+              Float32Array.from(
+                { length: 32 * 40 },
+                (_, i) =>
+                  Math.sin(-3 + (6 * (i % 40)) / 39) *
+                  Math.cos(-3 + (6 * Math.floor(i / 40)) / 31),
+              ),
+              {
+                shape: [32, 40],
+                extent: [-3, 3, -3, 3],
+                bounds: { x: [-3, 3], y: [-2, 2] },
+                surface: surfaceStyle,
+                quality: { samples },
+                backend,
+                mode: threeD ? "3d" : "2d",
+                projection: threeD ? projection : undefined,
+                label: ko ? "관측 배열 곡면" : "Sampled height surface",
+                onError: fail,
+              },
+            )
+          : createPlot(
+              canvas,
+              (preset === "power"
+                ? power
+                : preset === "sine"
+                  ? sine
+                  : preset === "surface"
+                    ? surface
+                    : helix) as PlotProgram,
+              {
+                bounds:
+                  preset === "power"
+                    ? { x: [0, 1], y: [0, 1] }
+                    : isSurface
+                      ? { x: [-3, 3], y: [-2, 2] }
+                      : { x: [-6.28, 6.28], y: [-1.5, 1.5] },
+                surface: preset === "surface" ? surfaceStyle : undefined,
+                surfaceDomain:
+                  preset === "surface" ? { x: [-4, 4], z: [-4, 4] } : undefined,
+                domain:
+                  preset === "helix"
+                    ? unbounded
+                      ? [-Infinity, Infinity]
+                      : [-domainExtent, domainExtent]
+                    : undefined,
+                quality:
+                  preset === "helix" || isSurface ? { samples } : undefined,
+                backend,
+                mode: preset === "helix" || threeD ? "3d" : "2d",
+                projection:
+                  preset === "helix" || threeD ? projection : undefined,
+                label: isSurface
+                  ? ko
+                    ? "함수 곡면"
+                    : "Function surface"
+                  : preset === "power"
+                    ? ko
+                      ? "거듭제곱 함수"
+                      : "Power function"
+                    : preset === "sine"
+                      ? ko
+                        ? "연속 사인 함수"
+                        : "Continuous sine function"
+                      : ko
+                        ? "3차원 나선"
+                        : "Spatial helix",
+                parameters:
+                  preset === "power"
+                    ? { exponent }
+                    : preset === "sine"
+                      ? { frequency }
+                      : undefined,
+                onError: fail,
+              },
+            )
       )
         .then((result) => {
           if (disposed) {
@@ -266,6 +363,10 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
                 ? [-Infinity, Infinity]
                 : [-current.domainExtent, current.domainExtent],
             );
+            result.setQuality({ samples: current.samples });
+          }
+          if (isSurface) {
+            result.setSurface(current.surfaceStyle);
             result.setQuality({ samples: current.samples });
           }
           active.current = { gpu: result };
@@ -308,6 +409,10 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
       );
       plot.setQuality({ samples });
     }
+    if (isSurface) {
+      plot.setSurface(surfaceStyle);
+      plot.setQuality({ samples });
+    }
   }, [
     preset,
     exponent,
@@ -319,6 +424,7 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
     unbounded,
     samples,
     ready,
+    surfaceStyle,
   ]);
   useEffect(() => {
     if (!gpu && ready)
@@ -327,10 +433,11 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
       );
   }, [gpu, ready, htmlLegend, preset]);
   async function save() {
-    if (!active.current.figure) return;
+    const exporter = active.current.figure ?? active.current.gpu;
+    if (!exporter) return;
     setSaving(true);
     try {
-      await active.current.figure.saveImage(`typeplot-${preset}.png`, {
+      await exporter.saveImage(`typeplot-${preset}.png`, {
         pixelRatio: 2,
       });
     } catch (error) {
@@ -347,16 +454,20 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
     threeD,
     projection,
   );
-  const code = gpu
-    ? sourceCode +
-      `
+  const code =
+    (gpu
+      ? sourceCode +
+        `
 plot.setStyle(${JSON.stringify(style, null, 2)});` +
-      (preset === "helix"
-        ? `
+        (preset === "helix"
+          ? `
 plot.setDomain(${unbounded ? "[-Infinity, Infinity]" : `[-${domainExtent}, ${domainExtent}]`});
 plot.setQuality({ samples: ${samples}, refinements: 5 });`
-        : "")
-    : sourceCode;
+          : "")
+      : sourceCode) +
+    (isSurface
+      ? `\nplot.setMode("${threeD ? "3d" : "2d"}");\nplot.setSurface(${JSON.stringify(surfaceStyle, null, 2)});\nplot.setQuality({ samples: ${samples} });`
+      : "");
   const descriptions: Record<Preset, string> = ko
     ? {
         signals:
@@ -370,6 +481,14 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
         power: `초기 뷰는 0부터 1까지이며 y = x^${exponent}을 화면 전체에서 평가합니다. 음수 구간은 셰이더에서 제외합니다.`,
         helix:
           "x = 2 cos(t), y = sin(t), z = 0.4t로 정의한 나선입니다. 드래그하면 회전합니다.",
+        surface:
+          "y = sin(x + 위상) cos(z − 0.35 위상) 곡면입니다. 예제 패치는 x,z가 −4부터 4까지이며 위상과 카메라를 함께 재생할 수 있습니다.",
+        sampledSurface:
+          "32×40 관측 배열을 GPU에서 보간한 곡면입니다. x,z는 −3부터 3까지이며 높이 배율을 애니메이션으로 조절할 수 있습니다.",
+        uncertainty:
+          "사인 함수의 25개 관측값에 ±0.2 오차 막대와 채움 구간을 표시합니다.",
+        field:
+          "48×64 사인·코사인 관측값을 14개 등고선 수준으로 채웁니다. 컬러바로 값을 확인할 수 있습니다.",
       }
     : {
         signals:
@@ -383,6 +502,14 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
         power: `y = x^${exponent}, initially viewed from zero to one, evaluated across the visible plane. The shader omits the negative domain.`,
         helix:
           "A helix defined by x = 2 cos(t), y = sin(t), z = 0.4t. Drag to orbit.",
+        surface:
+          "y = sin(x + phase) cos(z − 0.35 phase), displayed on x,z from −4 to 4. Play the function and camera together.",
+        sampledSurface:
+          "A 32×40 resident observation grid, interpolated on the GPU over x,z from −3 to 3. Animate its height scale.",
+        uncertainty:
+          "25 sine observations with ±0.2 error bars and a filled uncertainty band.",
+        field:
+          "A 48×64 sine/cosine field with 14 filled contour levels and a linked colorbar.",
       };
   return (
     <ConfigProvider
@@ -402,7 +529,15 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
             <Select
               id="preset"
               value={preset}
-              onChange={setPreset}
+              onChange={(value) => {
+                setPreset(value);
+                if (
+                  value === "surface" ||
+                  value === "sampledSurface" ||
+                  value === "helix"
+                )
+                  setThreeD(true);
+              }}
               options={[
                 {
                   value: "signals",
@@ -425,6 +560,22 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
                 {
                   value: "helix",
                   label: ko ? "GPU 3D 나선" : "GPU spatial helix",
+                },
+                {
+                  value: "surface",
+                  label: ko ? "GPU 함수 곡면" : "GPU function surface",
+                },
+                {
+                  value: "sampledSurface",
+                  label: ko ? "관측 배열 곡면" : "Sampled height surface",
+                },
+                {
+                  value: "uncertainty",
+                  label: ko ? "오차와 채움 구간" : "Uncertainty bands",
+                },
+                {
+                  value: "field",
+                  label: ko ? "채움 등고선" : "Filled contours",
                 },
               ]}
             />
@@ -461,7 +612,7 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
               </div>
             </>
           )}
-          {(preset === "power" || preset === "sine") && (
+          {(preset === "power" || preset === "sine" || isSurface) && (
             <>
               <div className="plot-field">
                 <span id="mode-label">{ko ? "3D 보기" : "3D view"}</span>
@@ -545,6 +696,22 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
               </div>
             </>
           )}
+          {isSurface && (
+            <div className="plot-field">
+              <label htmlFor="surface-samples">
+                {ko ? "곡면 탐색 정밀도" : "Surface search quality"}
+              </label>
+              <Select
+                id="surface-samples"
+                value={samples}
+                onChange={setSamples}
+                options={[64, 128, 256, 512].map((value) => ({
+                  value,
+                  label: String(value),
+                }))}
+              />
+            </div>
+          )}
           {!gpu && (
             <div className="plot-field">
               <label htmlFor="legend-renderer">
@@ -565,6 +732,7 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
             <Button
               disabled={!ready}
               onClick={() => {
+                setMotionEpoch((value) => value + 1);
                 active.current.figure?.axes.forEach((ax) => ax.reset());
                 const plot = active.current.gpu;
                 if (plot) {
@@ -583,13 +751,17 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
                     );
                     plot.setQuality({ samples });
                   }
+                  if (isSurface) {
+                    plot.setSurface(surfaceStyle);
+                    plot.setQuality({ samples });
+                  }
                 }
               }}
             >
               {ko ? "뷰 초기화" : "Reset view"}
             </Button>
             <Button
-              disabled={!ready || gpu}
+              disabled={!ready}
               loading={saving}
               onClick={() => void save()}
             >
@@ -696,9 +868,65 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
             </div>
           </details>
         )}
+        {isSurface && (
+          <details className="plot-style-options">
+            <summary>{ko ? "곡면 색상과 표시" : "Surface appearance"}</summary>
+            <div className="plot-toolbar">
+              <div className="plot-field">
+                <label htmlFor="surface-palette">
+                  {ko ? "컬러맵" : "Color map"}
+                </label>
+                <Select
+                  id="surface-palette"
+                  value={surfaceStyle.colorMap}
+                  options={["viridis", "plasma", "coolwarm", "gray"].map(
+                    (value) => ({ value, label: value }),
+                  )}
+                  onChange={(colorMap) =>
+                    setSurfaceStyle((previous) => ({ ...previous, colorMap }))
+                  }
+                />
+              </div>
+              {(
+                [
+                  ["wireframe", ko ? "와이어프레임" : "Wireframe"],
+                  ["contours", ko ? "등고선" : "Contours"],
+                  ["filled", ko ? "면 채우기" : "Filled surface"],
+                  ["colorBar", ko ? "컬러바" : "Colorbar"],
+                ] as const
+              ).map(([key, label]) => (
+                <div className="plot-field" key={key}>
+                  <span id={`surface-${key}`}>{label}</span>
+                  <Switch
+                    checked={surfaceStyle[key] ?? false}
+                    aria-labelledby={`surface-${key}`}
+                    onChange={(value) =>
+                      setSurfaceStyle((previous) => ({
+                        ...previous,
+                        [key]: value,
+                      }))
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+        {isSurface && ready && active.current.gpu && (
+          <MotionControls
+            key={`${preset}-${backend}-${motionEpoch}`}
+            plot={active.current.gpu}
+            locale={locale}
+          />
+        )}
         <div className="plot-stage">
           <div className="plot-mount" ref={mount} />
         </div>
+        <PickReadout
+          plot={ready ? active.current.gpu : undefined}
+          figure={ready ? active.current.figure : undefined}
+          locale={locale}
+        />
         <div className="plot-status" role="status">
           <strong>{status}</strong>
           <span>
@@ -714,8 +942,8 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
         )}
         <p id="plot-help" className="plot-help">
           {ko
-            ? "터치에서는 한 손가락으로 이동·회전하고 두 손가락으로 확대·이동하며 두 번 탭하면 초기화합니다. 왼쪽 드래그로 이동하거나 회전하고, 오른쪽 드래그로 이동하며, 스크롤로 확대합니다. 놓으면 관성으로 감속하며 더블 클릭으로 뷰를 초기화합니다. 그래프에 초점을 맞추면 방향키, +/−, Home, Escape를 사용할 수 있습니다. PNG 저장은 데이터 예제에서 지원합니다."
-            : "On touchscreens, drag with one finger, pinch/pan with two, and double-tap to reset. Left-drag to pan or orbit. Right-drag to pan. Scroll to zoom. Focus the plot for arrow keys, +/− and Home. PNG export is available for data examples."}
+            ? "터치에서는 한 손가락으로 이동·회전하고 두 손가락으로 확대·이동하며 두 번 탭하면 초기화합니다. 왼쪽 드래그로 이동하거나 회전하고, 오른쪽 드래그로 이동하며, 스크롤로 확대합니다. 놓으면 관성으로 감속하며 더블 클릭으로 뷰를 초기화합니다. 그래프에 초점을 맞추면 방향키, +/−, Home, Escape를 사용할 수 있습니다. 모든 예제에서 PNG 저장을 지원합니다."
+            : "On touchscreens, drag with one finger, pinch/pan with two, and double-tap to reset. Left-drag to pan or orbit. Right-drag to pan. Scroll to zoom. Focus the plot for arrow keys, +/− and Home. PNG export is available for every example."}
         </p>
       </div>
       <p className="plot-details">{descriptions[preset]}</p>

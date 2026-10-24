@@ -3,6 +3,7 @@ import path from "node:path";
 import { compile, packModule } from "typeshade";
 import shaderSource from "../shaders/plot.shade.ts?source";
 import fontSource from "../shaders/font.shade.ts?source";
+import paletteSource from "../shaders/palette.shade.ts?source";
 import type { PlotKind, PlotProgram } from "./types.js";
 
 export interface CompilePlotOptions {
@@ -56,6 +57,16 @@ const reserved = new Set([
   "curveQuality",
   "curvePattern",
   "curveTiles",
+  "model",
+  "inverseModel",
+  "cameraLens",
+  "plotCenterZ",
+  "surfaceBounds",
+  "surfaceDomainMode",
+  "surfaceRange",
+  "surfaceDepth",
+  "surfaceRender",
+  "surfaceFlags",
 ]);
 
 /** Compile a named TypeShade callback once, on the build machine. */
@@ -67,8 +78,8 @@ export function compilePlot(
   const kind = options.kind ?? "scalar";
   if (!identifier.test(entry))
     throw new TypeError("entry must be a TypeScript identifier.");
-  if (kind !== "scalar" && kind !== "parametric")
-    throw new TypeError("kind must be scalar or parametric.");
+  if (!["scalar", "parametric", "surface"].includes(kind))
+    throw new TypeError("kind must be scalar, parametric or surface.");
   const parameters = Object.fromEntries(
     Object.entries(options.parameters ?? {}),
   );
@@ -94,12 +105,16 @@ export function compilePlot(
   const callback =
     kind === "scalar"
       ? `function sample(t: f32): f32 { return callback(${args}); }\nfunction trajectory(t: f32): vec3 { return vec3(t, sample(t), 0.); }`
-      : `function trajectory(t: f32): vec3 { return callback(${args}); }`;
+      : kind === "surface"
+        ? `function heightField(x: f32, z: f32): f32 { return callback(${["x", "z", ...names.map((n) => `u.${n}`)].join(", ")}); }`
+        : `function trajectory(t: f32): vec3 { return callback(${args}); }`;
   const jumps = options.discontinuous === true;
   const fragment =
     kind === "scalar"
       ? `if (u.plotBlend >= 1.) { return plotScalar3D(sample, trajectory, uv, u, ${jumps}); }\n  const flat = plot2D(sample, uv, u, ${jumps});\n  if (u.plotBlend <= 0.) { return flat; }\n  return mix(flat, plotScalar3D(sample, trajectory, uv, u, ${jumps}), clamp(u.plotBlend, 0., 1.));`
-      : `return plot3DAccelerated(trajectory, uv, u);`;
+      : kind === "surface"
+        ? `return plotSurface(heightField, uv, u, true);`
+        : `return plot3DAccelerated(trajectory, uv, u);`;
   const cacheEntries =
     kind === "parametric"
       ? `
@@ -116,10 +131,19 @@ export function compilePlot(
   return prepareCurveCandidates(position, u);
 }
 `
-      : "";
+      : kind === "surface"
+        ? `
+@fragment export function drawReference(@location(0) uv: vec2): vec4 {
+  return plotSurface(heightField, uv, u, false);
+}
+@fragment export function buildSpatialLabels(@builtin("position") position: vec4): vec4 {
+  return prepareSpatialLabels(position, u);
+}
+`
+        : "";
   const wrapper = `"use typeshade";
 import { ${entry} as callback } from ${JSON.stringify("./" + path.basename(userFile))};
-import { PlotUniforms, plot2D, plot3D, plotScalar3D, plot3DAccelerated, prepareCurveIntervals, prepareCurveCandidates, prepareSpatialLabels } from "./__typeplot-shared.shade.ts";
+import { PlotUniforms, plot2D, plot3D, plotScalar3D, plot3DAccelerated, prepareCurveIntervals, prepareCurveCandidates, prepareSpatialLabels, plotSurface, pickSurface, pickTrajectory } from "./__typeplot-shared.shade.ts";
 class Uniforms extends PlotUniforms { ${names.map((n) => `${n}: f32;`).join(" ")} }
 declare const u: uniform<Uniforms>;
 ${callback}
@@ -132,6 +156,9 @@ class VertexOutput { @builtin("position") position: vec4; @location(0) uv: vec2;
   ${fragment}
 }
 ${cacheEntries}
+@fragment export function pick(@builtin("position") position: vec4): vec4u {
+  ${kind === "surface" ? "return pickSurface(heightField, position, u);" : `return pickTrajectory(trajectory, position, u, ${kind === "scalar"}, ${jumps});`}
+}
 `;
   const documents = new Map(
     Object.entries(options.files ?? {}).map(([name, text]) => [
@@ -142,11 +169,17 @@ ${cacheEntries}
   documents.set(userFile, source);
   documents.set(
     sharedFile,
-    shaderSource.replace('"./font.shade.ts"', '"./__typeplot-font.shade.ts"'),
+    shaderSource
+      .replace('"./font.shade.ts"', '"./__typeplot-font.shade.ts"')
+      .replace('"./palette.shade.ts"', '"./__typeplot-palette.shade.ts"'),
   );
   documents.set(
     path.join(path.dirname(userFile), "__typeplot-font.shade.ts"),
     fontSource,
+  );
+  documents.set(
+    path.join(path.dirname(userFile), "__typeplot-palette.shade.ts"),
+    paletteSource,
   );
   const readDocument = (name: string): string | undefined => {
     const known = documents.get(name) ?? options.readDocument?.(name);
@@ -192,7 +225,12 @@ ${cacheEntries}
     manifest,
     parameters,
     camera: "projective",
-    ...(kind === "parametric" ? { acceleration: "tiles-v1" as const } : {}),
+    ...(kind === "parametric"
+      ? { acceleration: "tiles-v1" as const }
+      : kind === "surface"
+        ? { acceleration: "surface-v1" as const }
+        : {}),
+    picking: "point-v1",
   };
 }
 export type { PlotProgram, PlotKind } from "./types.js";

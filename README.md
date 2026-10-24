@@ -5,6 +5,12 @@ export. For GPU function plots, TypePlot renders TypeShade scalar functions and 
 x/y/z trajectories with WebGPU and WebGL2 fallback. Both APIs support interactive navigation
 and reduced-motion preferences.
 
+Scientific plotting also includes error bars, filled bands, step/stem/horizontal-bar
+charts, images, contours, colorbars and data-anchored SDF annotations. GPU height fields
+support function callbacks or resident observation grids, picking/hover, camera controls,
+affine scene transforms, seekable timelines and PNG export. See
+[scientific fields and animation](docs/scientific-motion.md) for APIs and coverage limits.
+
 ## Website
 
 Documentation, interactive examples, and the browser playground are available at
@@ -287,8 +293,7 @@ Manim/matplotlib, manual validation and remaining numerical limits.
 
 ## GPU function API
 
-`compilePlot(source, options)` accepts `entry` (default `sample`), `kind` (`scalar` or
-`parametric`), `fileName`, `files`, `readDocument`, `parameters` and `discontinuous`.
+`compilePlot(source, options)` accepts `entry` (default `sample`), `kind` (`scalar`, `parametric` or `surface`), `fileName`, `files`, `readDocument`, `parameters` and `discontinuous`.
 Relative imports use TypeShade's existing resolver. Extra scalar callback arguments match
 the declaration order of `parameters`. Their values must fit finite f32 numbers. Callbacks
 must guard their mathematical domain; returning a magnitude of at least `1e18` omits a point.
@@ -401,7 +406,6 @@ Add descriptive fallback content inside the canvas and use `aria-describedby` fo
 instructions or a textual explanation. A canvas label does not replace an accessible table
 or mathematical description of the underlying data. Attributes are restored on destruction.
 
-
 ### Adaptive grid and label layout
 
 Ticks use overlapping world-coordinate decimal lattices. Intermediate ticks fade continuously
@@ -422,7 +426,6 @@ use the requested final grid visibility, regardless of an in-progress display fa
 
 See [grid and label implementation notes](docs/grid-label-layout.md).
 
-
 ### Camera gestures
 
 Drag follows the pointer directly. On release, recent drag velocity continues with
@@ -431,7 +434,6 @@ A new pointer press, wheel input, Escape, reset, or a mode change interrupts mom
 Reduced-motion preferences disable inertia. Set `inertia: false` in `createPlot` or figure
 options to disable it explicitly. Double-click restores the home camera without changing
 data or style; `doubleClickReset: false` disables this gesture. Home also resets the view.
-
 
 ### Unbounded parameter domains
 
@@ -449,7 +451,6 @@ quality or supplying a finite domain may be necessary for highly oscillatory/re-
 curves. Scalar functions still evaluate their implicit field across the entire visible
 plane; input arrays remain finite observations. Legacy programs must be recompiled to
 support unbounded spatial domains.
-
 
 ### HTML controls and optional HTML legends
 
@@ -471,14 +472,12 @@ Data axes can opt into an HTML legend with `ax.legend("html")` or
 HTML labels use textContent, track series metadata and resize with their subplot. PNG
 export renders the corresponding legend on the GPU, independently of DOM controls.
 
-
 On touchscreens, one finger pans a 2D plot or orbits a 3D plot. Two fingers pinch to zoom
 and move together to pan, without rotating the 3D camera. Zoom anchors to the gesture
 centroid (the focus plane in perspective). Switching between one and two fingers rebases
 input without a camera jump. Touch cancellation clears the gesture. Double-tap restores
 the home camera and follows `doubleClickReset`; released single-finger drags retain the
 existing inertia/reduced-motion behavior. The page remains scrollable outside the plot.
-
 
 Spatial scalar graphs measure stroke coverage against actual projected callback positions.
 Each physical subpixel gets its own inverse ray; compressed crossings use a bounded

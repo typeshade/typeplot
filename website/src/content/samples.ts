@@ -1,5 +1,15 @@
 export type Preset =
-  "signals" | "scatter" | "bars" | "histogram" | "power" | "sine" | "helix";
+  | "signals"
+  | "scatter"
+  | "bars"
+  | "histogram"
+  | "power"
+  | "sine"
+  | "helix"
+  | "surface"
+  | "sampledSurface"
+  | "uncertainty"
+  | "field";
 export const signalCode = `import { subplots, linspace } from "typeplot";
 
 const { fig, axes: [ax] } = subplots();
@@ -40,6 +50,64 @@ const plot = await createPlot(canvas, helix, {
   domain: [-Infinity, Infinity],
   quality: { samples: 128, refinements: 5 },
 });`;
+export const surfaceCode = `// surface.shade.ts — y-up: y = f(x, z)
+"use typeshade";
+export function sample(x: f32, z: f32, phase: f32, amplitude: f32): f32 {
+  return amplitude * sin(x + phase) * cos(z - phase * 0.35);
+}
+
+// Configure Vite defaults: { phase: 0, amplitude: 1 }.
+import { createPlot } from "typeplot";
+import surface from "./surface.shade.ts?plot=surface";
+const plot = await createPlot(canvas, surface, {
+  bounds: { x: [-3, 3], y: [-2, 2] },
+  surfaceDomain: { x: [-4, 4], z: [-4, 4] },
+  surface: { colorMap: "viridis", valueRange: [-1.25, 1.25], colorBar: true },
+});
+const motion = plot.animate({
+  parameters: { phase: 2 * Math.PI },
+  camera: { rotation: [1.8, 0.6], distance: 3.6, fov: Math.PI / 3 },
+}, { duration: 6 });
+// motion.pause(); await motion.seek(2); motion.play();
+plot.on("click", event => console.log(event.result?.point));
+// Call plot.destroy() when the view unmounts.`;
+export const sampledSurfaceCode = `import { createSurface } from "typeplot";
+const rows = 32, columns = 40;
+const values = Float32Array.from({ length: rows * columns }, (_, i) => {
+  const x = -3 + 6 * (i % columns) / (columns - 1);
+  const z = -3 + 6 * Math.floor(i / columns) / (rows - 1);
+  return Math.sin(x) * Math.cos(z);
+});
+const plot = await createSurface(canvas, values, {
+  shape: [rows, columns], extent: [-3, 3, -3, 3],
+  bounds: { x: [-3, 3], y: [-2, 2] },
+});
+plot.animate({ parameters: { heightScale: 1.5 }, camera: { rotation: [1.8, 0.6] } }, { duration: 6 });
+// plot.setValues(nextValues); await plot.saveImage("surface.png");
+// Call plot.destroy() when the view unmounts.`;
+export const uncertaintyCode = `import { subplots, linspace } from "typeplot";
+const { fig, axes: [ax] } = subplots();
+const x = linspace(0, 6, 25), y = x.map(Math.sin);
+ax.fillBetween(x, y.map(v => v + 0.2), y.map(v => v - 0.2), { label: "Band" });
+ax.errorbar(x, y, { yError: 0.2, capSize: 3, label: "Measurements" });
+ax.annotate("Peak", [Math.PI / 2, 1], { xyText: [2.5, 1.3], arrow: true });
+ax.set({ xLabel: "x", yLabel: "Value", grid: true, legend: true });
+ax.on("hover", event => console.log(event.result?.index));
+// Call fig.destroy() when the view unmounts.`;
+export const fieldCode = `import { subplots } from "typeplot";
+const { fig, axes: [ax] } = subplots();
+const rows = 48, columns = 64;
+const values = Float32Array.from({ length: rows * columns }, (_, i) =>
+  Math.sin(-3 + 6 * (i % columns) / (columns - 1)) *
+  Math.cos(-2 + 4 * Math.floor(i / columns) / (rows - 1)));
+const field = ax.contourf(values, {
+  shape: [rows, columns], extent: [-3, 3, -2, 2],
+  origin: "lower", levels: 14, colorMap: "viridis",
+});
+ax.colorbar(field);
+// ax.imshow(values, { shape: [rows, columns] });
+// ax.contour(values, { shape: [rows, columns], levels: 12 });
+// Call fig.destroy() when the view unmounts.`;
 export function exampleCode(
   preset: Preset,
   frequency = 1,
@@ -48,6 +116,10 @@ export function exampleCode(
   threeD = false,
   projection: "perspective" | "orthographic" = "perspective",
 ): string {
+  if (preset === "surface") return surfaceCode;
+  if (preset === "sampledSurface") return sampledSurfaceCode;
+  if (preset === "uncertainty") return uncertaintyCode;
+  if (preset === "field") return fieldCode;
   if (preset === "signals")
     return signalCode
       .replace(

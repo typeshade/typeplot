@@ -1,10 +1,63 @@
 import { GpuCompletion } from "./gpu-completion.js";
+import {
+  Timeline,
+  tween,
+  type AnimationClip,
+  type AnimationOptions,
+  type TweenOptions,
+} from "./animation.js";
+import {
+  identityMatrix,
+  invertAffineMatrix,
+  matrixInterpolator,
+  type Matrix4,
+} from "./transform.js";
+import {
+  DEFAULT_SURFACE,
+  surfaceOptions,
+  surfaceDomain,
+  surfaceUniforms,
+  cameraUpdate,
+} from "./surface.js";
+import { PointerPicker } from "./picking.js";
+import { encodePng } from "./png.js";
+export {
+  Timeline,
+  ValueTracker,
+  tween,
+  sequence,
+  parallel,
+  wait,
+  ease,
+} from "./animation.js";
+export type {
+  AnimationClip,
+  AnimationOptions,
+  TimelineOptions,
+  TweenOptions,
+  Easing,
+  AnimationState,
+} from "./animation.js";
+export {
+  identityMatrix,
+  multiplyMatrices,
+  translationMatrix,
+  scaleMatrix,
+  rotationMatrix,
+} from "./transform.js";
+export type { Matrix4 } from "./transform.js";
+export { createSurface } from "./grid-surface.js";
+export type { GridSurface, GridSurfaceOptions } from "./grid-surface.js";
 import { PlotControlHost } from "./controls.js";
 export { ViewControl } from "./controls.js";
 export type { PlotControl, ControlPosition } from "./controls.js";
 import { OpacityFade } from "./fade.js";
 import {
   createRuntime,
+  createDevice,
+  resident,
+  type Device,
+  type Resident,
   type Pack,
   type Runtime,
   type Texture,
@@ -19,11 +72,24 @@ import type {
   PlotProjection,
   PlotStyle,
   PlotQuality,
+  PlotCamera,
+  PlotCameraUpdate,
+  PlotTransition,
+  PlotPick,
 } from "./types.js";
 import { plot as plotData } from "./data.js";
 import type { Figure, NumericData, QuickPlotOptions } from "./data.js";
 
-export { figure, subplots, linspace, Figure, Axes, Series } from "./data.js";
+export {
+  figure,
+  subplots,
+  linspace,
+  Figure,
+  Axes,
+  Series,
+  Field,
+  Annotation,
+} from "./data.js";
 export type {
   NumericData,
   AxisScale,
@@ -35,6 +101,14 @@ export type {
   FigureOptions,
   QuickPlotOptions,
   SaveFigureOptions,
+  ErrorBarOptions,
+  ErrorValues,
+  DataPick,
+  FieldOptions,
+  FieldStyle,
+  FieldKind,
+  AnnotationOptions,
+  AnnotateOptions,
 } from "./data.js";
 
 export type {
@@ -46,6 +120,15 @@ export type {
   PlotProjection,
   PlotStyle,
   PlotQuality,
+  PlotCamera,
+  PlotCameraUpdate,
+  PlotTransition,
+  PlotPick,
+  PickEvent,
+  ColorMap,
+  SurfaceOptions,
+  SurfaceDomain,
+  SavePlotOptions,
 } from "./types.js";
 
 const ACTIVE = new WeakSet<HTMLCanvasElement>();
@@ -69,6 +152,16 @@ const RESERVED = new Set([
   "curveQuality",
   "curvePattern",
   "curveTiles",
+  "model",
+  "inverseModel",
+  "cameraLens",
+  "plotCenterZ",
+  "surfaceBounds",
+  "surfaceDomainMode",
+  "surfaceRange",
+  "surfaceDepth",
+  "surfaceRender",
+  "surfaceFlags",
 ]);
 
 function finite(value: number, name: string): number {
@@ -106,7 +199,7 @@ export async function createPlot(
   if (
     !program ||
     program.version !== 1 ||
-    !["scalar", "parametric"].includes(program.kind)
+    !["scalar", "parametric", "surface"].includes(program.kind)
   ) {
     throw new TypeError(
       "Unsupported TypePlot program. Compile it with typeplot/compiler.",
@@ -119,7 +212,7 @@ export async function createPlot(
   const backend = options.backend ?? "auto";
   if (!["auto", "webgpu", "webgl2"].includes(backend))
     throw new TypeError("Unknown plot backend.");
-  let mode = options.mode ?? (program.kind === "parametric" ? "3d" : "2d");
+  let mode = options.mode ?? (program.kind === "scalar" ? "2d" : "3d");
   const checkMode = (value: string): void => {
     if (value !== "2d" && value !== "3d")
       throw new TypeError("Plot mode must be 2d or 3d.");
@@ -154,7 +247,12 @@ export async function createPlot(
     (typeof options.label !== "string" || !options.label.trim())
   )
     throw new TypeError("Plot label must be a non-empty string.");
-  const bounds = checkedBounds(options.bounds ?? { x: [-1, 1], y: [-1, 1] });
+  const bounds = checkedBounds(
+    options.bounds ??
+      (program.kind === "surface"
+        ? { x: [-3, 3], y: [-2, 2] }
+        : { x: [-1, 1], y: [-1, 1] }),
+  );
   const initialProbe = finite(
     options.probe ?? bounds.x[0] / 2 + bounds.x[1] / 2,
     "probe",
@@ -170,9 +268,53 @@ export async function createPlot(
       "pixelRatio must be greater than zero and at most four.",
     );
   }
+  const manifest = program.manifest as Pack;
+  const uniformLayout = manifest.bindings.find(
+    (binding) => binding.name === "u",
+  )?.layout;
+  const fieldLayout = (name: string) =>
+    uniformLayout?.kind === "struct"
+      ? uniformLayout.fields.find((field) => field.name === name)?.layout
+      : undefined;
+  const vectorUniform = (name: string, size: number, type: "f32" | "u32") => {
+    const field = fieldLayout(name);
+    return (
+      field?.kind === "vector" && field.size === size && field.type === type
+    );
+  };
+  const modelLayout = fieldLayout("model");
+  const supportsTransform =
+    modelLayout?.kind === "matrix" &&
+    modelLayout.columns === 4 &&
+    modelLayout.rows === 4;
+  const optionalReserved = new Set([
+    "rotationBasis",
+    "curveTiles",
+    "model",
+    "inverseModel",
+    "cameraLens",
+    "plotCenterZ",
+    "surfaceBounds",
+    "surfaceDomainMode",
+    "surfaceRange",
+    "surfaceDepth",
+    "surfaceRender",
+    "surfaceFlags",
+  ]);
+  const legacyParameter = (name: string) => {
+    const field = fieldLayout(name);
+    return (
+      optionalReserved.has(name) &&
+      field?.kind === "scalar" &&
+      field.type === "f32"
+    );
+  };
   const parameters: Record<string, number> = Object.create(null);
   for (const [name, value] of Object.entries(program.parameters ?? {})) {
-    if (!/^[A-Za-z_]\w*$/.test(name) || RESERVED.has(name))
+    if (
+      !/^[A-Za-z_]\w*$/.test(name) ||
+      (RESERVED.has(name) && !legacyParameter(name))
+    )
       throw new TypeError(`Invalid plot parameter '${name}'.`);
     parameters[name] = finite(value, name);
   }
@@ -189,10 +331,56 @@ export async function createPlot(
   Object.assign(parameters, options.parameters);
   const initialParameters = { ...parameters };
   const initialMode = mode;
-  const manifest = program.manifest as Pack;
-  const uniformLayout = manifest.bindings.find(
-    (binding) => binding.name === "u",
-  )?.layout;
+  if (
+    (options.camera?.fov !== undefined ||
+      options.camera?.distance !== undefined) &&
+    !supportsTransform
+  )
+    throw new Error("Recompile this program to set the camera lens.");
+  if (options.camera?.z !== undefined && !supportsTransform)
+    throw new Error("Recompile this program to move the camera focus in 3D.");
+  const dataBindings = manifest.bindings
+    .filter(
+      (binding) =>
+        binding.space === "storage" &&
+        binding.access === "read" &&
+        binding.type === "array<f32>",
+    )
+    .map((binding) => binding.name);
+  const dataArrays = new Map<string, Float32Array>();
+  for (const [name, values] of Object.entries(options.data ?? {})) {
+    if (
+      !dataBindings.includes(name) ||
+      !(values instanceof Float32Array) ||
+      values.length < 1
+    )
+      throw new TypeError(
+        `data.${name} must supply a nonempty Float32Array for a declared read-only f32 binding.`,
+      );
+    dataArrays.set(name, values.slice());
+  }
+  for (const name of dataBindings)
+    if (!dataArrays.has(name))
+      throw new TypeError(`Missing data for shader storage binding '${name}'.`);
+  if (options.transform && !supportsTransform)
+    throw new Error("Recompile this program to transform the scene.");
+  let model = options.transform
+    ? ([...options.transform] as unknown as Matrix4)
+    : identityMatrix();
+  let inverseModel = invertAffineMatrix(model);
+  const initialModel = [...model] as unknown as Matrix4;
+  if ((options.surface || options.surfaceDomain) && program.kind !== "surface")
+    throw new TypeError("Surface settings require a surface program.");
+  let surface = surfaceOptions(options.surface ?? {});
+  let automaticDepth = options.surface?.depthRange === undefined;
+  let surfaceBounds = surfaceDomain(
+    options.surfaceDomain ?? {
+      x: [-Infinity, Infinity],
+      z: [-Infinity, Infinity],
+    },
+  );
+  const initialSurface = surfaceOptions(surface),
+    initialSurfaceBounds = surfaceDomain(surfaceBounds);
   const supportsFields =
     uniformLayout?.kind === "struct" &&
     uniformLayout.fields.some((field) => field.name === "parameterBounds");
@@ -254,9 +442,9 @@ export async function createPlot(
   const quality: Required<PlotQuality> = { samples: 128, refinements: 5 };
   const checkQuality = (value: PlotQuality): void => {
     checkFields();
-    if (program.kind !== "parametric")
+    if (program.kind === "scalar")
       throw new TypeError(
-        "Only parametric curves use bounded search quality. Scalar functions evaluate their field directly.",
+        "Only spatial curves and surfaces use search quality. Scalar functions evaluate their field directly.",
       );
     for (const [key, number] of Object.entries(value)) {
       if (!Object.hasOwn(quality, key))
@@ -376,15 +564,24 @@ export async function createPlot(
   let intervals: Texture | undefined;
   let candidates: Texture | undefined;
   let labels: Texture | undefined;
+  let dataDevice: Device | undefined;
+  const inputs: Record<string, Resident<Float32Array>> = Object.create(null);
+  let inputGeneration = 0;
   let context: GPUCanvasContext | WebGL2RenderingContext | undefined;
   let controller: ReturnType<typeof createPlotInteraction> | undefined;
   let controls: PlotControlHost | undefined;
+  let picker: PointerPicker<PlotPick> | undefined;
+  const animations = new Set<Timeline>();
+  const pauseAnimations = () => {
+    for (const animation of animations) animation.pause();
+  };
   let observer: ResizeObserver | undefined;
   let destroyed = false;
   let dirty = false;
   let drawing: Promise<void> | null = null;
   let scheduled = 0;
   const report = (error: unknown): void => {
+    if (destroyed) return;
     const value = error instanceof Error ? error : new Error(String(error));
     if (options.onError) {
       try {
@@ -395,6 +592,8 @@ export async function createPlot(
     } else console.error("[typeplot]", value);
   };
   const requestDraw = (): void => {
+    picker?.invalidate();
+    if (!destroyed) dirty = true;
     if (!destroyed && !scheduled)
       scheduled = win.requestAnimationFrame(() => {
         scheduled = 0;
@@ -427,6 +626,12 @@ export async function createPlot(
     observer?.disconnect();
     win!.removeEventListener("resize", requestDraw);
     controls?.destroy();
+    picker?.destroy();
+    for (const animation of animations) animation.cancel();
+    animations.clear();
+    canvas.removeEventListener("pointerdown", pauseAnimations);
+    canvas.removeEventListener("wheel", pauseAnimations);
+    canvas.removeEventListener("keydown", pauseAnimations);
     controller?.destroy();
     if (rt?.tier === "webgpu")
       (context as GPUCanvasContext | undefined)?.unconfigure();
@@ -435,7 +640,19 @@ export async function createPlot(
     candidates?.destroy();
     labels?.destroy();
     glyphs?.destroy();
-    rt?.destroy();
+    for (const [name, value] of Object.entries(inputs)) {
+      if (dataDevice) dataDevice.release(value);
+      else value.destroy();
+      delete inputs[name];
+    }
+    dataArrays.clear();
+    if (dataDevice) {
+      const runtime = rt;
+      void dataDevice.dispose().then(
+        () => runtime?.destroy(),
+        () => runtime?.destroy(),
+      );
+    } else rt?.destroy();
     restoreCanvas();
   }
   function alive(): void {
@@ -493,6 +710,10 @@ export async function createPlot(
       rt = await createRuntime({ device: gl, programs: [manifest] });
     }
     const runtime = rt;
+    if (dataArrays.size && runtime.tier === "webgpu")
+      dataDevice = await createDevice({ runtime });
+    for (const [name, values] of dataArrays)
+      inputs[name] = dataDevice ? dataDevice.array(values) : resident(values);
     const target = context;
     completion = new GpuCompletion(
       win,
@@ -501,7 +722,9 @@ export async function createPlot(
         : undefined,
     );
     const loaded = runtime.load(manifest);
-    const hasCache = program.acceleration === "tiles-v1";
+    const hasCache =
+      program.acceleration === "tiles-v1" ||
+      program.acceleration === "surface-v1";
     const accelerated =
       hasCache &&
       options.acceleration !== false &&
@@ -511,14 +734,23 @@ export async function createPlot(
         ));
     const pipeline = await loaded.render({
       targets: [format],
-      ...(hasCache
+      ...(hasCache || program.picking === "point-v1"
         ? {
             vertex: "fullscreen",
-            fragment: accelerated ? "draw" : "drawReference",
+            fragment: hasCache && !accelerated ? "drawReference" : "draw",
           }
         : {}),
     });
-    const intervalPipeline = accelerated
+    const curveCache = accelerated && program.kind === "parametric";
+    const pickPipeline =
+      program.picking === "point-v1"
+        ? await loaded.render({
+            vertex: "fullscreen",
+            fragment: "pick",
+            targets: ["rgba32uint"],
+          })
+        : undefined;
+    const intervalPipeline = curveCache
       ? await loaded.render({
           vertex: "fullscreen",
           fragment: "buildCurveIntervals",
@@ -532,21 +764,22 @@ export async function createPlot(
           targets: ["rgba32float"],
         })
       : undefined;
-    const candidatePipeline = accelerated
+    const candidatePipeline = curveCache
       ? await loaded.render({
           vertex: "fullscreen",
           fragment: "buildCurveCandidates",
           targets: ["rgba32uint"],
         })
       : undefined;
-    if (accelerated) {
+    if (curveCache) {
       intervals = runtime.texture({
         size: [1024, 6],
         format: "rgba32float",
       });
       candidates = runtime.texture({ size: [1, 1], format: "rgba32uint" });
-      labels = runtime.texture({ size: [1, 38], format: "rgba32float" });
     }
+    if (accelerated)
+      labels = runtime.texture({ size: [1, 38], format: "rgba32float" });
     let preparedKey = "";
     let preparedLabelsKey = "";
     // Older manifests have no font binding and remain usable without recompilation.
@@ -561,6 +794,29 @@ export async function createPlot(
       undefined,
       { inertia: options.inertia, doubleClickReset: options.doubleClickReset },
     );
+    if (options.camera)
+      controller.setCamera(
+        cameraUpdate(options.camera, controller.camera()) as Parameters<
+          typeof controller.setCamera
+        >[0],
+        true,
+      );
+    let lastUniforms: object | undefined;
+    let lastRatio = 1;
+    const currentFrame = async () => {
+      const box = canvas.getBoundingClientRect(),
+        resolution = (lastUniforms as { resolution?: number[] } | undefined)
+          ?.resolution;
+      if (
+        !lastUniforms ||
+        dirty ||
+        resolution?.[0] !== box.width ||
+        resolution?.[1] !== box.height
+      )
+        await redraw();
+      else if (drawing) await drawing;
+      alive();
+    };
     drawFrame = async () => {
       if (destroyed) return;
       controls?.update();
@@ -612,7 +868,7 @@ export async function createPlot(
       const tileColumns = Math.ceil(box.width / tileSize),
         tileRows = Math.ceil(box.height / tileSize);
       if (
-        accelerated &&
+        curveCache &&
         (candidates!.width !== tileColumns * 8 ||
           candidates!.height !== tileRows)
       ) {
@@ -628,12 +884,33 @@ export async function createPlot(
         preparedLabelsKey = "";
       }
       const rotation = [...controller!.value("plotRotation")!];
+      const lens = [...controller!.value("plotLens")!];
       const yaw = Math.fround(rotation[0]),
         pitch = Math.fround(rotation[1]);
       const u = {
         ...parameters,
-        ...(uniformLayout?.kind === "struct" &&
-        uniformLayout.fields.some((field) => field.name === "curveTiles")
+        ...(supportsTransform ? { model, inverseModel } : {}),
+        ...(supportsTransform
+          ? { cameraLens: [Math.tan(Math.fround(lens[0]) * 0.5), lens[1]] }
+          : {}),
+        ...(supportsTransform
+          ? { plotCenterZ: controller!.value("plotCenterZ")![0] }
+          : {}),
+        ...(supportsTransform
+          ? surfaceUniforms(
+              automaticDepth
+                ? {
+                    ...surface,
+                    depthRange: [
+                      surface.depthRange[0],
+                      Math.max(surface.depthRange[1], lens[1] * 4),
+                    ],
+                  }
+                : surface,
+              surfaceBounds,
+            )
+          : {}),
+        ...(vectorUniform("curveTiles", 4, "u32")
           ? {
               curveTiles: accelerated
                 ? [tileColumns, tileRows, tileSize, labelColumns]
@@ -696,8 +973,7 @@ export async function createPlot(
         plotCenter: [...controller!.value("plotCenter")!],
         plotSpan: [...controller!.value("plotSpan")!],
         plotRotation: rotation,
-        ...(uniformLayout?.kind === "struct" &&
-        uniformLayout.fields.some((field) => field.name === "rotationBasis")
+        ...(vectorUniform("rotationBasis", 4, "f32")
           ? {
               rotationBasis: [
                 Math.sin(yaw),
@@ -712,8 +988,10 @@ export async function createPlot(
         probe,
         view3d: mode === "3d" ? (projection === "perspective" ? 2 : 1) : 0,
       };
+      lastUniforms = u;
+      lastRatio = pixelRatio;
       const frame = runtime.frame();
-      const geometryKey = accelerated
+      const geometryKey = curveCache
         ? JSON.stringify([
             u.resolution,
             u.plotCenter,
@@ -722,6 +1000,8 @@ export async function createPlot(
             u.plotPan,
             u.probe,
             u.view3d,
+            lens,
+            u.plotCenterZ,
             domain,
             quality.samples,
             style.curveWidth,
@@ -730,6 +1010,8 @@ export async function createPlot(
             style.dashOffset,
             pixelRatio,
             parameters,
+            model,
+            inputGeneration,
           ])
         : "";
       const labelsKey = accelerated
@@ -740,9 +1022,12 @@ export async function createPlot(
             u.plotRotation,
             u.plotPan,
             u.view3d,
+            lens,
+            u.plotCenterZ,
             style.labelSize,
             style.tickDensity,
             pixelRatio,
+            model,
           ])
         : "";
       if (accelerated && preparedLabelsKey !== labelsKey) {
@@ -750,12 +1035,16 @@ export async function createPlot(
           pass.draw(labelPipeline!, { u } as never, { count: 3 }),
         );
       }
-      if (accelerated && preparedKey !== geometryKey) {
+      if (curveCache && preparedKey !== geometryKey) {
         frame.pass({ color: [intervals!] }, (pass) => {
           if (style.curveWidth === 0) pass.setScissorRect(0, 5, 1, 1);
-          pass.draw(intervalPipeline!, { u, font: { pixelRatio } } as never, {
-            count: 3,
-          });
+          pass.draw(
+            intervalPipeline!,
+            { u, font: { pixelRatio }, ...inputs } as never,
+            {
+              count: 3,
+            },
+          );
         });
         if (style.curveWidth > 0)
           frame.pass({ color: [candidates!] }, (pass) =>
@@ -771,11 +1060,13 @@ export async function createPlot(
           pipeline,
           {
             u,
+            ...inputs,
             ...(accelerated
               ? {
-                  curveIntervals: intervals,
-                  curveCandidates: candidates,
                   spatialLabels: labels,
+                  ...(curveCache
+                    ? { curveIntervals: intervals, curveCandidates: candidates }
+                    : {}),
                 }
               : {}),
             ...(glyphs
@@ -831,6 +1122,7 @@ export async function createPlot(
       },
       resetView() {
         alive();
+        pauseAnimations();
         controller!.reset();
       },
       backend: runtime.tier,
@@ -900,12 +1192,392 @@ export async function createPlot(
         Object.assign(parameters, values);
         requestDraw();
       },
+      parameters() {
+        alive();
+        return { ...parameters };
+      },
+      setData(name, values) {
+        alive();
+        if (
+          !dataArrays.has(name) ||
+          !(values instanceof Float32Array) ||
+          !values.length
+        )
+          throw new TypeError(
+            "setData needs a declared array binding and a nonempty Float32Array.",
+          );
+        const copy = values.slice(),
+          next = dataDevice ? dataDevice.array(copy) : resident(copy),
+          previous = inputs[name];
+        inputs[name] = next;
+        dataArrays.set(name, copy);
+        inputGeneration++;
+        if (dataDevice) dataDevice.release(previous);
+        else previous.destroy();
+        requestDraw();
+      },
+      getCamera() {
+        alive();
+        return controller!.camera();
+      },
+      setCamera(value) {
+        alive();
+        if (
+          (value.fov !== undefined || value.distance !== undefined) &&
+          !supportsTransform
+        )
+          throw new Error("Recompile this program to animate the camera lens.");
+        if (value.z !== undefined && !supportsTransform)
+          throw new Error(
+            "Recompile this program to move the camera focus in 3D.",
+          );
+        controller!.setCamera(
+          cameraUpdate(value, controller!.camera()) as Parameters<
+            NonNullable<typeof controller>["setCamera"]
+          >[0],
+        );
+      },
+      getTransform() {
+        alive();
+        return [...model] as unknown as Matrix4;
+      },
+      setTransform(value) {
+        alive();
+        if (!supportsTransform)
+          throw new Error("Recompile this program to transform the scene.");
+        const inverse = invertAffineMatrix(value);
+        model = [...value] as unknown as Matrix4;
+        inverseModel = inverse;
+        requestDraw();
+      },
+      setSurface(value) {
+        alive();
+        if (program.kind !== "surface")
+          throw new TypeError("Surface settings require a surface program.");
+        surface = surfaceOptions(value, surface);
+        if (value.depthRange !== undefined) automaticDepth = false;
+        requestDraw();
+      },
+      setSurfaceDomain(value) {
+        alive();
+        if (program.kind !== "surface")
+          throw new TypeError("Surface domains require a surface program.");
+        surfaceBounds = surfaceDomain(value);
+        requestDraw();
+      },
+      transition(to, settings = {}) {
+        alive();
+        validateParameters(to.parameters ?? {});
+        const destination = { ...to.parameters };
+        const fromParameters = { ...parameters };
+        const fromCamera = controller!.camera();
+        const toCamera = cameraUpdate(to.camera ?? {}, fromCamera);
+        const cameraKeys = Object.keys(to.camera ?? {});
+        if (
+          (to.camera?.fov !== undefined || to.camera?.distance !== undefined) &&
+          !supportsTransform
+        )
+          throw new Error("Recompile this program to animate the camera lens.");
+        if (to.camera?.z !== undefined && !supportsTransform)
+          throw new Error(
+            "Recompile this program to move the camera focus in 3D.",
+          );
+        if (to.transform && !supportsTransform)
+          throw new Error("Recompile this program to transform the scene.");
+        const interpolateModel = to.transform
+          ? matrixInterpolator(model, to.transform)
+          : undefined;
+        return tween(
+          0,
+          1,
+          (progress) => {
+            alive();
+            const next = Object.fromEntries(
+              Object.entries(destination).map(([name, value]) => [
+                name,
+                fromParameters[name] +
+                  (value - fromParameters[name]) * progress,
+              ]),
+            );
+            if (Object.keys(next).length) plot.setParameters(next);
+            if (to.camera) {
+              const camera = Object.fromEntries(
+                cameraKeys.map((key) => {
+                  const before = fromCamera[key as keyof PlotCamera],
+                    after = toCamera[key as keyof PlotCamera];
+                  return [
+                    key,
+                    typeof before === "number" && typeof after === "number"
+                      ? before + (after - before) * progress
+                      : (after as readonly number[]).map(
+                          (value, i) =>
+                            (before as readonly number[])[i] +
+                            (value - (before as readonly number[])[i]) *
+                              progress,
+                        ),
+                  ];
+                }),
+              );
+              plot.setCamera(camera);
+            }
+            if (interpolateModel) plot.setTransform(interpolateModel(progress));
+          },
+          settings,
+        );
+      },
+      animate(to, settings = {}) {
+        alive();
+        const animation = new Timeline({
+          window: win,
+          render: redraw,
+          onError: report,
+          repeat: settings.repeat,
+          yoyo: settings.yoyo,
+          reducedMotion: settings.reducedMotion,
+          onStateChange(state) {
+            if (state === "playing" || state === "paused")
+              animations.add(animation);
+            else if (state === "finished" || state === "cancelled")
+              animations.delete(animation);
+          },
+        });
+        animation.add(plot.transition(to, settings), 0);
+        animations.add(animation);
+        return animation.play();
+      },
+      async pick(position, radius = 8) {
+        alive();
+        if (!pickPipeline)
+          throw new Error("Recompile this program to enable GPU picking.");
+        if (
+          !Array.isArray(position) ||
+          position.length !== 2 ||
+          !position.every(Number.isFinite) ||
+          !Number.isFinite(radius) ||
+          radius < 0 ||
+          radius > 64
+        )
+          throw new RangeError(
+            "Picking needs a finite CSS-pixel position and radius between zero and 64.",
+          );
+        const box = canvas.getBoundingClientRect();
+        if (
+          box.width <= 0 ||
+          box.height <= 0 ||
+          position[0] < 0 ||
+          position[0] > box.width ||
+          position[1] < 0 ||
+          position[1] > box.height
+        )
+          return null;
+        await currentFrame();
+        const output = runtime.texture({ size: [2, 1], format: "rgba32uint" });
+        try {
+          const frame = runtime.frame();
+          frame.pass({ color: [output] }, (pass) =>
+            pass.draw(
+              pickPipeline,
+              {
+                u: lastUniforms,
+                ...inputs,
+                query: {
+                  pixel: [position[0], box.height - position[1]],
+                  radius,
+                },
+              } as never,
+              { count: 3 },
+            ),
+          );
+          await frame.submit();
+          const bytes = await output.read();
+          alive();
+          const bits = new Uint32Array(bytes.buffer, bytes.byteOffset, 8);
+          if (!bits[3]) return null;
+          const values = new Float32Array(bytes.buffer, bytes.byteOffset, 8);
+          return {
+            kind: program.kind,
+            point: [values[0], values[1], values[2]],
+            ...(program.kind === "surface" ? {} : { parameter: values[4] }),
+            distance: values[5],
+          };
+        } finally {
+          output.destroy();
+        }
+      },
+      on(type, listener) {
+        alive();
+        if (!pickPipeline)
+          throw new Error("Recompile this program to enable GPU picking.");
+        picker!.on(type, listener);
+        return plot;
+      },
+      off(type, listener) {
+        picker!.off(type, listener);
+        return plot;
+      },
+      async toBlob(settings = {}) {
+        alive();
+        await currentFrame();
+        if (!lastUniforms)
+          throw new Error(
+            "Render the plot at a nonzero CSS size before exporting.",
+          );
+        const box = canvas.getBoundingClientRect();
+        const resolution = (lastUniforms as { resolution: number[] })
+          .resolution;
+        const cssWidth = settings.width ?? (box.width || resolution[0]),
+          cssHeight = settings.height ?? (box.height || resolution[1]);
+        const ratio = settings.pixelRatio ?? lastRatio;
+        if (
+          ![cssWidth, cssHeight, ratio].every(
+            (value) => Number.isFinite(value) && value > 0,
+          ) ||
+          ratio > 4
+        )
+          throw new RangeError(
+            "PNG dimensions and density must be positive and finite; pixelRatio is at most four.",
+          );
+        const width = Math.ceil(cssWidth * ratio),
+          height = Math.ceil(cssHeight * ratio);
+        const limit =
+          runtime.tier === "webgpu"
+            ? (runtime.limits.maxTextureDimension2D ?? 8192)
+            : ((target as WebGL2RenderingContext).getParameter(
+                (target as WebGL2RenderingContext).MAX_RENDERBUFFER_SIZE,
+              ) as number);
+        if (
+          width * height > 16_777_216 ||
+          Math.max(width, height) > Math.min(limit, 16384)
+        )
+          throw new RangeError(
+            "PNG export exceeds the device dimension or 16 megapixel limit.",
+          );
+        const textures: Texture[] = [];
+        const make = (w: number, h: number, format: string) => {
+          const texture = runtime.texture({ size: [w, h], format });
+          textures.push(texture);
+          return texture;
+        };
+        try {
+          const output = make(width, height, format);
+          const tileSize = Math.max(
+            4,
+            Math.ceil(16 / ratio),
+            Math.ceil(cssWidth / Math.max(1, Math.floor(limit / 8))),
+            Math.ceil(cssHeight / limit),
+          );
+          const columns = Math.ceil(cssWidth / tileSize),
+            rows = Math.ceil(cssHeight / tileSize);
+          const labelColumns = Math.min(
+            limit,
+            Math.ceil(Math.hypot(cssWidth, cssHeight) * ratio) + 2,
+          );
+          const labels = accelerated
+            ? make(labelColumns, 38, "rgba32float")
+            : undefined;
+          const intervals = curveCache
+              ? make(1024, 6, "rgba32float")
+              : undefined,
+            candidates = curveCache
+              ? make(columns * 8, rows, "rgba32uint")
+              : undefined;
+          const u = {
+            ...lastUniforms,
+            resolution: [cssWidth, cssHeight],
+            ...(vectorUniform("curveTiles", 4, "u32")
+              ? {
+                  curveTiles: accelerated
+                    ? [columns, rows, tileSize, labelColumns]
+                    : [0, 0, 16, 0],
+                }
+              : {}),
+          };
+          const resources = { ...inputs };
+          const frame = runtime.frame();
+          if (accelerated)
+            frame.pass({ color: [labels!] }, (pass) =>
+              pass.draw(labelPipeline!, { u } as never, { count: 3 }),
+            );
+          if (curveCache) {
+            frame.pass({ color: [intervals!] }, (pass) =>
+              pass.draw(
+                intervalPipeline!,
+                { u, font: { pixelRatio: ratio }, ...resources } as never,
+                { count: 3 },
+              ),
+            );
+            frame.pass({ color: [candidates!] }, (pass) =>
+              pass.draw(
+                candidatePipeline!,
+                { u, curveIntervals: intervals } as never,
+                { count: 3 },
+              ),
+            );
+          }
+          frame.pass({ color: [output] }, (pass) =>
+            pass.draw(
+              pipeline,
+              {
+                u,
+                ...resources,
+                ...(accelerated
+                  ? {
+                      spatialLabels: labels,
+                      ...(curveCache
+                        ? {
+                            curveIntervals: intervals,
+                            curveCandidates: candidates,
+                          }
+                        : {}),
+                    }
+                  : {}),
+                ...(glyphs
+                  ? { glyphAtlas: glyphs, font: { pixelRatio: ratio } }
+                  : {}),
+              } as never,
+              { count: 3 },
+            ),
+          );
+          await frame.submit();
+          const bytes = await output.read();
+          alive();
+          if (format.startsWith("bgra"))
+            for (let i = 0; i < bytes.length; i += 4) {
+              const red = bytes[i];
+              bytes[i] = bytes[i + 2];
+              bytes[i + 2] = red;
+            }
+          return encodePng(bytes, width, height);
+        } finally {
+          for (const texture of textures) texture.destroy();
+        }
+      },
+      async saveImage(filename = "typeplot.png", settings = {}) {
+        alive();
+        if (!filename.toLowerCase().endsWith(".png"))
+          throw new TypeError("saveImage supports PNG files.");
+        const blob = await plot.toBlob(settings);
+        alive();
+        const url = URL.createObjectURL(blob),
+          link = canvas.ownerDocument.createElement("a");
+        link.href = url;
+        link.download = filename;
+        link.hidden = true;
+        canvas.ownerDocument.body.appendChild(link);
+        try {
+          link.click();
+        } finally {
+          link.remove();
+          win.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+      },
       bounds() {
         alive();
         return controller!.bounds();
       },
       reset() {
         alive();
+        pauseAnimations();
         probe = initialProbe;
         domain = [...initialDomain];
         Object.assign(quality, initialQuality);
@@ -918,6 +1590,11 @@ export async function createPlot(
           ),
         );
         Object.assign(parameters, initialParameters);
+        model = [...initialModel] as unknown as Matrix4;
+        inverseModel = invertAffineMatrix(model);
+        surface = surfaceOptions(initialSurface);
+        surfaceBounds = surfaceDomain(initialSurfaceBounds);
+        automaticDepth = options.surface?.depthRange === undefined;
         mode = initialMode;
         projection = initialProjection;
         controller!.setMode(mode === "3d");
@@ -927,6 +1604,14 @@ export async function createPlot(
       redraw,
       destroy,
     };
+    picker = new PointerPicker(
+      canvas,
+      (position) => plot.pick(position),
+      report,
+    );
+    canvas.addEventListener("pointerdown", pauseAnimations);
+    canvas.addEventListener("wheel", pauseAnimations, { passive: true });
+    canvas.addEventListener("keydown", pauseAnimations);
     controls = new PlotControlHost(canvas, plot);
     return plot;
   } catch (error) {

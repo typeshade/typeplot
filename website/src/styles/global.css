@@ -1359,3 +1359,7 @@
     gap: 4px;
   }
 }
+
+.plot-readout { display: block; min-height: 2.5rem; padding: 10px 16px; border-top: 1px solid var(--line); font: 12px "IBM Plex Mono", monospace; overflow-wrap: anywhere; }
+.plot-motion { border-bottom: 1px solid var(--line); }
+.plot-motion .plot-field { flex: 1 1 200px; }

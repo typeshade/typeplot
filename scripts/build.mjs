@@ -35,6 +35,25 @@ await build({
 });
 await import(path.resolve(".build/compile-data.mjs"));
 await build({
+  entryPoints: ["src/compiler.ts"],
+  outfile: "dist/compiler.js",
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  packages: "bundle",
+  plugins: [sourcePlugin],
+  minify: true,
+  legalComments: "linked",
+  banner: {
+    js: "import {createRequire} from 'node:module';import{fileURLToPath}from'node:url';import{dirname}from'node:path';const require=createRequire(import.meta.url);const __filename=fileURLToPath(import.meta.url);const __dirname=dirname(__filename);",
+  },
+});
+execFileSync(process.execPath, ["scripts/compile-grid.mjs"], {
+  stdio: "inherit",
+});
+
+await build({
   entryPoints: ["src/index.ts"],
   outfile: "dist/index.js",
   bundle: true,
@@ -60,7 +79,13 @@ await build({
     throw new Error(`Compiler leaked into browser entry: ${leaked.join(", ")}`);
 });
 await build({
-  entryPoints: ["src/interaction.ts", "src/shaders.ts", "src/data.ts"],
+  entryPoints: [
+    "src/interaction.ts",
+    "src/shaders.ts",
+    "src/data.ts",
+    "src/animation.ts",
+    "src/transform.ts",
+  ],
   outdir: "dist",
   bundle: true,
   platform: "browser",
@@ -70,21 +95,6 @@ await build({
   plugins: [sourcePlugin],
   minify: true,
   legalComments: "linked",
-});
-await build({
-  entryPoints: ["src/compiler.ts"],
-  outfile: "dist/compiler.js",
-  bundle: true,
-  platform: "node",
-  format: "esm",
-  target: "node22",
-  packages: "bundle",
-  plugins: [sourcePlugin],
-  minify: true,
-  legalComments: "linked",
-  banner: {
-    js: "import {createRequire} from 'node:module';import{fileURLToPath}from'node:url';import{dirname}from'node:path';const require=createRequire(import.meta.url);const __filename=fileURLToPath(import.meta.url);const __dirname=dirname(__filename);",
-  },
 });
 execFileSync("node_modules/.bin/tsc", [], { stdio: "inherit" });
 

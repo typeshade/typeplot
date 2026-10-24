@@ -1,5 +1,7 @@
 import type { PlotControl, ControlPosition } from "./controls.js";
-export type PlotKind = "scalar" | "parametric";
+import type { AnimationClip, AnimationOptions, Timeline, TweenOptions } from "./animation.js";
+import type { Matrix4 } from "./transform.js";
+export type PlotKind = "scalar" | "parametric" | "surface";
 export type PlotProjection = "perspective" | "orthographic";
 export interface PlotBounds {
     readonly x: readonly [number, number];
@@ -14,7 +16,66 @@ export interface PlotProgram {
     /** Programs compiled with the projective camera support both projection modes. */
     readonly camera?: "projective";
     /** GPU-resident interval/tile search cache in newly compiled spatial programs. */
-    readonly acceleration?: "tiles-v1";
+    readonly acceleration?: "tiles-v1" | "surface-v1";
+    /** One-query GPU picking entry points, available after recompilation. */
+    readonly picking?: "point-v1";
+}
+export interface PlotCamera {
+    readonly center: readonly [number, number];
+    /** World-space z coordinate of the camera focus. */
+    readonly z: number;
+    readonly span: readonly [number, number];
+    /** Yaw and pitch, in radians. */
+    readonly rotation: readonly [number, number];
+    readonly pan: readonly [number, number];
+    /** Vertical field of view in radians; default PI / 4. */
+    readonly fov: number;
+    /** Camera distance in normalized scene units; default three. */
+    readonly distance: number;
+}
+export type PlotCameraUpdate = Partial<PlotCamera>;
+export type ColorMap = "viridis" | "plasma" | "coolwarm" | "gray";
+export interface SurfaceOptions {
+    readonly colorMap?: ColorMap;
+    /** Color normalization only; it never clips surface geometry. */
+    readonly valueRange?: readonly [number, number];
+    readonly colorBar?: boolean;
+    readonly shading?: boolean;
+    readonly wireframe?: boolean;
+    readonly contours?: boolean;
+    readonly contourInterval?: number;
+    readonly filled?: boolean;
+    readonly opacity?: number;
+    /** Finite ray-search window in normalized camera depth; default [0.101, 12]. */
+    readonly depthRange?: readonly [number, number];
+}
+export interface SurfaceDomain {
+    readonly x: readonly [number, number];
+    readonly z: readonly [number, number];
+}
+export interface PlotTransition {
+    readonly parameters?: Readonly<Record<string, number>>;
+    readonly camera?: PlotCameraUpdate;
+    readonly transform?: Matrix4;
+}
+export interface SavePlotOptions {
+    readonly width?: number;
+    readonly height?: number;
+    readonly pixelRatio?: number;
+}
+export interface PlotPick {
+    readonly kind: PlotKind;
+    /** Local mathematical coordinates, before the scene transform. */
+    readonly point: readonly [number, number, number];
+    readonly parameter?: number;
+    readonly distance: number;
+}
+export interface PickEvent<T> {
+    readonly type: "hover" | "click";
+    readonly result: T | null;
+    /** CSS pixels from the canvas's top-left corner. */
+    readonly position: readonly [number, number];
+    readonly originalEvent: PointerEvent | MouseEvent;
 }
 /** Numerical search controls for arbitrary spatial callbacks, evaluated on the GPU. */
 export interface PlotQuality {
@@ -48,6 +109,14 @@ export interface PlotStyle {
     readonly axisLabels?: boolean;
 }
 export interface PlotOptions {
+    /** Resident read-only f32 arrays declared by the named TypeShade callback. */
+    readonly data?: Readonly<Record<string, Float32Array>>;
+    readonly camera?: PlotCameraUpdate;
+    /** Invertible affine scene transform; shared by 3D plots, axes and lattice. */
+    readonly transform?: Matrix4;
+    readonly surface?: SurfaceOptions;
+    /** Mathematical x/z surface domain. Default unbounded on both axes. */
+    readonly surfaceDomain?: SurfaceDomain;
     /** GPU search acceleration when present in the program. Default true. */
     readonly acceleration?: boolean;
     /** Released-drag inertia. Default true; disabled by reduced-motion preferences. */
@@ -92,6 +161,24 @@ export interface Plot {
     setQuality(quality: PlotQuality): void;
     setProbe(value: number): void;
     setParameters(values: Readonly<Record<string, number>>): void;
+    setData(name: string, values: Float32Array): void;
+    parameters(): Readonly<Record<string, number>>;
+    getCamera(): PlotCamera;
+    /** Immediate camera update. Does not replace the reset/home view. */
+    setCamera(camera: PlotCameraUpdate): void;
+    getTransform(): Matrix4;
+    setTransform(matrix: Matrix4): void;
+    setSurface(options: SurfaceOptions): void;
+    setSurfaceDomain(domain: SurfaceDomain): void;
+    /** Captured endpoints, suitable for parallel/sequence clips on a Timeline. */
+    transition(to: PlotTransition, options?: TweenOptions): AnimationClip;
+    /** Play a camera/parameter/scene transition, with deterministic seek and pause. */
+    animate(to: PlotTransition, options?: AnimationOptions): Timeline;
+    pick(position: readonly [number, number], radius?: number): Promise<PlotPick | null>;
+    on(type: "hover" | "click", listener: (event: PickEvent<PlotPick>) => void): Plot;
+    off(type: "hover" | "click", listener: (event: PickEvent<PlotPick>) => void): Plot;
+    toBlob(options?: SavePlotOptions): Promise<Blob>;
+    saveImage(filename?: string, options?: SavePlotOptions): Promise<void>;
     bounds(): PlotBounds;
     reset(): void;
     redraw(): Promise<void>;

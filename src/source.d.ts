@@ -11,3 +11,7 @@ declare module "*data-program.json" {
   const program: unknown;
   export default program;
 }
+declare module "*grid-surface.json" {
+  const program: unknown;
+  export default program;
+}

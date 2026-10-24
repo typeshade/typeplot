@@ -48,8 +48,8 @@ natural depth-dependent parallax; orthographic focus-plane anchoring is exact.
 
 The Playground provides a separate GPU continuous sine example so visitors can compare
 finite sampled data with an unbounded mathematical function. Spatial domains and search
-quality remain explicit controls. GPU callback PNG export remains a separate future task;
-data figure exports continue to use their existing GPU readback path.
+quality remain explicit controls. GPU callback and data-figure PNG export use their TypeShade programs and GPU readback;
+see [scientific fields and animation](scientific-motion.md) for the current API.
 
 Numeric ticks separate the atlas bearing from character advance and evaluate adjacent
 padded glyph cells; advance no longer clips the right edge of 0 and other digits. Font

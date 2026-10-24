@@ -17,6 +17,8 @@ type View = {
   rotation: Pair;
   pan: Pair;
   blend: [number];
+  lens: Pair;
+  focusZ: [number];
 };
 
 const ROTATION: Pair = [0.65, 0.45];
@@ -29,6 +31,8 @@ const copy = (view: View): View => ({
   rotation: [...view.rotation],
   pan: [...view.pan],
   blend: [...view.blend],
+  lens: [...view.lens],
+  focusZ: [...view.focusZ],
 });
 
 /** Supplies plot uniforms and requests a redraw only while the view changes. */
@@ -59,6 +63,8 @@ export function createPlotInteraction(
     rotation: [...ROTATION],
     pan: [0, 0],
     blend: [0],
+    lens: [Math.PI / 4, 3],
+    focusZ: [0],
   };
   if (!original.span.every((span) => Number.isFinite(span * 1e6))) {
     throw new RangeError("Plot bounds exceed the supported range.");
@@ -103,7 +109,15 @@ export function createPlotInteraction(
   }
 
   function assign(view: View) {
-    for (const key of ["center", "span", "rotation", "pan", "blend"] as const) {
+    for (const key of [
+      "center",
+      "span",
+      "rotation",
+      "pan",
+      "blend",
+      "lens",
+      "focusZ",
+    ] as const) {
       for (let i = 0; i < view[key].length; i++) current[key][i] = view[key][i];
     }
   }
@@ -113,7 +127,15 @@ export function createPlotInteraction(
     if (destroyed) return;
     const progress = clamp((time - started) / DURATION, 0, 1);
     const eased = 1 - (1 - progress) ** 3;
-    for (const key of ["center", "span", "rotation", "pan", "blend"] as const) {
+    for (const key of [
+      "center",
+      "span",
+      "rotation",
+      "pan",
+      "blend",
+      "lens",
+      "focusZ",
+    ] as const) {
       for (let i = 0; i < current[key].length; i++) {
         current[key][i] =
           start[key][i] + (target[key][i] - start[key][i]) * eased;
@@ -542,6 +564,10 @@ export function createPlotInteraction(
           return current.pan;
         case "plotBlend":
           return current.blend;
+        case "plotLens":
+          return current.lens;
+        case "plotCenterZ":
+          return current.focusZ;
         default:
           return null;
       }
@@ -553,6 +579,47 @@ export function createPlotInteraction(
       change();
     },
     reset,
+    camera() {
+      return {
+        center: [...current.center] as Pair,
+        span: [...current.span] as Pair,
+        rotation: [...current.rotation] as Pair,
+        pan: [...current.pan] as Pair,
+        fov: current.lens[0],
+        distance: current.lens[1],
+        z: current.focusZ[0],
+      };
+    },
+    /** Apply an already validated camera state without an eased input transition. */
+    setCamera(
+      view: Partial<Pick<View, "center" | "span" | "rotation" | "pan">> & {
+        fov?: number;
+        distance?: number;
+        z?: number;
+      },
+      home = false,
+    ) {
+      if (destroyed) return;
+      target = copy(current);
+      for (const key of ["center", "span", "rotation", "pan"] as const)
+        if (view[key]) {
+          target[key] = [...view[key]];
+          if (home) original[key] = [...view[key]];
+        }
+      if (view.fov !== undefined) {
+        target.lens[0] = view.fov;
+        if (home) original.lens[0] = view.fov;
+      }
+      if (view.distance !== undefined) {
+        target.lens[1] = view.distance;
+        if (home) original.lens[1] = view.distance;
+      }
+      if (view.z !== undefined) {
+        target.focusZ[0] = view.z;
+        if (home) original.focusZ[0] = view.z;
+      }
+      change(true);
+    },
     /** Replace the home view and display it immediately. */
     setBounds(bounds: PlotBounds) {
       if (destroyed) return;

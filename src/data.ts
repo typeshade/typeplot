@@ -2,6 +2,19 @@ import { OpacityFade } from "./fade.js";
 import { createPlotInteraction } from "./interaction.js";
 import { GpuRenderer, type RenderAxes, type Scene } from "./gpu-renderer.js";
 import { encodePng } from "./png.js";
+import { PointerPicker } from "./picking.js";
+import type { PickEvent, ColorMap } from "./types.js";
+import { Field, type FieldOptions } from "./field.js";
+import {
+  Annotation,
+  type AnnotationOptions,
+  type AnnotateOptions,
+} from "./annotation.js";
+export { Annotation } from "./annotation.js";
+export type { AnnotationOptions, AnnotateOptions } from "./annotation.js";
+export { Field } from "./field.js";
+export type { FieldOptions, FieldStyle, FieldKind } from "./field.js";
+export type { PickEvent, ColorMap } from "./types.js";
 
 /** Arrays and typed arrays are accepted; values are copied on insertion. */
 export type NumericData = ArrayLike<number>;
@@ -22,6 +35,42 @@ export interface SeriesOptions {
   /** Marker radius in CSS pixels. */
   readonly markerSize?: number;
   readonly alpha?: number;
+  readonly visible?: boolean;
+  /** Baseline in data coordinates, for stems and bars. Default zero. */
+  readonly baseline?: number;
+  /** Error bar cap half-width, in CSS pixels. Default four. */
+  readonly capSize?: number;
+  readonly where?: "pre" | "post" | "mid";
+}
+export type ErrorValues =
+  | number
+  | NumericData
+  | {
+      readonly lower: number | NumericData;
+      readonly upper: number | NumericData;
+    };
+export interface ErrorBarOptions extends SeriesOptions {
+  readonly xError?: ErrorValues;
+  readonly yError?: ErrorValues;
+}
+export type SeriesKind =
+  "line" | "scatter" | "bar" | "barh" | "step" | "stem" | "fill" | "error";
+export interface SeriesData {
+  readonly x: number[];
+  readonly y: number[];
+  readonly lower?: number[];
+  readonly xLow?: number[];
+  readonly xHigh?: number[];
+  readonly yLow?: number[];
+  readonly yHigh?: number[];
+}
+export interface DataPick {
+  readonly axes: Axes;
+  readonly series: Series | Field;
+  readonly index: number;
+  readonly x: number;
+  readonly y: number;
+  readonly value?: number;
 }
 export interface BarOptions extends SeriesOptions {
   /** Width in data coordinates. */
@@ -78,7 +127,7 @@ export interface SaveFigureOptions {
 }
 
 type Pair = [number, number];
-type Kind = "line" | "scatter" | "bar";
+type Kind = SeriesKind;
 type Style = Required<SeriesOptions> & { width: number };
 const COLORS = [
   "#1f77b4",
@@ -166,6 +215,10 @@ function style(
     marker: options.marker ?? (kind === "scatter" ? "o" : "none"),
     markerSize: options.markerSize ?? 3.5,
     alpha: options.alpha ?? 1,
+    visible: options.visible ?? true,
+    baseline: options.baseline ?? 0,
+    capSize: options.capSize ?? 4,
+    where: options.where ?? "pre",
     width: options.width ?? 0.8,
   };
   if (!["auto", "x", "index"].includes(result.parameter))
@@ -183,6 +236,21 @@ function style(
     throw new TypeError("Unknown lineStyle.");
   if (!["o", "s", "none"].includes(result.marker))
     throw new TypeError("Unknown marker.");
+  if (typeof result.visible !== "boolean")
+    throw new TypeError("visible must be a boolean.");
+  if (
+    !Number.isFinite(result.baseline) ||
+    Math.abs(result.baseline) > 3.402823466e38
+  )
+    throw new RangeError("baseline must be a finite f32.");
+  if (
+    !Number.isFinite(result.capSize) ||
+    result.capSize < 0 ||
+    result.capSize > 64
+  )
+    throw new RangeError("capSize must be between zero and 64 CSS pixels.");
+  if (!["pre", "post", "mid"].includes(result.where))
+    throw new TypeError("where must be pre, post or mid.");
   if (typeof result.color !== "string" || !result.color.trim())
     throw new TypeError("color must be a CSS color.");
   return result;
@@ -190,7 +258,7 @@ function style(
 /** An independently updateable artist. NaN/Infinity split lines and are omitted from bounds. */
 export class Series {
   /** @internal */
-  data: { x: number[]; y: number[] };
+  data: SeriesData;
   /** @internal */
   readonly style: Style;
   /** @internal Histogram edges, when applicable. */
@@ -200,7 +268,7 @@ export class Series {
   constructor(
     readonly axes: Axes,
     readonly kind: Kind,
-    data: { x: number[]; y: number[] },
+    data: SeriesData,
     options: SeriesOptions & { width?: number },
     index: number,
   ) {
@@ -214,6 +282,10 @@ export class Series {
     if (this.removed) throw new Error("This series has been removed.");
     if (this.edges)
       throw new Error("Remove and recreate a histogram to change its bins.");
+    if (this.kind === "fill" || this.kind === "error")
+      throw new Error(
+        "Use setBandData or recreate error bars to update their full bounds.",
+      );
     const next = coordinates(x, y);
     const previous = this.data;
     this.data = next;
@@ -224,6 +296,52 @@ export class Series {
       throw error;
     }
     return this;
+  }
+  setBandData(
+    x: NumericData,
+    first: NumericData,
+    second: NumericData | number = 0,
+  ): this {
+    this.axes.assertAlive();
+    if (this.removed || this.kind !== "fill")
+      throw new Error("setBandData requires a live fillBetween series.");
+    const next = coordinates(x, first);
+    const lower =
+      typeof second === "number"
+        ? next.x.map(() => second)
+        : numeric(second, "second");
+    if (lower.length !== next.x.length)
+      throw new RangeError("Band arrays must have the same length.");
+    const previous = this.data;
+    this.data = { ...next, lower };
+    try {
+      this.axes.refresh();
+    } catch (error) {
+      this.data = previous;
+      throw error;
+    }
+    return this;
+  }
+  setStyle(value: SeriesOptions): this {
+    this.axes.assertAlive();
+    if (this.removed) throw new Error("This series has been removed.");
+    const next = style({ ...this.style, ...value }, 0, this.kind);
+    const previous = { ...this.style };
+    Object.assign(this.style, next);
+    try {
+      if (value.baseline !== undefined) this.axes.refresh();
+      else this.axes.presentationChanged();
+    } catch (error) {
+      Object.assign(this.style, previous);
+      throw error;
+    }
+    return this;
+  }
+  setVisible(value: boolean): this {
+    return this.setStyle({ visible: value });
+  }
+  setAlpha(value: number): this {
+    return this.setStyle({ alpha: value });
   }
   remove(): void {
     this.axes.assertAlive();
@@ -242,6 +360,8 @@ export class Axes {
   readonly canvas: HTMLCanvasElement;
   private readonly controller: ReturnType<typeof createPlotInteraction>;
   private readonly artists: Series[] = [];
+  private readonly fields: Field[] = [];
+  private readonly annotations: Annotation[] = [];
   private settings: AxesOptions = {};
   private readonly gridFade = new OpacityFade(0);
   private fadeFrame = 0;
@@ -249,6 +369,7 @@ export class Axes {
   private legendSignature = "";
   private colorIndex = 0;
   private disposed = false;
+  private readonly picker: PointerPicker<DataPick>;
   /** @internal */
   constructor(
     readonly figure: Figure,
@@ -285,6 +406,11 @@ export class Axes {
     );
     this.canvas.addEventListener("focus", this.redraw);
     this.canvas.addEventListener("blur", this.redraw);
+    this.picker = new PointerPicker(
+      this.canvas,
+      (position) => this.pick(position),
+      (error) => figure.reportError(error),
+    );
   }
   /** @internal */
   assertAlive(): void {
@@ -313,6 +439,214 @@ export class Axes {
   }
   bar(x: NumericData, height: NumericData, options: BarOptions = {}): Series {
     return this.add("bar", coordinates(x, height), options);
+  }
+  barh(y: NumericData, widths: NumericData, options: BarOptions = {}): Series {
+    return this.add("barh", coordinates(widths, y), options);
+  }
+  step(x: NumericData, y: NumericData, options: SeriesOptions = {}): Series {
+    return this.add("step", coordinates(x, y), options);
+  }
+  stem(x: NumericData, y: NumericData, options: SeriesOptions = {}): Series {
+    return this.add("stem", coordinates(x, y), { marker: "o", ...options });
+  }
+  fillBetween(
+    x: NumericData,
+    first: NumericData,
+    second: NumericData | number = 0,
+    options: SeriesOptions = {},
+  ): Series {
+    const data = coordinates(x, first);
+    const lower =
+      typeof second === "number"
+        ? data.x.map(() => second)
+        : numeric(second, "second");
+    if (lower.length !== data.x.length)
+      throw new RangeError("Band arrays must have the same length.");
+    return this.add("fill", { ...data, lower }, { alpha: 0.3, ...options });
+  }
+  errorbar(
+    x: NumericData,
+    y: NumericData,
+    options: ErrorBarOptions = {},
+  ): Series {
+    const data = coordinates(x, y);
+    const errors = (
+      input: ErrorValues | undefined,
+      name: string,
+    ): [number[], number[]] => {
+      const read = (value: number | NumericData | undefined) => {
+        const result =
+          typeof value === "number" || value === undefined
+            ? data.x.map(() => value ?? 0)
+            : numeric(value, name);
+        if (
+          result.length !== data.x.length ||
+          result.some((v) => !Number.isFinite(v) || v < 0)
+        )
+          throw new RangeError(
+            `${name} must contain nonnegative finite errors matching the data.`,
+          );
+        return result;
+      };
+      return input && typeof input === "object" && "lower" in input
+        ? [read(input.lower), read(input.upper)]
+        : [
+            read(input as number | NumericData | undefined),
+            read(input as number | NumericData | undefined),
+          ];
+    };
+    const [xl, xh] = errors(options.xError, "xError"),
+      [yl, yh] = errors(options.yError, "yError");
+    return this.add(
+      "error",
+      {
+        ...data,
+        ...(options.xError !== undefined
+          ? {
+              xLow: data.x.map((v, i) => v - xl[i]),
+              xHigh: data.x.map((v, i) => v + xh[i]),
+            }
+          : {}),
+        ...(options.yError !== undefined
+          ? {
+              yLow: data.y.map((v, i) => v - yl[i]),
+              yHigh: data.y.map((v, i) => v + yh[i]),
+            }
+          : {}),
+      },
+      { marker: "o", ...options },
+    );
+  }
+  imshow(values: NumericData, options: FieldOptions): Field {
+    return this.addField(values, options, "image");
+  }
+  text(
+    x: number,
+    y: number,
+    value: string,
+    options: AnnotationOptions = {},
+  ): Annotation {
+    this.assertAlive();
+    const annotation = new Annotation(this, value, [x, y], options);
+    this.annotations.push(annotation);
+    this.redraw();
+    return annotation;
+  }
+  annotate(
+    value: string,
+    xy: readonly [number, number],
+    options: AnnotateOptions = {},
+  ): Annotation {
+    this.assertAlive();
+    const { xyText = xy, ...style } = options;
+    const annotation = new Annotation(this, value, xyText, style, xy);
+    this.annotations.push(annotation);
+    this.redraw();
+    return annotation;
+  }
+  /** @internal */
+  removeAnnotation(annotation: Annotation): void {
+    const index = this.annotations.indexOf(annotation);
+    if (index >= 0) this.annotations.splice(index, 1);
+    this.redraw();
+  }
+  contour(values: NumericData, options: FieldOptions): Field {
+    return this.addField(values, options, "contour");
+  }
+  contourf(values: NumericData, options: FieldOptions): Field {
+    return this.addField(values, options, "contourf");
+  }
+  private addField(
+    values: NumericData,
+    options: FieldOptions,
+    mode: "image" | "contour" | "contourf",
+  ): Field {
+    this.assertAlive();
+    const field = new Field(this, values, options, mode);
+    this.fields.push(field);
+    try {
+      this.refresh();
+    } catch (error) {
+      this.fields.pop();
+      throw error;
+    }
+    return field;
+  }
+  colorbar(field: Field, visible = true): this {
+    this.assertAlive();
+    if (!this.fields.includes(field))
+      throw new Error("The colorbar field must belong to this axes.");
+    for (const candidate of this.fields)
+      candidate.set({ colorBar: candidate === field && visible });
+    return this;
+  }
+  /** @internal */
+  removeField(field: Field): void {
+    const index = this.fields.indexOf(field);
+    if (index >= 0) this.fields.splice(index, 1);
+    this.refresh();
+  }
+  async pick(
+    position: readonly [number, number],
+    radius = 8,
+  ): Promise<DataPick | null> {
+    this.assertAlive();
+    const result = await this.figure.pickAxes(this.index, position, radius);
+    this.assertAlive();
+    const artist = result?.artist;
+    if (!result || !artist) return null;
+    if (artist instanceof Field) {
+      if (
+        !this.fields.includes(artist) ||
+        artist.values !== result.data ||
+        result.index >= artist.values.length
+      )
+        return null;
+      const [rows, cols] = artist.options.shape,
+        [x0, x1, y0, y1] = artist.options.extent;
+      const row = Math.floor(result.index / cols),
+        column = result.index % cols;
+      return {
+        axes: this,
+        series: artist,
+        index: result.index,
+        x: x0 + ((column + 0.5) / cols) * (x1 - x0),
+        y:
+          y0 +
+          ((artist.options.origin === "upper" ? rows - row - 0.5 : row + 0.5) /
+            rows) *
+            (y1 - y0),
+        value: artist.values[result.index],
+      };
+    }
+    if (
+      !this.artists.includes(artist) ||
+      artist.data !== result.data ||
+      result.index >= artist.data.x.length
+    )
+      return null;
+    return {
+      axes: this,
+      series: artist,
+      index: result.index,
+      x: artist.data.x[result.index],
+      y: artist.data.y[result.index],
+    };
+  }
+  on(
+    type: "hover" | "click",
+    listener: (event: PickEvent<DataPick>) => void,
+  ): this {
+    this.assertAlive();
+    this.picker.on(type, listener);
+    return this;
+  }
+  off(
+    type: "hover" | "click",
+    listener: (event: PickEvent<DataPick>) => void,
+  ): this {
+    this.picker.off(type, listener);
+    return this;
   }
   histogram(
     values: NumericData,
@@ -390,7 +724,7 @@ export class Axes {
   }
   private add(
     kind: Kind,
-    data: { x: number[]; y: number[] },
+    data: SeriesData,
     options: SeriesOptions & { width?: number },
     edges?: readonly number[],
   ): Series {
@@ -511,6 +845,10 @@ export class Axes {
   clear(): this {
     this.assertAlive();
     this.artists.forEach((series) => series.detach());
+    this.fields.forEach((field) => field.detach());
+    this.fields.length = 0;
+    this.annotations.forEach((annotation) => annotation.detach());
+    this.annotations.length = 0;
     this.htmlLegend?.remove();
     this.htmlLegend = undefined;
     this.artists.length = 0;
@@ -559,10 +897,30 @@ export class Axes {
         ranges[axis][1] = Math.max(ranges[axis][1], v);
       }
     };
+    for (const field of this.fields) {
+      const [x0, x1, y0, y1] = field.options.extent;
+      include("x", x0);
+      include("x", x1);
+      include("y", y0);
+      include("y", y1);
+    }
     for (const series of this.artists) {
       for (let i = 0; i < series.data.x.length; i++) {
         const x = series.data.x[i],
           y = series.data.y[i];
+        if (series.kind === "fill") {
+          const other = series.data.lower![i];
+          if (
+            Number.isFinite(scaleValue(x, scales.x)) &&
+            Number.isFinite(y) &&
+            Number.isFinite(other)
+          ) {
+            include("x", x);
+            include("y", y);
+            include("y", other);
+          }
+          continue;
+        }
         if (
           !Number.isFinite(scaleValue(x, scales.x)) ||
           !Number.isFinite(scaleValue(y, scales.y))
@@ -570,11 +928,27 @@ export class Axes {
           continue;
         include("x", x);
         include("y", y);
+        if (series.data.lower) include("y", series.data.lower[i]);
+        if (series.data.xLow) {
+          include("x", series.data.xLow[i]);
+          include("x", series.data.xHigh![i]);
+        }
+        if (series.data.yLow) {
+          include("y", series.data.yLow[i]);
+          include("y", series.data.yHigh![i]);
+        }
         if (series.kind === "bar") {
           include("x", series.edges?.[i] ?? x - series.style.width / 2);
           include("x", series.edges?.[i + 1] ?? x + series.style.width / 2);
-          if (scales.y === "linear") include("y", 0);
+          if (scales.y === "linear" || series.style.baseline > 0)
+            include("y", series.style.baseline);
         }
+        if (series.kind === "barh") {
+          include("y", y - series.style.width / 2);
+          include("y", y + series.style.width / 2);
+          include("x", series.style.baseline);
+        }
+        if (series.kind === "stem") include("y", series.style.baseline);
       }
     }
     for (const axis of ["x", "y"] as const) {
@@ -608,6 +982,10 @@ export class Axes {
       this.settings.xLabel && `x: ${this.settings.xLabel}`,
       this.settings.yLabel && `y: ${this.settings.yLabel}`,
       ...this.artists.map((s) => s.style.label),
+      ...this.fields.map(
+        (field) =>
+          `${field.mode}, ${field.options.shape[0]} rows by ${field.options.shape[1]} columns`,
+      ),
     ].filter(Boolean);
     this.canvas.setAttribute(
       "aria-label",
@@ -616,8 +994,15 @@ export class Axes {
     );
   }
   readonly redraw = (): void => {
+    this.picker?.invalidate();
     if (!this.disposed) this.figure.redraw();
   };
+  /** @internal */
+  presentationChanged(): void {
+    this.updateLabel();
+    this.updateHtmlLegend();
+    this.redraw();
+  }
   private updateHtmlLegend(): void {
     if (this.settings.legend !== "html") {
       this.htmlLegend?.remove();
@@ -690,6 +1075,8 @@ export class Axes {
           ? { ...this.settings, legend: settled }
           : this.settings,
       series: this.artists,
+      fields: this.fields,
+      annotations: this.annotations,
       focused: this.canvas.matches(":focus-visible"),
     };
   }
@@ -702,9 +1089,14 @@ export class Axes {
         this.fadeFrame,
       );
     this.controller.destroy();
+    this.picker.destroy();
     this.canvas.removeEventListener("focus", this.redraw);
     this.canvas.removeEventListener("blur", this.redraw);
     this.artists.length = 0;
+    this.fields.forEach((field) => field.detach());
+    this.fields.length = 0;
+    this.annotations.forEach((annotation) => annotation.detach());
+    this.annotations.length = 0;
     this.canvas.remove();
   }
 }
@@ -746,6 +1138,41 @@ export class Figure {
         new CustomEvent("typeploterror", { detail: value, bubbles: true }),
       );
   };
+  /** @internal */
+  reportError(error: unknown): void {
+    this.report(error);
+  }
+  /** @internal */
+  async pickAxes(
+    index: number,
+    position: readonly [number, number],
+    radius: number,
+  ): Promise<{
+    artist: Series | Field;
+    data: SeriesData | number[];
+    index: number;
+  } | null> {
+    if (this.disposed) throw new Error("This figure has been destroyed.");
+    await this.ready;
+    if (this.disposed) throw new Error("This figure has been destroyed.");
+    const rect = this.stage.getBoundingClientRect();
+    const scene = this.snapshot(rect.width, rect.height);
+    const artists = [
+      ...scene.axes[index].fields,
+      ...scene.axes[index].series,
+    ] as (Series | Field)[];
+    const data = artists.map((artist) =>
+      artist instanceof Field ? artist.values : artist.data,
+    );
+    const result = await this.renderer!.pick(scene, index, position, radius);
+    return result && artists[result.series]
+      ? {
+          artist: artists[result.series],
+          data: data[result.series],
+          index: result.index,
+        }
+      : null;
+  }
   /** @internal Use figure() or subplots(). */
   constructor(rows: number, cols: number, options: FigureOptions = {}) {
     if (

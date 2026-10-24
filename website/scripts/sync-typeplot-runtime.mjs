@@ -20,6 +20,11 @@ for (const name of [
   "types.d.ts",
   "controls.d.ts",
   "gpu-renderer.d.ts",
+  "animation.d.ts",
+  "annotation.d.ts",
+  "field.d.ts",
+  "grid-surface.d.ts",
+  "transform.d.ts",
 ]) {
   await copyFile(resolve(root, "dist", name), resolve(target, name));
 }
@@ -27,7 +32,7 @@ for (const name of await readdir(resolve(root, "dist"))) {
   if (/^(index|data)\.js\.LEGAL\.txt$/.test(name))
     await copyFile(resolve(root, "dist", name), resolve(target, name));
 }
-for (const name of ["curve", "helix", "sine"])
+for (const name of ["curve", "helix", "sine", "surface"])
   await copyFile(
     resolve(root, "examples/generated", `${name}.js`),
     resolve(target, `${name}.js`),
@@ -48,9 +53,15 @@ for (const name of [
   "types.d.ts",
   "controls.d.ts",
   "gpu-renderer.d.ts",
+  "animation.d.ts",
+  "annotation.d.ts",
+  "field.d.ts",
+  "grid-surface.d.ts",
+  "transform.d.ts",
   "curve.js",
   "helix.js",
   "sine.js",
+  "surface.js",
 ])
   hash
     .update(name)
@@ -87,7 +98,7 @@ await writeFile(
 );
 await writeFile(
   resolve(target, "README.md"),
-  `# TypePlot browser runtime\n\nBuilt from [typeshade/typeplot](https://github.com/typeshade/typeplot/tree/${commit}) at runtime source commit \`${commit}\`.\n\nRun the library build and examples generation, then \`npm run sync:typeplot\` in website/.\nJavaScript is generated and ignored by Git. Declarations, source provenance, Apache-2.0 LICENSE,\nand NOTICE are retained. Compiled power, sine and helix programs come from the repository's named\nTypeShade callbacks. The website does not compile visitor source or load a CDN runtime.\n`,
+  `# TypePlot browser runtime\n\nBuilt from [typeshade/typeplot](https://github.com/typeshade/typeplot/tree/${commit}) at runtime source commit \`${commit}\`.\n\nRun the library build and examples generation, then \`npm run sync:typeplot\` in website/.\nJavaScript is generated and ignored by Git. Declarations, source provenance, Apache-2.0 LICENSE,\nand NOTICE are retained. Compiled power, sine, helix and surface programs come from the repository's named\nTypeShade callbacks. The website does not compile visitor source or load a CDN runtime.\n`,
 );
 console.log(
   `Synced TypePlot browser runtime and shader examples from ${commit}.`,

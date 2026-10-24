@@ -1,4 +1,12 @@
 import { type RenderAxes } from "./gpu-renderer.js";
+import type { PickEvent } from "./types.js";
+import { Field, type FieldOptions } from "./field.js";
+import { Annotation, type AnnotationOptions, type AnnotateOptions } from "./annotation.js";
+export { Annotation } from "./annotation.js";
+export type { AnnotationOptions, AnnotateOptions } from "./annotation.js";
+export { Field } from "./field.js";
+export type { FieldOptions, FieldStyle, FieldKind } from "./field.js";
+export type { PickEvent, ColorMap } from "./types.js";
 /** Arrays and typed arrays are accepted; values are copied on insertion. */
 export type NumericData = ArrayLike<number>;
 export type AxisScale = "linear" | "log";
@@ -18,6 +26,38 @@ export interface SeriesOptions {
     /** Marker radius in CSS pixels. */
     readonly markerSize?: number;
     readonly alpha?: number;
+    readonly visible?: boolean;
+    /** Baseline in data coordinates, for stems and bars. Default zero. */
+    readonly baseline?: number;
+    /** Error bar cap half-width, in CSS pixels. Default four. */
+    readonly capSize?: number;
+    readonly where?: "pre" | "post" | "mid";
+}
+export type ErrorValues = number | NumericData | {
+    readonly lower: number | NumericData;
+    readonly upper: number | NumericData;
+};
+export interface ErrorBarOptions extends SeriesOptions {
+    readonly xError?: ErrorValues;
+    readonly yError?: ErrorValues;
+}
+export type SeriesKind = "line" | "scatter" | "bar" | "barh" | "step" | "stem" | "fill" | "error";
+export interface SeriesData {
+    readonly x: number[];
+    readonly y: number[];
+    readonly lower?: number[];
+    readonly xLow?: number[];
+    readonly xHigh?: number[];
+    readonly yLow?: number[];
+    readonly yHigh?: number[];
+}
+export interface DataPick {
+    readonly axes: Axes;
+    readonly series: Series | Field;
+    readonly index: number;
+    readonly x: number;
+    readonly y: number;
+    readonly value?: number;
 }
 export interface BarOptions extends SeriesOptions {
     /** Width in data coordinates. */
@@ -73,7 +113,7 @@ export interface SaveFigureOptions {
     readonly pixelRatio?: number;
 }
 type Pair = [number, number];
-type Kind = "line" | "scatter" | "bar";
+type Kind = SeriesKind;
 type Style = Required<SeriesOptions> & {
     width: number;
 };
@@ -82,24 +122,22 @@ export declare class Series {
     readonly axes: Axes;
     readonly kind: Kind;
     /** @internal */
-    data: {
-        x: number[];
-        y: number[];
-    };
+    data: SeriesData;
     /** @internal */
     readonly style: Style;
     /** @internal Histogram edges, when applicable. */
     edges?: readonly number[];
     private removed;
     /** @internal */
-    constructor(axes: Axes, kind: Kind, data: {
-        x: number[];
-        y: number[];
-    }, options: SeriesOptions & {
+    constructor(axes: Axes, kind: Kind, data: SeriesData, options: SeriesOptions & {
         width?: number;
     }, index: number);
     setData(y: NumericData): this;
     setData(x: NumericData, y: NumericData): this;
+    setBandData(x: NumericData, first: NumericData, second?: NumericData | number): this;
+    setStyle(value: SeriesOptions): this;
+    setVisible(value: boolean): this;
+    setAlpha(value: number): this;
     remove(): void;
     /** @internal */
     detach(): void;
@@ -111,6 +149,8 @@ export declare class Axes {
     readonly canvas: HTMLCanvasElement;
     private readonly controller;
     private readonly artists;
+    private readonly fields;
+    private readonly annotations;
     private settings;
     private readonly gridFade;
     private fadeFrame;
@@ -118,6 +158,7 @@ export declare class Axes {
     private legendSignature;
     private colorIndex;
     private disposed;
+    private readonly picker;
     /** @internal */
     constructor(figure: Figure, index: number);
     /** @internal */
@@ -126,6 +167,25 @@ export declare class Axes {
     plot(x: NumericData, y: NumericData | ((x: number) => number), options?: SeriesOptions): Series;
     scatter(x: NumericData, y: NumericData, options?: SeriesOptions): Series;
     bar(x: NumericData, height: NumericData, options?: BarOptions): Series;
+    barh(y: NumericData, widths: NumericData, options?: BarOptions): Series;
+    step(x: NumericData, y: NumericData, options?: SeriesOptions): Series;
+    stem(x: NumericData, y: NumericData, options?: SeriesOptions): Series;
+    fillBetween(x: NumericData, first: NumericData, second?: NumericData | number, options?: SeriesOptions): Series;
+    errorbar(x: NumericData, y: NumericData, options?: ErrorBarOptions): Series;
+    imshow(values: NumericData, options: FieldOptions): Field;
+    text(x: number, y: number, value: string, options?: AnnotationOptions): Annotation;
+    annotate(value: string, xy: readonly [number, number], options?: AnnotateOptions): Annotation;
+    /** @internal */
+    removeAnnotation(annotation: Annotation): void;
+    contour(values: NumericData, options: FieldOptions): Field;
+    contourf(values: NumericData, options: FieldOptions): Field;
+    private addField;
+    colorbar(field: Field, visible?: boolean): this;
+    /** @internal */
+    removeField(field: Field): void;
+    pick(position: readonly [number, number], radius?: number): Promise<DataPick | null>;
+    on(type: "hover" | "click", listener: (event: PickEvent<DataPick>) => void): this;
+    off(type: "hover" | "click", listener: (event: PickEvent<DataPick>) => void): this;
     histogram(values: NumericData, options?: HistogramOptions): {
         counts: readonly number[];
         bins: readonly number[];
@@ -157,6 +217,8 @@ export declare class Axes {
     refresh(): void;
     private updateLabel;
     readonly redraw: () => void;
+    /** @internal */
+    presentationChanged(): void;
     private updateHtmlLegend;
     /** @internal GPU input only; axes/grid/ticks/glyphs are generated by the shaders. */
     snapshot(settled?: boolean): RenderAxes;
@@ -184,6 +246,14 @@ export declare class Figure {
     readonly ready: Promise<void>;
     get backend(): "webgpu" | "webgl2" | undefined;
     private report;
+    /** @internal */
+    reportError(error: unknown): void;
+    /** @internal */
+    pickAxes(index: number, position: readonly [number, number], radius: number): Promise<{
+        artist: Series | Field;
+        data: SeriesData | number[];
+        index: number;
+    } | null>;
     /** @internal Use figure() or subplots(). */
     constructor(rows: number, cols: number, options?: FigureOptions);
     readonly redraw: () => void;
@@ -205,4 +275,3 @@ export declare function subplots(rows?: number, cols?: number, options?: FigureO
 export declare function linspace(start: number, stop: number, count?: number): Float64Array;
 export declare function plot(y: NumericData, options?: QuickPlotOptions): Figure;
 export declare function plot(x: NumericData, y: NumericData | ((x: number) => number), options?: QuickPlotOptions): Figure;
-export {};
