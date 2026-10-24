@@ -4,6 +4,7 @@ import {
   readdir,
   readFile,
   writeFile,
+  rm,
 } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -12,7 +13,21 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const target = resolve(root, "website/src/vendor/typeplot");
 await mkdir(target, { recursive: true });
-for (const name of [
+for (const name of await readdir(target))
+  if (
+    /^chunk-.*\.js(?:\.LEGAL\.txt)?$/.test(name) ||
+    /^(index|data)\.js\.LEGAL\.txt$/.test(name)
+  )
+    await rm(resolve(target, name));
+await rm(resolve(target, "assets"), { recursive: true, force: true });
+await mkdir(resolve(target, "assets"), { recursive: true });
+const shared = (await readdir(resolve(root, "dist")))
+  .filter((name) => /^chunk-.*\.js$/.test(name))
+  .sort();
+const assets = (await readdir(resolve(root, "dist/assets")))
+  .map((name) => `assets/${name}`)
+  .sort();
+const runtimeFiles = [
   "index.js",
   "data.js",
   "index.d.ts",
@@ -25,11 +40,14 @@ for (const name of [
   "field.d.ts",
   "grid-surface.d.ts",
   "transform.d.ts",
-]) {
+  ...shared,
+  ...assets,
+];
+for (const name of runtimeFiles) {
   await copyFile(resolve(root, "dist", name), resolve(target, name));
 }
 for (const name of await readdir(resolve(root, "dist"))) {
-  if (/^(index|data)\.js\.LEGAL\.txt$/.test(name))
+  if (/^(index|data|chunk-.*)\.js\.LEGAL\.txt$/.test(name))
     await copyFile(resolve(root, "dist", name), resolve(target, name));
 }
 for (const name of ["curve", "helix", "sine", "surface"])
@@ -46,18 +64,7 @@ await copyFile(
 // Preserve provenance for identical runtime bytes, including in shallow CI checkouts.
 const hash = createHash("sha256");
 for (const name of [
-  "index.js",
-  "data.js",
-  "index.d.ts",
-  "data.d.ts",
-  "types.d.ts",
-  "controls.d.ts",
-  "gpu-renderer.d.ts",
-  "animation.d.ts",
-  "annotation.d.ts",
-  "field.d.ts",
-  "grid-surface.d.ts",
-  "transform.d.ts",
+  ...runtimeFiles,
   "curve.js",
   "helix.js",
   "sine.js",

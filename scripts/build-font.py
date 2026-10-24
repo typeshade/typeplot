@@ -56,5 +56,6 @@ for index, field in enumerate(fields(list(range(32, 128)), 12, (15, 18))):
 for index, field in enumerate(fields(list(range(32, 128)), 48, (60, 72))):
     atlas.paste(field, ((index % 66) * 60, base_height + 18 + (index // 66) * 72))
 atlas.save(root / 'assets/typeplot-font.png', optimize=True)
+subprocess.run(['python3', str(root / 'scripts/build-font-base.py')], check=True)
 print({'glyphs': len(chars), 'size': atlas.size, 'sdf': 'X-GIS computeSDF, native 12/24/48px buckets',
        'pngBytes': (root / 'assets/typeplot-font.png').stat().st_size})

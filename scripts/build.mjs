@@ -5,7 +5,9 @@ import {
   readdir,
   mkdir,
   copyFile,
+  rm,
 } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 await mkdir("dist", { recursive: true });
@@ -53,33 +55,39 @@ execFileSync(process.execPath, ["scripts/compile-grid.mjs"], {
   stdio: "inherit",
 });
 
-await build({
-  entryPoints: ["src/index.ts"],
-  outfile: "dist/index.js",
-  bundle: true,
-  platform: "browser",
-  loader: { ".png": "dataurl" },
-  format: "esm",
-  target: "es2022",
-  minify: true,
-  legalComments: "linked",
-  metafile: true,
-}).then(async (result) => {
-  const shipped = Object.entries(
-    result.metafile.outputs["dist/index.js"].inputs,
+// One browser graph shares the runtime across all public entry points. Assets
+// stay separate from JavaScript so bundlers can cache and request them normally.
+for (const name of await readdir("dist"))
+  if (
+    /^chunk-.*\.js(?:\.LEGAL\.txt)?$/.test(name) ||
+    /^(index|data|interaction|shaders|animation|transform)\.js\.LEGAL\.txt$/.test(
+      name,
+    )
   )
-    .filter(([, value]) => value.bytesInOutput > 0)
-    .map(([name]) => name);
-  // Device-owned runtime plans may include TypeShade's IR emitter. Its TypeScript
-  // frontend and language service must never enter the browser bundle.
-  const leaked = shipped.filter((p) =>
-    /typescript\/|typeshade\/src\/(compiler|language-service)\//.test(p),
-  );
-  if (leaked.length)
-    throw new Error(`Compiler leaked into browser entry: ${leaked.join(", ")}`);
-});
+    await rm(path.join("dist", name));
+await rm("dist/assets", { recursive: true, force: true });
+await mkdir("dist/assets", { recursive: true });
+const assetPlugin = {
+  name: "browser-assets",
+  setup(b) {
+    b.onLoad({ filter: /\.png$/ }, async (args) => {
+      const bytes = await readFile(args.path);
+      const hash = createHash("sha256")
+        .update(bytes)
+        .digest("hex")
+        .slice(0, 12);
+      const name = `${path.basename(args.path, ".png")}-${hash}.png`;
+      await writeFile(path.join("dist/assets", name), bytes);
+      return {
+        contents: `export default new URL(${JSON.stringify(`./assets/${name}`)}, import.meta.url).href;`,
+        loader: "js",
+      };
+    });
+  },
+};
 await build({
   entryPoints: [
+    "src/index.ts",
     "src/interaction.ts",
     "src/shaders.ts",
     "src/data.ts",
@@ -87,14 +95,30 @@ await build({
     "src/transform.ts",
   ],
   outdir: "dist",
+  chunkNames: "chunk-[hash]",
   bundle: true,
   platform: "browser",
-  loader: { ".png": "dataurl" },
+  splitting: true,
   format: "esm",
   target: "es2022",
-  plugins: [sourcePlugin],
+  plugins: [sourcePlugin, assetPlugin],
   minify: true,
   legalComments: "linked",
+  metafile: true,
+}).then(async (result) => {
+  const shipped = Object.entries(result.metafile.outputs).flatMap(
+    ([, output]) =>
+      Object.entries(output.inputs)
+        .filter(([, value]) => value.bytesInOutput > 0)
+        .map(([name]) => name),
+  );
+  // Device-owned runtime plans may include TypeShade's IR emitter. Its TypeScript
+  // frontend and language service must never enter the browser bundle.
+  const leaked = shipped.filter((p) =>
+    /typescript\/|typeshade\/src\/(compiler|language-service)\//.test(p),
+  );
+  if (leaked.length)
+    throw new Error(`Compiler leaked into browser entry: ${leaked.join(", ")}`);
 });
 execFileSync("node_modules/.bin/tsc", [], { stdio: "inherit" });
 

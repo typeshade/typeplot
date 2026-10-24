@@ -177,6 +177,10 @@ export class GpuRenderer {
   private colorBar!: RenderPipeline;
   private annotationLine!: RenderPipeline;
   private glyphs!: Texture;
+  private fullGlyphs = false;
+  private glyphUpgrade?: Promise<void>;
+  private program!: ReturnType<Runtime["load"]>;
+  private pipelines = new Map<string, Promise<RenderPipeline>>();
   private device?: Device;
   private samples = new Map<RenderSeries, SampleResource>();
   private fields = new Map<
@@ -259,33 +263,125 @@ export class GpuRenderer {
     }
   }
   private async initialize(): Promise<void> {
-    const program = this.runtime.load(manifest as Pack);
-    const make = (vertex: string, fragment: string) =>
-      program.render({
+    this.program = this.runtime.load(manifest as Pack);
+    // Start the atlas request alongside pipeline creation. Settle every resource
+    // before cleanup so a failed initialization cannot leave late allocations.
+    const results = await Promise.allSettled([
+      this.pipeline("axesFragment").then((value) => {
+        this.axes = value;
+      }),
+      this.pipeline("seriesFragment").then((value) => {
+        this.series = value;
+      }),
+      this.pipeline("textFragment", "textVertex").then((value) => {
+        this.text = value;
+      }),
+      loadGlyphAtlas(this.runtime).then((value) => {
+        this.glyphs = value;
+      }),
+      this.backend === "webgpu"
+        ? createDevice({ runtime: this.runtime }).then((value) => {
+            this.device = value;
+          })
+        : Promise.resolve(),
+    ]);
+    const failed = results.find((result) => result.status === "rejected");
+    if (failed?.status === "rejected") throw failed.reason;
+  }
+
+  private pipeline(
+    fragment: string,
+    vertex = "surfaceVertex",
+    integer = false,
+  ): Promise<RenderPipeline> {
+    let pending = this.pipelines.get(fragment);
+    if (!pending) {
+      pending = this.program.render({
         vertex,
         fragment,
-        targets: [{ format: this.format, blend: BLEND }],
+        targets: integer
+          ? ["rgba32uint"]
+          : [{ format: this.format, blend: BLEND }],
       });
-    this.axes = await make("surfaceVertex", "axesFragment");
-    this.series = await make("surfaceVertex", "seriesFragment");
-    this.text = await make("textVertex", "textFragment");
-    this.labelPlate = await make("surfaceVertex", "labelPlateFragment");
-    this.picking = await program.render({
-      vertex: "surfaceVertex",
-      fragment: "pickFragment",
-      targets: ["rgba32uint"],
-    });
-    this.fieldPipeline = await make("surfaceVertex", "fieldFragment");
-    this.colorBar = await make("surfaceVertex", "colorBarFragment");
-    this.fieldPicking = await program.render({
-      vertex: "surfaceVertex",
-      fragment: "fieldPickFragment",
-      targets: ["rgba32uint"],
-    });
-    this.annotationLine = await make("surfaceVertex", "annotationFragment");
-    if (this.backend === "webgpu")
-      this.device = await createDevice({ runtime: this.runtime });
-    this.glyphs = await loadGlyphAtlas(this.runtime);
+      this.pipelines.set(fragment, pending);
+      void pending.catch(() => this.pipelines.delete(fragment));
+    }
+    return pending;
+  }
+
+  private async prepareScene(scene: Scene): Promise<void> {
+    const jobs: Promise<unknown>[] = [this.ensureGlyphs(scene)];
+    if (!this.fieldPipeline && scene.axes.some((axes) => axes.fields.length))
+      jobs.push(
+        this.pipeline("fieldFragment").then((value) => {
+          this.fieldPipeline = value;
+        }),
+      );
+    if (
+      !this.colorBar &&
+      scene.axes.some((axes) =>
+        axes.fields.some((field) => field.options.colorBar),
+      )
+    )
+      jobs.push(
+        this.pipeline("colorBarFragment").then((value) => {
+          this.colorBar = value;
+        }),
+      );
+    if (
+      !this.labelPlate &&
+      scene.axes.some((axes) => axes.settings.labelBackground)
+    )
+      jobs.push(
+        this.pipeline("labelPlateFragment").then((value) => {
+          this.labelPlate = value;
+        }),
+      );
+    if (
+      !this.annotationLine &&
+      scene.axes.some((axes) =>
+        axes.annotations.some((annotation) => annotation.options.arrow),
+      )
+    )
+      jobs.push(
+        this.pipeline("annotationFragment").then((value) => {
+          this.annotationLine = value;
+        }),
+      );
+    await Promise.all(jobs);
+  }
+
+  private async ensureGlyphs(scene: Scene): Promise<void> {
+    if (this.fullGlyphs) return;
+    const hangul = /[\uac00-\ud7a3]/;
+    const needsFull =
+      hangul.test(scene.title ?? "") ||
+      scene.axes.some(
+        (axes) =>
+          [
+            axes.settings.title,
+            axes.settings.xLabel,
+            axes.settings.yLabel,
+          ].some((value) => hangul.test(value ?? "")) ||
+          axes.series.some((series) => hangul.test(series.style.label)) ||
+          axes.annotations.some((annotation) => hangul.test(annotation.value)),
+      );
+    if (!needsFull) return;
+    if (!this.glyphUpgrade) {
+      this.glyphUpgrade = loadGlyphAtlas(
+        this.runtime,
+        true,
+        this.glyphs,
+        () => !this.destroyed,
+      )
+        .then(() => {
+          this.fullGlyphs = true;
+        })
+        .finally(() => {
+          this.glyphUpgrade = undefined;
+        });
+    }
+    await this.glyphUpgrade;
   }
 
   private uniform(
@@ -563,6 +659,23 @@ export class GpuRenderer {
       );
     const axes = scene.axes[axesIndex];
     if (!axes) throw new RangeError("Unknown subplot.");
+    const pipelines: Promise<unknown>[] = [];
+    if (!this.picking && axes.series.length)
+      pipelines.push(
+        this.pipeline("pickFragment", "surfaceVertex", true).then((value) => {
+          this.picking = value;
+        }),
+      );
+    if (!this.fieldPicking && axes.fields.length)
+      pipelines.push(
+        this.pipeline("fieldPickFragment", "surfaceVertex", true).then(
+          (value) => {
+            this.fieldPicking = value;
+          },
+        ),
+      );
+    await Promise.all(pipelines);
+    if (this.destroyed) return null;
     const width = scene.width / scene.cols,
       height = (scene.height - (scene.titleHeight ?? 0)) / scene.rows;
     if (
@@ -847,6 +960,8 @@ export class GpuRenderer {
   }
   async render(scene: Scene, ratio: number): Promise<void> {
     if (this.destroyed) return;
+    await this.prepareScene(scene);
+    if (this.destroyed) return;
     const width = Math.max(1, Math.round(scene.width * ratio)),
       height = Math.max(1, Math.round(scene.height * ratio));
     if (this.canvas.width !== width) this.canvas.width = width;
@@ -871,6 +986,8 @@ export class GpuRenderer {
     scene: Scene,
     ratio: number,
   ): Promise<{ bytes: Uint8Array; width: number; height: number }> {
+    if (this.destroyed) throw new Error("This renderer has been destroyed.");
+    await this.prepareScene(scene);
     if (this.destroyed) throw new Error("This renderer has been destroyed.");
     const width = Math.ceil(scene.width * ratio),
       height = Math.ceil(scene.height * ratio);

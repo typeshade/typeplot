@@ -53,6 +53,10 @@ export declare class GpuRenderer {
     private colorBar;
     private annotationLine;
     private glyphs;
+    private fullGlyphs;
+    private glyphUpgrade?;
+    private program;
+    private pipelines;
     private device?;
     private samples;
     private fields;
@@ -62,6 +66,9 @@ export declare class GpuRenderer {
     get backend(): Backend;
     static create(canvas: HTMLCanvasElement, backend?: "auto" | Backend): Promise<GpuRenderer>;
     private initialize;
+    private pipeline;
+    private prepareScene;
+    private ensureGlyphs;
     private uniform;
     /** Input data stays resident. Camera changes update uniforms, not path geometry. */
     private sampleResource;

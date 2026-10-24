@@ -1,20 +1,46 @@
 import type { Runtime, Texture } from "typeshade/runtime";
 import atlasUrl from "../assets/typeplot-font.png";
+import baseAtlasUrl from "../assets/typeplot-font-base.png";
+
+// Figures share compressed bytes, while each runtime owns its GPU texture.
+const resources = new Map<string, Promise<Blob>>();
+function resource(url: string): Promise<Blob> {
+  let pending = resources.get(url);
+  if (!pending) {
+    pending = fetch(url).then((response) => {
+      if (!response.ok) throw new Error("Cannot load the TypePlot font atlas.");
+      return response.blob();
+    });
+    resources.set(url, pending);
+    void pending.catch(() => resources.delete(url));
+  }
+  return pending;
+}
 
 /** Upload the offline SDF resource; all glyph reconstruction runs in TypeShade. */
-export async function loadGlyphAtlas(runtime: Runtime): Promise<Texture> {
-  const response = await fetch(atlasUrl);
-  if (!response.ok) throw new Error("Cannot load the TypePlot font atlas.");
-  const image = await createImageBitmap(await response.blob(), {
-    premultiplyAlpha: "none",
-    colorSpaceConversion: "none",
-  });
+export async function loadGlyphAtlas(
+  runtime: Runtime,
+  full = false,
+  target?: Texture,
+  active: () => boolean = () => true,
+): Promise<Texture> {
+  const image = await createImageBitmap(
+    await resource(full ? atlasUrl : baseAtlasUrl),
+    {
+      premultiplyAlpha: "none",
+      colorSpaceConversion: "none",
+    },
+  );
   let texture: Texture | undefined;
   try {
-    texture = runtime.texture({
-      size: [image.width, image.height],
-      format: "rgba8unorm",
-    });
+    if (!active())
+      throw new DOMException("The font upload was cancelled.", "AbortError");
+    texture =
+      target ??
+      runtime.texture({
+        size: [image.width, image.height],
+        format: "rgba8unorm",
+      });
     if (runtime.tier === "webgpu")
       (runtime.device as GPUDevice).queue.copyExternalImageToTexture(
         { source: image },
@@ -40,7 +66,7 @@ export async function loadGlyphAtlas(runtime: Runtime): Promise<Texture> {
     }
     return texture;
   } catch (error) {
-    texture?.destroy();
+    if (!target) texture?.destroy();
     throw error;
   } finally {
     image.close();

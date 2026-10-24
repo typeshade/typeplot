@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, ConfigProvider, Select, Slider, Switch, theme } from "antd";
 import Prism from "prismjs";
 import "prismjs/components/prism-typescript";
@@ -7,21 +7,14 @@ import {
   linspace,
   type Figure,
   type Series,
+} from "../vendor/typeplot/data.js";
+import type {
+  Plot,
+  PlotProgram,
+  PlotProjection,
+  PlotStyle,
+  SurfaceOptions,
 } from "../vendor/typeplot/index.js";
-import {
-  createPlot,
-  createSurface,
-  ViewControl,
-  type Plot,
-  type PlotProgram,
-  type PlotProjection,
-  type PlotStyle,
-  type SurfaceOptions,
-} from "../vendor/typeplot/index.js";
-import power from "../vendor/typeplot/curve.js";
-import sine from "../vendor/typeplot/sine.js";
-import helix from "../vendor/typeplot/helix.js";
-import surface from "../vendor/typeplot/surface.js";
 import MotionControls from "./MotionControls";
 import PickReadout from "./PickReadout";
 import { exampleCode, type Preset } from "../content/samples";
@@ -253,39 +246,45 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
           ? "y = x raised to the selected exponent, over x from zero to one."
           : "Helix: x = 2 cos(t), y = sin(t), z = 0.4t.";
       target.appendChild(canvas);
-      void (
-        preset === "sampledSurface"
-          ? createSurface(
-              canvas,
-              Float32Array.from(
-                { length: 32 * 40 },
-                (_, i) =>
-                  Math.sin(-3 + (6 * (i % 40)) / 39) *
-                  Math.cos(-3 + (6 * Math.floor(i / 40)) / 31),
-              ),
-              {
-                shape: [32, 40],
-                extent: [-3, 3, -3, 3],
-                bounds: { x: [-3, 3], y: [-2, 2] },
-                surface: surfaceStyle,
-                quality: { samples },
-                backend,
-                mode: threeD ? "3d" : "2d",
-                projection: threeD ? projection : undefined,
-                label: ko ? "관측 배열 곡면" : "Sampled height surface",
-                onError: fail,
-              },
-            )
-          : createPlot(
-              canvas,
-              (preset === "power"
-                ? power
-                : preset === "sine"
-                  ? sine
-                  : preset === "surface"
-                    ? surface
-                    : helix) as PlotProgram,
-              {
+      const initialize = async () => {
+        const [runtime, shader] = await Promise.all([
+          import("../vendor/typeplot/index.js"),
+          preset === "sampledSurface"
+            ? undefined
+            : preset === "power"
+              ? import("../vendor/typeplot/curve.js")
+              : preset === "sine"
+                ? import("../vendor/typeplot/sine.js")
+                : preset === "surface"
+                  ? import("../vendor/typeplot/surface.js")
+                  : import("../vendor/typeplot/helix.js"),
+        ]);
+        if (disposed) return;
+        const { createPlot, createSurface } = runtime;
+        return (
+          preset === "sampledSurface"
+            ? createSurface(
+                canvas,
+                Float32Array.from(
+                  { length: 32 * 40 },
+                  (_, i) =>
+                    Math.sin(-3 + (6 * (i % 40)) / 39) *
+                    Math.cos(-3 + (6 * Math.floor(i / 40)) / 31),
+                ),
+                {
+                  shape: [32, 40],
+                  extent: [-3, 3, -3, 3],
+                  bounds: { x: [-3, 3], y: [-2, 2] },
+                  surface: surfaceStyle,
+                  quality: { samples },
+                  backend,
+                  mode: threeD ? "3d" : "2d",
+                  projection: threeD ? projection : undefined,
+                  label: ko ? "관측 배열 곡면" : "Sampled height surface",
+                  onError: fail,
+                },
+              )
+            : createPlot(canvas, shader!.default as PlotProgram, {
                 bounds:
                   preset === "power"
                     ? { x: [0, 1], y: [0, 1] }
@@ -329,17 +328,15 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
                       ? { frequency }
                       : undefined,
                 onError: fail,
-              },
-            )
-      )
-        .then((result) => {
+              })
+        ).then((result) => {
           if (disposed) {
             result.destroy();
             return;
           }
           plot = result;
           result.addControl(
-            new ViewControl({
+            new runtime.ViewControl({
               language: locale,
               onChange: (view) => {
                 setThreeD(view.mode === "3d");
@@ -372,8 +369,9 @@ export default function PlotWorkbench({ locale }: { locale: "en" | "ko" }) {
           active.current = { gpu: result };
           setReady(true);
           setStatus(result.backend === "webgpu" ? "WebGPU" : "WebGL2");
-        })
-        .catch(fail);
+        });
+      };
+      void initialize().catch(fail);
     }
     return () => {
       disposed = true;
@@ -468,6 +466,10 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
     (isSurface
       ? `\nplot.setMode("${threeD ? "3d" : "2d"}");\nplot.setSurface(${JSON.stringify(surfaceStyle, null, 2)});\nplot.setQuality({ samples: ${samples} });`
       : "");
+  const highlightedCode = useMemo(
+    () => Prism.highlight(code, Prism.languages.typescript, "typescript"),
+    [code],
+  );
   const descriptions: Record<Preset, string> = ko
     ? {
         signals:
@@ -957,11 +959,7 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
         <pre>
           <code
             dangerouslySetInnerHTML={{
-              __html: Prism.highlight(
-                code,
-                Prism.languages.typescript,
-                "typescript",
-              ),
+              __html: highlightedCode,
             }}
           />
         </pre>

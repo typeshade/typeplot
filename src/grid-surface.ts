@@ -1,4 +1,3 @@
-import program from "../.build/grid-surface.json";
 import { createPlot } from "./index.js";
 import type { NumericData } from "./data.js";
 import type { Plot, PlotOptions, PlotProgram } from "./types.js";
@@ -85,6 +84,7 @@ export async function createSurface(
     heightOffset = 0,
     ...settings
   } = options;
+  const { default: program } = await import("../.build/grid-surface.json");
   const plot = await createPlot(canvas, program as PlotProgram, {
     ...settings,
     bounds: settings.bounds ?? {

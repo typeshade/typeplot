@@ -19,6 +19,11 @@ separates atlas bearing from advance and evaluates adjacent padded cells, preser
 complete outline and antialiasing falloff of 0 at character boundaries.
 
 The source fonts are the self-hosted TypeNN-family fonts in website/public/fonts/.
+`typeplot-font-base.png` retains the exact atlas layout, native hinted buckets and
+pixel values for Latin, Greek, Jamo and symbols. Precomposed Hangul syllables load
+from the full atlas only when a figure uses them, updating the existing texture
+before rendering or export. Run `python3 scripts/build-font-base.py` to reproduce
+this subset from the canonical atlas; no glyph is rerasterized or resampled.
 To rebuild with Node 24, Python, Pillow, fontTools and Brotli installed, run
 `python3 scripts/build-font.py`. The adapter invokes the original TypeScript generator
 only during this offline rebuild. Normal npm builds use the committed asset.
