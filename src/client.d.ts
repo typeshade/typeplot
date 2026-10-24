@@ -19,3 +19,7 @@ declare module "*.shade.ts?plot=parametric" {
   const program: import("typeplot").PlotProgram;
   export default program;
 }
+declare module "*.shade.ts?plot=surface" {
+  const program: import("typeplot").PlotProgram;
+  export default program;
+}

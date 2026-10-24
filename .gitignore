@@ -1,2 +1,7 @@
 node_modules/
 .build/
+website/dist/
+website/.astro/
+website/src/vendor/typeplot/*.js
+website/src/vendor/typeplot/assets/
+.wrangler/

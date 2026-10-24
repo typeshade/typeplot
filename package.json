@@ -25,6 +25,22 @@
       "types": "./dist/interaction.d.ts",
       "import": "./dist/interaction.js"
     },
+    "./animation": {
+      "types": "./dist/animation.d.ts",
+      "import": "./dist/animation.js"
+    },
+    "./transform": {
+      "types": "./dist/transform.d.ts",
+      "import": "./dist/transform.js"
+    },
+    "./data": {
+      "types": "./dist/data.d.ts",
+      "import": "./dist/data.js"
+    },
+    "./resources": {
+      "types": "./dist/resources.d.ts",
+      "import": "./dist/resources.js"
+    },
     "./shaders": {
       "types": "./dist/shaders.d.ts",
       "import": "./dist/shaders.js"
@@ -42,7 +58,9 @@
     "shaders",
     "README.md",
     "LICENSE",
-    "NOTICE"
+    "NOTICE",
+    "assets/LICENSE-IBM-Plex.txt",
+    "assets/LICENSE-XGIS.txt"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -60,7 +78,8 @@
     "prettier": "^3.0.0",
     "typescript": "^5.9.3",
     "typeshade": "https://github.com/typeshade/typeshade.git#91c2fe31de045ebf0e5f2c333ac98b95cc460280",
-    "vite": "^6.4.5"
+    "vite": "^6.4.5",
+    "wrangler": "^4.152.0"
   },
   "publishConfig": {
     "access": "public",

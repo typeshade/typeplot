@@ -15,3 +15,7 @@ jobs:
       - run: npm run examples
       - run: git diff --exit-code -- dist examples/generated
       - run: npm pack --dry-run
+      - run: npm ci --prefix website
+      - run: npm run build --prefix website
+      - run: npm run check --prefix website
+      - run: git diff --exit-code -- website/src/vendor/typeplot

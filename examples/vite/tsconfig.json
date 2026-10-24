@@ -9,6 +9,6 @@
     "noEmit": true,
     "types": ["vite/client", "@webgpu/types"]
   },
-  "include": ["main.ts"],
+  "include": ["main.ts", "data.ts"],
   "exclude": ["**/*.shade.ts"]
 }

@@ -1,0 +1,14 @@
+TypePlot
+Copyright 2026 Seungup Noh
+
+Includes the TypeShade program runtime and plotting code originally developed for
+https://github.com/typeshade/typeshade.github.io, licensed under Apache-2.0.
+TypeShade
+Copyright 2026 Seungup Noh
+
+The compiler distribution includes TypeScript, Copyright Microsoft Corporation,
+licensed under the Apache License, Version 2.0.
+
+SDF font generation reuses X-GIS computeSDF and follows its text sampling conventions.
+Copyright (c) 2026 X-GIS contributors. Licensed under the MIT License.
+See assets/LICENSE-XGIS.txt. Source: https://github.com/X-GIS/X-GIS

@@ -20,7 +20,10 @@ export function typeplot(options: TypePlotPluginOptions = {}): Plugin {
       if (!fileName.endsWith(".shade.ts"))
         throw new TypeError("TypePlot imports require a .shade.ts file.");
       const mode = query.get("plot");
-      if (mode && !["2d", "3d", "scalar", "parametric"].includes(mode))
+      if (
+        mode &&
+        !["2d", "3d", "scalar", "parametric", "surface"].includes(mode)
+      )
         throw new TypeError(`Unknown plot kind: ${mode}`);
       const configured = options.configure?.(fileName) ?? {};
       this.addWatchFile(fileName);
@@ -39,11 +42,13 @@ export function typeplot(options: TypePlotPluginOptions = {}): Plugin {
         }
       };
       const kind =
-        mode === "3d" || mode === "parametric"
-          ? "parametric"
-          : mode === "2d" || mode === "scalar"
-            ? "scalar"
-            : (configured.kind ?? "scalar");
+        mode === "surface"
+          ? "surface"
+          : mode === "3d" || mode === "parametric"
+            ? "parametric"
+            : mode === "2d" || mode === "scalar"
+              ? "scalar"
+              : (configured.kind ?? "scalar");
       const program = compilePlot(readFileSync(fileName, "utf8"), {
         ...configured,
         fileName,

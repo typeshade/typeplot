@@ -1,0 +1,8 @@
+<script>
+  import { preloadFonts } from "../vendor/typeplot/resources.js";
+  // The actual fetch is shared with the renderer, including while in flight.
+  void preloadFonts().catch(() => {});
+  const { prepareInitialPlot } = await import("./initial-plot");
+  for (const target of document.querySelectorAll<HTMLElement>("[data-initial-plot]"))
+    prepareInitialPlot(target, target.dataset.initialPlot ?? "en");
+</script>
