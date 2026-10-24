@@ -7,6 +7,7 @@ export declare function surfaceUniforms(style: Required<SurfaceOptions>, domain:
     surfaceBounds: number[];
     surfaceDomainMode: number;
     surfaceRange: readonly [number, number];
+    surfaceHeight: number[];
     surfaceDepth: readonly [number, number];
     surfaceRender: number[];
     surfaceFlags: number;

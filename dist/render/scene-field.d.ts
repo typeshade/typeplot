@@ -7,6 +7,8 @@ export type UniformValues = Readonly<Record<string, unknown>>;
 export type LoadedProgram = ReturnType<Runtime["load"]>;
 export interface CurveCache {
     intervals: Texture;
+    seeds?: Texture;
+    groups?: Texture;
     candidates: Texture;
     key: string;
 }
@@ -54,6 +56,8 @@ export declare class SceneField implements SceneObjectHandle {
     private readonly initial;
     private drawPipeline;
     private intervalPipeline?;
+    private seedPipeline?;
+    private groupPipeline?;
     private candidatePipeline?;
     private queryPipeline?;
     private displayCache?;

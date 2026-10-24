@@ -23,7 +23,7 @@ export interface DocPage {
   description: string;
   sections: Section[];
 }
-const install = "npm install https://github.com/typeshade/typeplot.git#v0.2.0";
+const install = "npm install https://github.com/typeshade/typeplot.git#v0.2.1";
 const lifecycle = `import { subplots, linspace } from "typeplot/data";
 
 const { fig, axes: [ax] } = subplots(1, 1, { target: "#chart" });
@@ -152,8 +152,8 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         "Start with an array, add a second curve, and keep the figure lifecycle explicit.",
       sections: [
         {
-          title: "Install TypePlot v0.2.0",
-          text: "The v0.2.0 release includes the data plotting API, GPU curves and surfaces, scene timelines and RTC precision improvements. The versioned Git install includes compiled JavaScript and declarations. The package is not yet published to the npm registry.",
+          title: "Install TypePlot v0.2.1",
+          text: "The v0.2.1 release includes the data plotting API, GPU curves and surfaces, scene timelines and RTC precision improvements. The versioned Git install includes compiled JavaScript and declarations. The package is not yet published to the npm registry.",
           code: install,
           lang: "sh",
         },
@@ -393,8 +393,8 @@ await plot.saveImage("surface.png", { pixelRatio: 2 });
         "배열에서 시작해 곡선을 추가하고, 갱신과 리소스 해제까지 살펴봅니다.",
       sections: [
         {
-          title: "TypePlot v0.2.0 설치",
-          text: "v0.2.0에는 데이터 차트 API, GPU 곡선·곡면, 장면 타임라인과 RTC 정밀도 개선이 포함됩니다. 버전 태그를 지정한 Git 설치에는 빌드된 JavaScript와 선언 파일이 포함됩니다. npm 레지스트리에는 아직 게시되지 않았습니다.",
+          title: "TypePlot v0.2.1 설치",
+          text: "v0.2.1에는 데이터 차트 API, GPU 곡선·곡면, 장면 타임라인과 RTC 정밀도 개선이 포함됩니다. 버전 태그를 지정한 Git 설치에는 빌드된 JavaScript와 선언 파일이 포함됩니다. npm 레지스트리에는 아직 게시되지 않았습니다.",
           code: install,
           lang: "sh",
         },

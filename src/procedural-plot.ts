@@ -92,6 +92,7 @@ const RESERVED = new Set([
   "surfaceBounds",
   "surfaceDomainMode",
   "surfaceRange",
+  "surfaceHeight",
   "surfaceDepth",
   "surfaceRender",
   "surfaceFlags",
@@ -265,6 +266,7 @@ export async function createPlot(
     "surfaceBounds",
     "surfaceDomainMode",
     "surfaceRange",
+    "surfaceHeight",
     "surfaceDepth",
     "surfaceRender",
     "surfaceFlags",
@@ -411,7 +413,10 @@ export async function createPlot(
     domain = checkedDomain(options.domain);
   }
   const initialDomain = [...domain] as [number, number];
-  const quality: Required<PlotQuality> = { samples: 128, refinements: 5 };
+  const quality: Required<PlotQuality> = {
+    samples: program.cacheFormat === "uint-v1" ? 64 : 128,
+    refinements: 5,
+  };
   const checkQuality = (value: PlotQuality): void => {
     checkFields();
     if (program.kind === "scalar")
@@ -534,6 +539,8 @@ export async function createPlot(
   let session: RenderSession | undefined;
   let glyphs: Texture | undefined;
   let intervals: Texture | undefined;
+  let seeds: Texture | undefined;
+  let groups: Texture | undefined;
   let candidates: Texture | undefined;
   let labels: Texture | undefined;
   let originResources: CurveOrigin | undefined;
@@ -612,6 +619,8 @@ export async function createPlot(
       await composition?.dispose();
       originResources?.dispose();
       intervals?.destroy();
+      seeds?.destroy();
+      groups?.destroy();
       candidates?.destroy();
       labels?.destroy();
       glyphs?.destroy();
@@ -686,11 +695,17 @@ export async function createPlot(
     const accelerated =
       hasCache &&
       options.acceleration !== false &&
-      (runtime.tier === "webgpu" ||
+      (program.cacheFormat === "uint-v1" ||
+        runtime.tier === "webgpu" ||
         !!(target as WebGL2RenderingContext).getExtension(
           "EXT_color_buffer_float",
         ));
     const curveCache = accelerated && program.kind === "parametric";
+    const cacheFormat =
+      program.cacheFormat === "uint-v1" ? "rgba32uint" : "rgba32float";
+    const adaptiveCurves = program.curveSearch === "adaptive-v1";
+    const cacheGroups = adaptiveCurves ? 16 : 8;
+    const cacheWidth = adaptiveCurves ? 2048 : 1024;
     if (program.parameterOrigin)
       originResources = new CurveOrigin(
         owner,
@@ -736,7 +751,7 @@ export async function createPlot(
             loaded.render({
               vertex: "fullscreen",
               fragment: "buildCurveIntervals",
-              targets: ["rgba32float"],
+              targets: [cacheFormat],
             }),
           )
         : Promise.resolve(undefined),
@@ -745,7 +760,7 @@ export async function createPlot(
             loaded.render({
               vertex: "fullscreen",
               fragment: "buildSpatialLabels",
-              targets: ["rgba32float"],
+              targets: [cacheFormat],
             }),
           )
         : Promise.resolve(undefined),
@@ -759,6 +774,24 @@ export async function createPlot(
           )
         : Promise.resolve(undefined),
       originResources?.initialize() ?? Promise.resolve(),
+      curveCache && adaptiveCurves
+        ? owner.run(() =>
+            loaded.render({
+              vertex: "fullscreen",
+              fragment: "buildCurveSeeds",
+              targets: [cacheFormat],
+            }),
+          )
+        : Promise.resolve(undefined),
+      curveCache && adaptiveCurves
+        ? owner.run(() =>
+            loaded.render({
+              vertex: "fullscreen",
+              fragment: "buildCurveGroups",
+              targets: ["rgba32uint"],
+            }),
+          )
+        : Promise.resolve(undefined),
     ]);
     function result<T>(value: PromiseSettledResult<T>): T {
       if (value.status === "rejected") throw value.reason;
@@ -771,6 +804,8 @@ export async function createPlot(
     const labelPipeline = result(prepared[4]);
     const candidatePipeline = result(prepared[5]);
     result(prepared[6]);
+    const seedPipeline = result(prepared[7]);
+    const groupPipeline = result(prepared[8]);
     for (const [name, values] of dataArrays) inputs[name] = owner.array(values);
     const preparePicking = (): Promise<RenderPipeline> => {
       if (pickPipeline) return Promise.resolve(pickPipeline);
@@ -779,7 +814,7 @@ export async function createPlot(
           .run(() =>
             loaded.render({
               vertex: "fullscreen",
-              fragment: "pick",
+              fragment: curveCache && adaptiveCurves ? "pickAdaptive" : "pick",
               targets: ["rgba32uint"],
             }),
           )
@@ -795,13 +830,17 @@ export async function createPlot(
     };
     if (curveCache) {
       intervals = runtime.texture({
-        size: [1024, 6],
-        format: "rgba32float",
+        size: [cacheWidth, 6],
+        format: cacheFormat,
       });
       candidates = runtime.texture({ size: [1, 1], format: "rgba32uint" });
+      if (adaptiveCurves)
+        seeds = runtime.texture({ size: [1024, 1], format: cacheFormat });
+      if (adaptiveCurves)
+        groups = runtime.texture({ size: [1, 1], format: "rgba32uint" });
     }
     if (accelerated)
-      labels = runtime.texture({ size: [1, 38], format: "rgba32float" });
+      labels = runtime.texture({ size: [1, 38], format: cacheFormat });
     let preparedKey = "";
     let preparedLabelsKey = "";
     let preparedSizing = false;
@@ -916,17 +955,18 @@ export async function createPlot(
       const tileSize = Math.max(
         4,
         Math.ceil(16 / pixelRatio),
-        Math.ceil(box.width / Math.max(1, Math.floor(limit / 8))),
+        Math.ceil(box.width / Math.max(1, Math.floor(limit / cacheGroups))),
         Math.ceil(box.height / limit),
       );
       const tileColumns = Math.ceil(box.width / tileSize),
         tileRows = Math.ceil(box.height / tileSize);
       if (
         curveCache &&
-        (candidates!.width !== tileColumns * 8 ||
+        (candidates!.width !== tileColumns * cacheGroups ||
           candidates!.height !== tileRows)
       ) {
-        candidates!.resize(tileColumns * 8, tileRows);
+        candidates!.resize(tileColumns * cacheGroups, tileRows);
+        groups?.resize(tileColumns, tileRows);
         preparedKey = "";
       }
       const labelColumns = Math.min(
@@ -1164,11 +1204,25 @@ export async function createPlot(
         );
       }
       if (curveCache && preparedKey !== geometryKey) {
+        if (seeds)
+          frame.pass({ color: [seeds] }, (pass) =>
+            pass.draw(
+              seedPipeline!,
+              { u, ...inputs, ...originBindings } as never,
+              { count: 3 },
+            ),
+          );
         frame.pass({ color: [intervals!] }, (pass) => {
           if (style.curveWidth === 0) pass.setScissorRect(0, 5, 1, 1);
           pass.draw(
             intervalPipeline!,
-            { u, font: { pixelRatio }, ...inputs, ...originBindings } as never,
+            {
+              u,
+              font: { pixelRatio },
+              ...inputs,
+              ...originBindings,
+              ...(seeds ? { curveSeeds: seeds } : {}),
+            } as never,
             {
               count: 3,
             },
@@ -1182,6 +1236,14 @@ export async function createPlot(
               { count: 3 },
             ),
           );
+        if (groups && style.curveWidth > 0)
+          frame.pass({ color: [groups] }, (pass) =>
+            pass.draw(
+              groupPipeline!,
+              { u, curveCandidates: candidates } as never,
+              { count: 3 },
+            ),
+          );
       }
       const primaryBindings = {
         u,
@@ -1191,7 +1253,11 @@ export async function createPlot(
           ? {
               spatialLabels: labels,
               ...(curveCache
-                ? { curveIntervals: intervals, curveCandidates: candidates }
+                ? {
+                    curveIntervals: intervals,
+                    curveCandidates: candidates,
+                    ...(groups ? { curveGroups: groups } : {}),
+                  }
                 : {}),
             }
           : {}),
@@ -1219,6 +1285,8 @@ export async function createPlot(
               ? {
                   cache: {
                     intervals: intervals!,
+                    seeds,
+                    groups,
                     candidates: candidates!,
                     key: geometryKey,
                   },
@@ -1611,6 +1679,14 @@ export async function createPlot(
                 {
                   u: queryUniforms,
                   ...inputs,
+                  ...(curveCache && adaptiveCurves
+                    ? {
+                        curveIntervals: intervals,
+                        curveCandidates: candidates,
+                        curveGroups: groups,
+                        font: { pixelRatio: lastRatio },
+                      }
+                    : {}),
                   ...(originResources
                     ? {
                         parameterOrigin: originResources.packet(
@@ -1720,7 +1796,9 @@ export async function createPlot(
             const tileSize = Math.max(
               4,
               Math.ceil(16 / ratio),
-              Math.ceil(cssWidth / Math.max(1, Math.floor(limit / 8))),
+              Math.ceil(
+                cssWidth / Math.max(1, Math.floor(limit / cacheGroups)),
+              ),
               Math.ceil(cssHeight / limit),
             );
             const columns = Math.ceil(cssWidth / tileSize),
@@ -1730,13 +1808,21 @@ export async function createPlot(
               Math.ceil(Math.hypot(cssWidth, cssHeight) * ratio) + 2,
             );
             const labels = accelerated
-              ? make(labelColumns, 38, "rgba32float")
+              ? make(labelColumns, 38, cacheFormat)
               : undefined;
             const intervals = curveCache
-                ? make(1024, 6, "rgba32float")
+                ? make(cacheWidth, 6, cacheFormat)
                 : undefined,
               candidates = curveCache
-                ? make(columns * 8, rows, "rgba32uint")
+                ? make(columns * cacheGroups, rows, "rgba32uint")
+                : undefined;
+            const seeds =
+              curveCache && adaptiveCurves
+                ? make(1024, 1, cacheFormat)
+                : undefined;
+            const groups =
+              curveCache && adaptiveCurves
+                ? make(columns, rows, "rgba32uint")
                 : undefined;
             const u = {
               ...lastUniforms,
@@ -1762,6 +1848,14 @@ export async function createPlot(
                 pass.draw(labelPipeline!, { u } as never, { count: 3 }),
               );
             if (curveCache) {
+              if (seeds)
+                frame.pass({ color: [seeds] }, (pass) =>
+                  pass.draw(
+                    seedPipeline!,
+                    { u, ...resources, ...originBindings } as never,
+                    { count: 3 },
+                  ),
+                );
               frame.pass({ color: [intervals!] }, (pass) =>
                 pass.draw(
                   intervalPipeline!,
@@ -1770,6 +1864,7 @@ export async function createPlot(
                     font: { pixelRatio: ratio },
                     ...resources,
                     ...originBindings,
+                    ...(seeds ? { curveSeeds: seeds } : {}),
                   } as never,
                   { count: 3 },
                 ),
@@ -1781,6 +1876,14 @@ export async function createPlot(
                   { count: 3 },
                 ),
               );
+              if (groups)
+                frame.pass({ color: [groups] }, (pass) =>
+                  pass.draw(
+                    groupPipeline!,
+                    { u, curveCandidates: candidates } as never,
+                    { count: 3 },
+                  ),
+                );
             }
             const primaryBindings = {
               u,
@@ -1793,6 +1896,7 @@ export async function createPlot(
                       ? {
                           curveIntervals: intervals,
                           curveCandidates: candidates,
+                          ...(groups ? { curveGroups: groups } : {}),
                         }
                       : {}),
                   }
@@ -1813,6 +1917,8 @@ export async function createPlot(
                         cache: {
                           intervals: intervals!,
                           candidates: candidates!,
+                          seeds,
+                          groups,
                           key: "export",
                         },
                       }

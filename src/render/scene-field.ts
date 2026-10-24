@@ -31,6 +31,8 @@ export type UniformValues = Readonly<Record<string, unknown>>;
 export type LoadedProgram = ReturnType<Runtime["load"]>;
 export interface CurveCache {
   intervals: Texture;
+  seeds?: Texture;
+  groups?: Texture;
   candidates: Texture;
   key: string;
 }
@@ -156,6 +158,8 @@ export class SceneField implements SceneObjectHandle {
   };
   private drawPipeline!: RenderPipeline;
   private intervalPipeline?: RenderPipeline;
+  private seedPipeline?: RenderPipeline;
+  private groupPipeline?: RenderPipeline;
   private candidatePipeline?: RenderPipeline;
   private queryPipeline?: Promise<RenderPipeline>;
   private displayCache?: CurveCache;
@@ -199,7 +203,10 @@ export class SceneField implements SceneObjectHandle {
     this.checkParameters(options.parameters ?? {});
     Object.assign(this.values, options.parameters);
     this.curveDomain = domain(options.domain ?? [-Infinity, Infinity]);
-    this.search = quality(options.quality ?? {});
+    this.search = quality(options.quality ?? {}, {
+      samples: program.cacheFormat === "uint-v1" ? 64 : 128,
+      refinements: 5,
+    });
     this.appearance = style(options.style ?? {});
     this.ink = color(this.appearance.color, doc);
     this.surface = surfaceOptions({ ...options.surface, colorBar: false });
@@ -235,7 +242,14 @@ export class SceneField implements SceneObjectHandle {
         if (!this.data.has(name))
           throw new TypeError(`Missing scene input '${name}'.`);
     }
-    this.accelerated = program.kind !== "surface" && accelerate;
+    this.accelerated =
+      program.kind !== "surface" &&
+      accelerate &&
+      (program.cacheFormat === "uint-v1" ||
+        owner.runtime.tier === "webgpu" ||
+        !!(owner.runtime.device as WebGL2RenderingContext).getExtension(
+          "EXT_color_buffer_float",
+        ));
     this.initial = {
       parameters: { ...this.values },
       domain: this.curveDomain,
@@ -277,13 +291,49 @@ export class SceneField implements SceneObjectHandle {
           }),
       ];
       if (this.accelerated && !externalCache) {
+        if (this.program.curveSearch === "adaptive-v1")
+          jobs.push(
+            this.owner
+              .run(() =>
+                this.loaded.render({
+                  vertex: "fullscreen",
+                  fragment: "buildCurveGroups",
+                  targets: ["rgba32uint"],
+                }),
+              )
+              .then((p) => {
+                this.groupPipeline = p;
+              }),
+          );
+        if (this.program.curveSearch === "adaptive-v1")
+          jobs.push(
+            this.owner
+              .run(() =>
+                this.loaded.render({
+                  vertex: "fullscreen",
+                  fragment: "buildCurveSeeds",
+                  targets: [
+                    this.program.cacheFormat === "uint-v1"
+                      ? "rgba32uint"
+                      : "rgba32float",
+                  ],
+                }),
+              )
+              .then((p) => {
+                this.seedPipeline = p;
+              }),
+          );
         jobs.push(
           this.owner
             .run(() =>
               this.loaded.render({
                 vertex: "fullscreen",
                 fragment: "buildCurveIntervals",
-                targets: ["rgba32float"],
+                targets: [
+                  this.program.cacheFormat === "uint-v1"
+                    ? "rgba32uint"
+                    : "rgba32float",
+                ],
               }),
             )
             .then((p) => {
@@ -320,13 +370,29 @@ export class SceneField implements SceneObjectHandle {
   private createCache(): CurveCache {
     return {
       intervals: this.owner.runtime.texture({
-        size: [1024, 6],
-        format: "rgba32float",
+        size: [this.program.curveSearch === "adaptive-v1" ? 2048 : 1024, 6],
+        format:
+          this.program.cacheFormat === "uint-v1" ? "rgba32uint" : "rgba32float",
       }),
       candidates: this.owner.runtime.texture({
         size: [1, 1],
         format: "rgba32uint",
       }),
+      ...(this.program.curveSearch === "adaptive-v1"
+        ? {
+            groups: this.owner.runtime.texture({
+              size: [1, 1],
+              format: "rgba32uint",
+            }),
+            seeds: this.owner.runtime.texture({
+              size: [1024, 1],
+              format:
+                this.program.cacheFormat === "uint-v1"
+                  ? "rgba32uint"
+                  : "rgba32float",
+            }),
+          }
+        : {}),
       key: "",
     };
   }
@@ -359,7 +425,20 @@ export class SceneField implements SceneObjectHandle {
     );
     const resolution = camera.resolution as number[],
       lens = camera.cameraLens as number[];
-    const tileSize = Math.max(4, Math.ceil(16 / ratio));
+    const limit =
+      this.owner.runtime.tier === "webgpu"
+        ? (this.owner.runtime.limits.maxTextureDimension2D ?? 8192)
+        : ((this.owner.runtime.device as WebGL2RenderingContext).getParameter(
+            (this.owner.runtime.device as WebGL2RenderingContext)
+              .MAX_TEXTURE_SIZE,
+          ) as number);
+    const groupCount = this.program.curveSearch === "adaptive-v1" ? 16 : 8;
+    const tileSize = Math.max(
+      4,
+      Math.ceil(16 / ratio),
+      Math.ceil(resolution[0] / Math.max(1, Math.floor(limit / groupCount))),
+      Math.ceil(resolution[1] / limit),
+    );
     const columns = Math.ceil(resolution[0] / tileSize),
       rows = Math.ceil(resolution[1] / tileSize);
     let u: UniformValues;
@@ -455,7 +534,12 @@ export class SceneField implements SceneObjectHandle {
       sceneMaterial: material,
       ...(origin ? { parameterOrigin: origin.cache.texture } : {}),
       ...(cache
-        ? { curveIntervals: cache.intervals, curveCandidates: cache.candidates }
+        ? {
+            curveIntervals: cache.intervals,
+            curveCandidates: cache.candidates,
+            ...(cache.seeds ? { curveSeeds: cache.seeds } : {}),
+            ...(cache.groups ? { curveGroups: cache.groups } : {}),
+          }
         : {}),
     };
     const key = JSON.stringify([
@@ -508,21 +592,31 @@ export class SceneField implements SceneObjectHandle {
     const cache = packet.cache;
     if (!cache || packet.external) return;
     const tiles = packet.u.curveTiles as number[];
+    const groups = this.program.curveSearch === "adaptive-v1" ? 16 : 8;
     const changed =
-      cache.candidates.width !== tiles[0] * 8 ||
+      cache.candidates.width !== tiles[0] * groups ||
       cache.candidates.height !== tiles[1];
     if (changed) {
-      cache.candidates.resize(tiles[0] * 8, tiles[1]);
+      cache.candidates.resize(tiles[0] * groups, tiles[1]);
+      cache.groups?.resize(tiles[0], tiles[1]);
       cache.key = "";
     }
     const key = packet.geometry;
     if (cache.key === key) return;
+    if (cache.seeds)
+      frame.pass({ color: [cache.seeds] }, (pass) =>
+        this.draw(pass, this.seedPipeline!, packet.bindings),
+      );
     frame.pass({ color: [cache.intervals] }, (pass) =>
       this.draw(pass, this.intervalPipeline!, packet.bindings),
     );
     frame.pass({ color: [cache.candidates] }, (pass) =>
       this.draw(pass, this.candidatePipeline!, packet.bindings),
     );
+    if (cache.groups)
+      frame.pass({ color: [cache.groups] }, (pass) =>
+        this.draw(pass, this.groupPipeline!, packet.bindings),
+      );
     cache.key = key;
   }
   layer(
@@ -690,6 +784,8 @@ export class SceneField implements SceneObjectHandle {
       packet.cache !== this.displayCache
     ) {
       packet.cache.intervals.destroy();
+      packet.cache.seeds?.destroy();
+      packet.cache.groups?.destroy();
       packet.cache.candidates.destroy();
     }
   }
@@ -702,6 +798,8 @@ export class SceneField implements SceneObjectHandle {
       this.retirement = Promise.allSettled([this.close(), after]).then(() => {
         this.originResources?.dispose();
         this.displayCache?.intervals.destroy();
+        this.displayCache?.seeds?.destroy();
+        this.displayCache?.groups?.destroy();
         this.displayCache?.candidates.destroy();
         for (const handle of Object.values(this.inputs))
           this.owner.release(handle);

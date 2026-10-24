@@ -72,7 +72,7 @@ import surface from "./surface.shade.ts?plot=surface";
 const plot = await createPlot(canvas, surface, {
   bounds: { x: [-3, 3], y: [-2, 2] },
   surfaceDomain: { x: [-4, 4], z: [-4, 4] },
-  surface: { colorMap: "viridis", valueRange: [-1.25, 1.25], colorBar: true },
+  surface: { colorMap: "viridis", valueRange: [-1.25, 1.25], heightRange: [-1, 1], colorBar: true },
 });
 const motion = plot.animate({
   parameters: { phase: 2 * Math.PI },
@@ -88,7 +88,7 @@ import trajectory from "./surface-curve.shade.ts?plot=3d";
 const plot = await createPlot(canvas, surface, {
   bounds: { x: [-3, 3], y: [-2, 2] },
   surfaceDomain: { x: [-4, 4], z: [-4, 4] },
-  surface: { colorMap: "viridis", valueRange: [-1.25, 1.25] },
+  surface: { colorMap: "viridis", valueRange: [-1.25, 1.25], heightRange: [-1, 1] },
   objects: [{program: trajectory, id: "trajectory", domain: [-3, 3],
     parameters: { phase: 0, lift: 0.04 },
     style: { color: "#ff7f0e", curveWidth: 3 }}],

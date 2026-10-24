@@ -247,6 +247,7 @@ export class PlotUniforms extends PlotViewport {
   surfaceBounds: vec4;
   surfaceDomainMode: u32;
   surfaceRange: vec2;
+  surfaceHeight: vec2;
   surfaceDepth: vec2;
   surfaceRender: vec4;
   surfaceFlags: u32;
@@ -254,12 +255,17 @@ export class PlotUniforms extends PlotViewport {
 
 /** Coordinate-frame fields use their own matrix while the callback remains in content space. */
 export function axesUniforms(u: PlotUniforms): PlotUniforms {
-  return { resolution: u.resolution, plotCenter: u.plotCenter, plotSpan: u.plotSpan, plotRotation: u.plotRotation, rotationBasis: u.rotationBasis, plotPan: u.plotPan, plotBlend: u.plotBlend, appearance: u.appearance, decorations: u.decorations, labelStyle: u.labelStyle, decorationOpacity: u.decorationOpacity, model: u.axesModel, inverseModel: u.inverseAxesModel, axesModel: u.axesModel, inverseAxesModel: u.inverseAxesModel, sceneOpacity: u.sceneOpacity, cameraLens: u.cameraLens, plotCenterZ: u.plotCenterZ, probe: u.probe, parameterFocusSeed: u.parameterFocusSeed, view3d: u.view3d, parameterBounds: u.parameterBounds, parameterMode: u.parameterMode, curveQuality: u.curveQuality, curvePattern: u.curvePattern, curveTiles: u.curveTiles, surfaceBounds: u.surfaceBounds, surfaceDomainMode: u.surfaceDomainMode, surfaceRange: u.surfaceRange, surfaceDepth: u.surfaceDepth, surfaceRender: u.surfaceRender, surfaceFlags: u.surfaceFlags };
+  return { resolution: u.resolution, plotCenter: u.plotCenter, plotSpan: u.plotSpan, plotRotation: u.plotRotation, rotationBasis: u.rotationBasis, plotPan: u.plotPan, plotBlend: u.plotBlend, appearance: u.appearance, decorations: u.decorations, labelStyle: u.labelStyle, decorationOpacity: u.decorationOpacity, model: u.axesModel, inverseModel: u.inverseAxesModel, axesModel: u.axesModel, inverseAxesModel: u.inverseAxesModel, sceneOpacity: u.sceneOpacity, cameraLens: u.cameraLens, plotCenterZ: u.plotCenterZ, probe: u.probe, parameterFocusSeed: u.parameterFocusSeed, view3d: u.view3d, parameterBounds: u.parameterBounds, parameterMode: u.parameterMode, curveQuality: u.curveQuality, curvePattern: u.curvePattern, curveTiles: u.curveTiles, surfaceBounds: u.surfaceBounds, surfaceDomainMode: u.surfaceDomainMode, surfaceRange: u.surfaceRange, surfaceHeight: u.surfaceHeight, surfaceDepth: u.surfaceDepth, surfaceRender: u.surfaceRender, surfaceFlags: u.surfaceFlags };
 }
 
-declare const curveIntervals: texture_2d<f32>;
+declare const curveIntervals: texture_2d<u32>;
+declare const curveSeeds: texture_2d<u32>;
 declare const curveCandidates: texture_2d<u32>;
-declare const spatialLabels: texture_2d<f32>;
+declare const curveGroups: texture_2d<u32>;
+declare const spatialLabels: texture_2d<u32>;
+function labelRecord(at: vec2i): vec4 {return bitcast<vec4>(textureLoad(spatialLabels,at,0));}
+function curveRecord(at: vec2i): vec4 {return bitcast<vec4>(textureLoad(curveIntervals,at,0));}
+function seedRecord(at: vec2i): vec4 {return bitcast<vec4>(textureLoad(curveSeeds,at,0));}
 
 type ScalarCurve = (x: f32) => f32;
 type SpaceCurve = (t: f32) => vec3;
@@ -792,7 +798,7 @@ function refineTrajectoryHit(trajectory: SpaceCurve, pixel: vec2, candidate: vec
   let t = candidate.y;
   const low = candidate.z, high = candidate.w;
   const epsilon = max(max((high - low) * 0.001, abs(t) * 1e-6), 1e-7);
-  for (let iteration = 0; iteration < i32(u.curveQuality.y); iteration++) {
+  for (let iteration = 0; iteration < 12; iteration++) {
     const before = max(low, t - epsilon), after = min(high, t + epsilon);
     const a = project(trajectory(before), u), b = project(trajectory(after), u);
     const tangent = (b - a) / max(after - before, 1e-20);
@@ -812,7 +818,9 @@ function refineTrajectoryHit(trajectory: SpaceCurve, pixel: vec2, candidate: vec
     // Safeguard the numerical step: refinement may not make a valid seed worse.
     if (all(abs(world) < vec3(1e18)) && inFront(world, u) && dot(projected - pixel, projected - pixel) <= error) {
       if (next == t) break;
+      const movement=length(projected-at);
       t = next;
+      if(movement < pixelWidth()*0.01)break;
     } else break;
   }
   const world = trajectory(t);
@@ -1004,14 +1012,78 @@ export function plot3D(trajectory: SpaceCurve, uv: vec2, u: PlotUniforms, jumps:
 
 export function plot3DAccelerated(trajectory: SpaceCurve, uv: vec2, u: PlotUniforms): vec4 {
   const distance = u.appearance.z > 0 ? cachedTrajectoryDistance(trajectory, uv * plotSize(u.resolution), u) : 1e20;
-  return spatialCurveColor(uv, u, distance, cachedSpatialBackground(uv, axesUniforms(u)), textureLoad(curveIntervals, vec2i(0, 5), 0).xyz);
+  return spatialCurveColor(uv, u, distance, cachedSpatialBackground(uv, axesUniforms(u)), curveRecord(vec2i(0, 5)).xyz);
 }
 
 
 function curveIntervalCount(u: PlotUniforms): i32 {
-  const requested = f32(u.curveQuality.x);
+  // Search density follows the image footprint, not a user-selected quality floor.
+  const requested = clamp(max(f32(u.curveQuality.x),ceil(max(u.resolution.x, u.resolution.y) * 0.5)), 128, 512);
   const range = u.parameterBounds.y - u.parameterBounds.x;
   return i32(min(512, u.parameterMode != u32(0) || u.curvePattern.x == 0 ? requested : max(requested, ceil(range / u.curvePattern.y * 4))));
+}
+
+function searchParameter(q: f32, focus: vec2, u: PlotUniforms): f32 {
+  return u.parameterMode == u32(0) ? mix(u.parameterBounds.x, u.parameterBounds.y, (q+1)*0.5) : parameterAt(q, focus.y, focus.x, u);
+}
+
+function visibleChordLength(a: vec2, b: vec2, u: PlotUniforms): f32 {
+  const delta = b-a;
+  let low=0, high=1;
+  for(let axis=0;axis<2;axis++) {
+    const start=axis==0?a.x:a.y, direction=axis==0?delta.x:delta.y;
+    const extent=axis==0?u.resolution.x:u.resolution.y;
+    if(abs(direction)<1e-12) {if(start < -8 || start > extent+8)return 0;}
+    else {const x=(-8-start)/direction,y=(extent+8-start)/direction;low=max(low,min(x,y));high=min(high,max(x,y));}
+  }
+  return length(delta)*max(0,high-low);
+}
+
+/** Estimate image work, including local oscillation, instead of spending equal
+ * records on equal compactified coordinates. These records only seed the SDF. */
+function intervalWork(trajectory: SpaceCurve, low: f32, high: f32, focus: vec2, u: PlotUniforms): f32 {
+  const t0=searchParameter(low,focus,u), t1=searchParameter(high,focus,u);
+  const mid=searchParameter((low+high)*0.5,focus,u);
+  let total=0;
+  let previous=trajectory(t0);
+  for(let i=1;i<=4;i++) {
+    const point=trajectory(searchParameter(mix(low,high,f32(i)*0.25),focus,u));
+    if(all(abs(previous)<vec3(1e18))&&all(abs(point)<vec3(1e18))&&(inFront(previous,u)||inFront(point,u)))
+      total+=visibleChordLength(project(previous,u),project(point,u),u);
+    previous=point;
+  }
+  const h=max(abs(mid)*1e-5,min(abs(t1-t0)*0.125,0.02));
+  const before=trajectory(mid-h),after=trajectory(mid+h);
+  let lengthEstimate=total;
+  if(inFront(before,u)&&inFront(after,u)) lengthEstimate=max(total,length(project(after,u)-project(before,u))*abs(t1-t0)/max(2*h,1e-20));
+  return max(0.001,total*sqrt(clamp(lengthEstimate/max(total,1),1,144)));
+}
+
+function adaptiveInterval(trajectory: SpaceCurve, index: i32, count: i32, focus: vec2, u: PlotUniforms, explore: bool): vec2 {
+  // Keep exploration in every part of the domain. A temporarily off-screen
+  // chord must not starve a later fold that re-enters the viewport.
+  let low=-1,high=1,budget=count,slot=index;
+  if(explore) {
+    const group=index*32/count;
+    const first=(group*count+31)/32,last=((group+1)*count+31)/32;
+    low=-1+2*f32(group)/32;high=-1+2*f32(group+1)/32;budget=last-first;slot=index-first;
+  }
+  for(let depth=0;depth<24;depth++) {
+    if(budget<=1)break;
+    const middle=(low+high)*0.5;
+    const left=intervalWork(trajectory,low,middle,focus,u),right=intervalWork(trajectory,middle,high,focus,u);
+    const allocated=clamp(i32(floor(f32(budget)*left/(left+right)+0.5)),1,budget-1);
+    if(slot<allocated){high=middle;budget=allocated;}
+    else {low=middle;slot-=allocated;budget-=allocated;}
+  }
+  return vec2(searchParameter(low,focus,u),searchParameter(high,focus,u));
+}
+
+export function prepareCurveSeeds(trajectory: SpaceCurve, position: vec4, u: PlotUniforms): vec4 {
+  const index=i32(position.x),count=curveIntervalCount(u);
+  if(index>=count*2)return vec4(0);
+  const focus=u.parameterMode != u32(0)?parameterFocus(trajectory,u):vec2(0,1);
+  return vec4(adaptiveInterval(trajectory,index%count,count,focus,u,index>=count),0,0);
 }
 
 /** A resident search record, never a renderable segment. Each original search
@@ -1019,19 +1091,12 @@ function curveIntervalCount(u: PlotUniforms): i32 {
 export function prepareCurveIntervals(trajectory: SpaceCurve, position: vec4, u: PlotUniforms, jumps: bool): vec4 {
   const part = i32(position.x), row = i32(position.y);
   if (row == 5) return part == 0 ? vec4(spatialProbe(trajectory, u), 0) : vec4(0);
-  const index = part / 2, half = part % 2;
   const count = curveIntervalCount(u);
+  const index = part / 2, half = part % 2;
   const empty = row == 4 ? vec4(1e20, 1e20, -1e20, -1e20) : vec4(0);
-  if (index >= count) return empty;
-  const range = u.parameterBounds.y - u.parameterBounds.x;
-  const stepSize = range / f32(count);
-  let low = u.parameterBounds.x + f32(index) * stepSize;
-  let high = min(u.parameterBounds.y, low + stepSize);
-  if (u.parameterMode != u32(0)) {
-    const focus = parameterFocus(trajectory, u);
-    low = parameterAt(-1 + 2 * f32(index) / f32(count), focus.y, focus.x, u);
-    high = parameterAt(-1 + 2 * f32(index + 1) / f32(count), focus.y, focus.x, u);
-  }
+  if (part >= count*4) return empty;
+  const interval=seedRecord(vec2i(index,0)).xy;
+  let low=interval.x,high=interval.y;
   if (u.curvePattern.x != 0) {
     const period = u.curvePattern.y;
     const center = (floor(((low + high) * 0.5 + u.curvePattern.z) / period) + 0.5) * period - u.curvePattern.z;
@@ -1044,7 +1109,8 @@ export function prepareCurveIntervals(trajectory: SpaceCurve, position: vec4, u:
   let end = half == 0 ? middle : high;
   let a = trajectory(start), b = trajectory(end);
   const frontA = inFront(a, u), frontB = inFront(b, u);
-  if (!(all(abs(a) < vec3(1e18)) && all(abs(b) < vec3(1e18))) || (!frontA && !frontB)) return empty;
+  const initialMiddle=trajectory((start+end)*0.5);
+  if (!(all(abs(a) < vec3(1e18)) && all(abs(b) < vec3(1e18))) || (!frontA && !frontB && !inFront(initialMiddle,u))) return empty;
   if (frontA != frontB) {
     let left = start, right = end;
     for (let i = 0; i < 12; i++) {
@@ -1062,20 +1128,21 @@ export function prepareCurveIntervals(trajectory: SpaceCurve, position: vec4, u:
   if (!continuous) return empty;
   const ha = homogeneous(a, u, false), hb = homogeneous(b, u, false);
   const pa = ha.xy / ha.z, pb = hb.xy / hb.z, pm = project(m, u);
-  const guard = intervalChordDistance(pm, pa, pb) * 4 + u.appearance.z * 0.5 + pixelWidth() * 2;
+  const quarter=project(trajectory(mix(start,end,0.25)),u),third=project(trajectory(mix(start,end,0.75)),u);
+  const guard = max(intervalChordDistance(pm, pa, pb),max(intervalChordDistance(quarter,pa,pm),intervalChordDistance(third,pm,pb))) * 4 + u.appearance.z * 0.5 + pixelWidth() * 2;
   if (row == 0) return vec4(start, end, 1, 0);
   if (row == 1) return vec4(pa, ha.z, 0);
   if (row == 2) return vec4(pb, hb.z, 0);
   if (row == 3) return vec4(pm, guard, 0);
-  if (!inFront(m, u)) return vec4(vec2(0), u.resolution);
-  return vec4(min(min(pa, pb), pm) - vec2(guard), max(max(pa, pb), pm) + vec2(guard));
+  if (!inFront(m, u)||!inFront(a,u)||!inFront(b,u)) return vec4(vec2(0), u.resolution);
+  return vec4(min(min(min(pa, pb), pm),min(quarter,third)) - vec2(guard), max(max(max(pa, pb), pm),max(quarter,third)) + vec2(guard));
 }
 
 /** Every part gets a bit. There is no top-k list, atomic race or overflow drop. */
 export function prepareCurveCandidates(position: vec4, u: PlotUniforms): vec4u {
   const column = u32(position.x), row = u32(position.y);
-  const group = column % u32(8), tileX = column / u32(8);
-  const count = curveIntervalCount(u) * 2;
+  const group = column % u32(16), tileX = column / u32(16);
+  const count = curveIntervalCount(u) * 4;
   const start = i32(group) * 128;
   if (start >= count) return vec4u(0);
   const lo = vec2(f32(tileX), f32(row)) * f32(u.curveTiles.z);
@@ -1084,11 +1151,11 @@ export function prepareCurveCandidates(position: vec4, u: PlotUniforms): vec4u {
   for (let i = 0; i < 128; i++) {
     const part = start + i;
     if (part >= count) break;
-    const bounds = textureLoad(curveIntervals, vec2i(part, 4), 0);
+    const bounds = curveRecord(vec2i(part, 4));
     if (all(bounds.xy <= hi) && all(bounds.zw >= lo)) {
-      const a = textureLoad(curveIntervals, vec2i(part, 1), 0).xy;
-      const b = textureLoad(curveIntervals, vec2i(part, 2), 0).xy;
-      const middle = textureLoad(curveIntervals, vec2i(part, 3), 0);
+      const a = curveRecord(vec2i(part, 1)).xy;
+      const b = curveRecord(vec2i(part, 2)).xy;
+      const middle = curveRecord(vec2i(part, 3));
       const center = (lo + hi) * 0.5;
       // Segment distance is 1-Lipschitz: beyond guard + tile radius no pixel
       // in this tile can pass the same conservative fragment-side guard.
@@ -1104,39 +1171,61 @@ export function prepareCurveCandidates(position: vec4, u: PlotUniforms): vec4u {
   return bits;
 }
 
-function cachedTrajectoryDistance(trajectory: SpaceCurve, pixel: vec2, u: PlotUniforms): f32 {
-  const tile = min(vec2u(floor(pixel / f32(u.curveTiles.z))), u.curveTiles.xy - vec2u(1));
-  const groups = (curveIntervalCount(u) * 2 + 127) / 128;
-  let distance = 1e20;
-  for (let group = 0; group < groups; group++) {
-    const packed = textureLoad(curveCandidates, vec2i(i32(tile.x) * 8 + group, i32(tile.y)), 0);
-    if (all(packed == vec4u(0))) continue;
-    for (let lane = 0; lane < 4; lane++) {
-      let bits = packed[lane];
-      for (let remaining = 0; remaining < 32; remaining++) {
-        if (bits == u32(0)) break;
-        const bit = firstTrailingBit(bits);
-        bits &= bits - u32(1);
-        const index = group * 128 + lane * 32 + i32(bit);
-        const bounds = textureLoad(curveIntervals, vec2i(index, 4), 0);
-        if (any(pixel < bounds.xy) || any(pixel > bounds.zw)) continue;
-        const parameters = textureLoad(curveIntervals, vec2i(index, 0), 0);
-        const a = textureLoad(curveIntervals, vec2i(index, 1), 0);
-        const b = textureLoad(curveIntervals, vec2i(index, 2), 0);
-        const middle = textureLoad(curveIntervals, vec2i(index, 3), 0);
-        if (min(intervalChordDistance(pixel, a.xy, middle.xy), intervalChordDistance(pixel, middle.xy, b.xy)) > middle.z) continue;
-        const delta = b.xy - a.xy;
-        const screenFraction = clamp(dot(pixel - a.xy, delta) / max(dot(delta, delta), 1e-20), 0, 1);
-        const fraction = screenFraction * a.z / max(mix(b.z, a.z, screenFraction), 1e-20);
-        const seed = mix(parameters.x, parameters.y, fraction);
-        // Continuity and near-plane clipping were computed once in the first pass.
-        const refined = refineTrajectory(trajectory, pixel, vec4(0, seed, parameters.xy), u, false);
-        distance = min(distance, min(refined, min(length(pixel - a.xy), length(pixel - b.xy))));
-        if (distance <= max(0, u.appearance.z * 0.5 - pixelWidth() * 0.5)) return distance;
+export function prepareCurveGroups(position: vec4, u: PlotUniforms): vec4u {
+  let mask=u32(0);
+  for(let group=0;group<16;group++) {
+    if(any(textureLoad(curveCandidates,vec2i(i32(position.x)*16+group,i32(position.y)),0)!=vec4u(0)))mask|=u32(1)<<u32(group);
+  }
+  return vec4u(mask,0,0,0);
+}
+
+/** Shared traversal for display, scene depth and radius-based picking. */
+function cachedCurveHit(trajectory: SpaceCurve, pixel: vec2, u: PlotUniforms, radius: f32, depthOrder: bool): vec4 {
+  const lower=min(vec2u(max(vec2(0),floor((pixel-vec2(radius))/f32(u.curveTiles.z)))),u.curveTiles.xy-vec2u(1));
+  const upper=min(vec2u(max(vec2(0),floor((pixel+vec2(radius))/f32(u.curveTiles.z)))),u.curveTiles.xy-vec2u(1));
+  let active=u32(0);
+  for(let y=lower.y;y<=upper.y;y++)for(let x=lower.x;x<=upper.x;x++)active|=textureLoad(curveGroups,vec2i(i32(x),i32(y)),0).x;
+  let best=vec4(1e20,0,1e20,0);
+  for(let remainingGroup=0;remainingGroup<16;remainingGroup++) {
+    if(active==u32(0))break;
+    const group=i32(firstTrailingBit(active));active&=active-u32(1);
+    let packed=vec4u(0);
+    for(let y=lower.y;y<=upper.y;y++)for(let x=lower.x;x<=upper.x;x++) {
+      const value=textureLoad(curveCandidates,vec2i(i32(x)*16+group,i32(y)),0);
+      packed=vec4u(packed.x|value.x,packed.y|value.y,packed.z|value.z,packed.w|value.w);
+    }
+    for(let lane=0;lane<4;lane++) {
+      let bits=packed[lane];
+      for(let remaining=0;remaining<32;remaining++) {
+        if(bits==u32(0))break;
+        const bit=firstTrailingBit(bits);bits&=bits-u32(1);
+        const index=group*128+lane*32+i32(bit);
+        const bounds=curveRecord(vec2i(index,4));
+        if(any(pixel<bounds.xy-vec2(radius))||any(pixel>bounds.zw+vec2(radius)))continue;
+        const middle=curveRecord(vec2i(index,3));
+        const a=curveRecord(vec2i(index,1)),b=curveRecord(vec2i(index,2));
+        const bend=max(0,middle.z-u.appearance.z*0.5-pixelWidth()*2);
+        const limit=depthOrder&&best.w>=1?max(0,u.appearance.z*0.5-pixelWidth()*0.5):best.x;
+        if(min(intervalChordDistance(pixel,a.xy,middle.xy),intervalChordDistance(pixel,middle.xy,b.xy))>min(middle.z+radius,bend+limit))continue;
+        const parameters=curveRecord(vec2i(index,0));
+        const delta=b.xy-a.xy;
+        const fraction=clamp(dot(pixel-a.xy,delta)/max(dot(delta,delta),1e-20),0,1);
+        const seed=mix(parameters.x,parameters.y,fraction*a.z/max(mix(b.z,a.z,fraction),1e-20));
+        let hit=refineTrajectoryHit(trajectory,pixel,vec4(0,seed,parameters.xy),u,false);
+        const first=length(pixel-a.xy),last=length(pixel-b.xy);
+        if(first<hit.x)hit=vec2(first,parameters.x);
+        if(last<hit.x)hit=vec2(last,parameters.y);
+        if(depthOrder)best=chooseSceneHit(trajectory,hit,best,u);
+        else if(hit.x<best.x)best=vec4(hit,0,0);
+        if(!depthOrder&&radius==0&&best.x<=max(0,u.appearance.z*0.5-pixelWidth()*0.5))return best;
       }
     }
   }
-  return distance;
+  return best;
+}
+
+function cachedTrajectoryDistance(trajectory: SpaceCurve, pixel: vec2, u: PlotUniforms): f32 {
+  return cachedCurveHit(trajectory,pixel,u,0,false).x;
 }
 
 
@@ -1212,14 +1301,14 @@ function cachedSpatialTicks(pixel: vec2, axis: vec3, index: i32, u: PlotUniforms
   let ticks = 0;
   for (let candidate = 0; candidate < 6; candidate++) {
     const row = index * 12 + candidate * 2;
-    const location = textureLoad(spatialLabels, vec2i(column, row), 0);
+    const location = labelRecord(vec2i(column, row));
     const at = location.xy, outward = location.zw;
     const anchor = at + outward * (fontSize * 0.95 + 6) + vec2(0, fontSize * 0.65);
     const delta = pixel - anchor;
     const nearLabel = (u.decorations & u32(2)) != u32(0) && abs(delta.x) <= fontSize * 9 && delta.y >= -fontSize * 1.5 - 3 - pixelWidth() && delta.y <= 3 + pixelWidth();
     const nearTick = u.appearance.x > 0 && all(abs(pixel - at) <= vec2(u.appearance.x * 0.5 + 4 + pixelWidth()));
     if (!nearLabel && !nearTick) continue;
-    const style = textureLoad(spatialLabels, vec2i(column, row + 1), 0);
+    const style = labelRecord(vec2i(column, row + 1));
     if (nearTick && style.z > 0) ticks = max(ticks, tickMark(pixel, at, tangent, 3, u.appearance.x) * style.z);
     if (nearLabel && style.w > 0) labels = max(labels, numberAt(pixel, anchor, style.x, style.y, 0.5, fontSize, u.labelStyle.y, u.labelStyle.z) * style.w * u.decorationOpacity.y);
   }
@@ -1229,8 +1318,8 @@ function cachedSpatialTicks(pixel: vec2, axis: vec3, index: i32, u: PlotUniforms
 function cachedSpatialBackground(uv: vec2, u: PlotUniforms): SpatialDecor {
   const size = plotSize(u.resolution), pixel = uv * size;
   const ray = viewRay(uv, u);
-  const xLevels = textureLoad(spatialLabels, vec2i(0, 37), 0).xyz;
-  const zLevels = textureLoad(spatialLabels, vec2i(2, 37), 0).xyz;
+  const xLevels = labelRecord(vec2i(0, 37)).xyz;
+  const zLevels = labelRecord(vec2i(2, 37)).xyz;
   const grid = groundField(ray, u, xLevels, zLevels);
   const xTicks = cachedSpatialTicks(pixel, vec3(1, 0, 0), 0, u);
   const yTicks = cachedSpatialTicks(pixel, vec3(0, 1, 0), 1, u);
@@ -1243,7 +1332,7 @@ function cachedSpatialBackground(uv: vec2, u: PlotUniforms): SpatialDecor {
   color = mix(color, vec3(0.25, 0.29, 0.35), max(max(xTicks.x, yTicks.x), zTicks.x));
   if ((u.decorations & u32(4)) != u32(0)) {
     for (let index = 0; index < 3; index++) {
-      const name = textureLoad(spatialLabels, vec2i(index, 36), 0);
+      const name = labelRecord(vec2i(index, 36));
       if (name.w > 0) labels = max(labels, axisLabel(pixel, name.xy, i32(name.z), u) * u.decorationOpacity.z);
     }
   }
@@ -1280,28 +1369,61 @@ function surfaceHit(field: HeightField, uv: vec2, u: PlotUniforms): SurfaceHit {
     }
   }
   if (far < near) return {point: vec3(0), depth: 0, valid: false};
+  const fullSpan=max(far-near,1e-6);
+  if((u.surfaceFlags & u32(96))!=u32(0)) {
+    const lower=u.surfaceHeight.x-max(1e-7,abs(u.surfaceHeight.x)*1e-6),upper=u.surfaceHeight.y+max(1e-7,abs(u.surfaceHeight.y)*1e-6);
+    if(abs(ray.direction.y)<1e-20) {
+      if(((u.surfaceFlags & u32(32))!=u32(0)&&ray.origin.y<lower)||((u.surfaceFlags & u32(64))!=u32(0)&&ray.origin.y>upper))return {point:vec3(0),depth:0,valid:false};
+    } else {
+      if((u.surfaceFlags & u32(32))!=u32(0)) {const at=(lower-ray.origin.y)/ray.direction.y;if(ray.direction.y>0)near=max(near,at);else far=min(far,at);}
+      if((u.surfaceFlags & u32(64))!=u32(0)) {const at=(upper-ray.origin.y)/ray.direction.y;if(ray.direction.y>0)far=min(far,at);else near=max(near,at);}
+    }
+  }
+  if(far<near)return {point:vec3(0),depth:0,valid:false};
   let previous = near;
   const first = ray.origin + ray.direction * near;
   let before = first.y - field(first.x, first.z);
-  const count = max(u32(16), u.curveQuality.x);
+  const automatic=clamp(ceil(max(u.resolution.x,u.resolution.y)/8),32,256);
+  const count = max(u32(1),u32(ceil(f32(max(u32(automatic),u.curveQuality.x))*(far-near)/fullSpan)));
+  const tolerance=max(1e-6,min(u.plotSpan.x,u.plotSpan.y)/max(u.resolution.x,u.resolution.y)*0.01);
   for (let i: u32 = 1; i <= count; i++) {
     const at = mix(near, far, f32(i) / f32(count));
     const p = ray.origin + ray.direction * at;
     const value = p.y - field(p.x, p.z);
-    if (abs(value) < 1e18 && abs(before) < 1e18 && ((value >= 0) != (before >= 0) || value == 0 || before == 0)) {
-      let low = previous, high = at, residual = before;
-      for (let iteration: u32 = 0; iteration < u.curveQuality.y * u32(2) + u32(8); iteration++) {
-        const middle = (low + high) * 0.5;
+    let bracketEnd=at,bracketValue=value;
+    if(abs(value)<1e18&&abs(before)<1e18&&(value>=0)==(before>=0)) {
+      // A narrow grazing intersection can enter and leave between two samples.
+      // Inspect its local extremum instead of silently discarding the interval.
+      const middle=(previous+at)*0.5,point=ray.origin+ray.direction*middle;
+      const midValue=point.y-field(point.x,point.z);
+      if(abs(midValue)<1e18) {
+        if((midValue>=0)!=(before>=0)||midValue==0){bracketEnd=middle;bracketValue=midValue;}
+        else {
+          const curvature=before+value-2*midValue;
+          const fraction=0.5+(before-value)/max(abs(4*curvature),1e-20)*(curvature<0?-1:1);
+          if(curvature*before>0&&fraction>0&&fraction<1) {
+            const candidate=mix(previous,at,fraction),q=ray.origin+ray.direction*candidate;
+            const sample=q.y-field(q.x,q.z);
+            if(abs(sample)<1e18&&((sample>=0)!=(before>=0)||sample==0)){bracketEnd=candidate;bracketValue=sample;}
+          }
+        }
+      }
+    }
+    if (abs(bracketValue) < 1e18 && abs(before) < 1e18 && ((bracketValue >= 0) != (before >= 0) || bracketValue == 0 || before == 0)) {
+      let low = previous, high = bracketEnd, residual = before,rightResidual=bracketValue;
+      for (let iteration: u32 = 0; iteration < u32(40); iteration++) {
+        const fraction=iteration%u32(3)==u32(2)?0.5:clamp(residual/(residual-rightResidual),0.25,0.75);
+        const middle = mix(low,high,fraction);
         const point = ray.origin + ray.direction * middle;
         const sample = point.y - field(point.x, point.z);
         if (!(abs(sample) < 1e18)) break;
-        if ((sample >= 0) == (residual >= 0)) {low = middle; residual = sample;} else high = middle;
+        if(abs(sample)<=tolerance&&length(project(vec3(point.x,point.y-sample,point.z),u)-uv*plotSize(u.resolution))<=0.02){low=middle;high=middle;break;}
+        if ((sample >= 0) == (residual >= 0)) {low = middle; residual = sample;} else {high = middle;rightResidual=sample;}
       }
       const depth = (low + high) * 0.5;
       const point = ray.origin + ray.direction * depth;
       const sample = field(point.x, point.z);
-      const tolerance = max(1e-5, max(u.plotSpan.x, u.plotSpan.y) * 1e-4);
-      if (abs(sample) < 1e18 && abs(point.y - sample) <= tolerance && surfaceInside(point.xz, u)) return {point: vec3(point.x, sample, point.z), depth, valid: true};
+      if (abs(sample) < 1e18 && abs(point.y - sample) <= tolerance && length(project(vec3(point.x,sample,point.z),u)-uv*plotSize(u.resolution))<=0.04 && surfaceInside(point.xz, u)) return {point: vec3(point.x, sample, point.z), depth, valid: true};
     }
     before = value; previous = at;
   }
@@ -1508,36 +1630,7 @@ function chooseSceneHit(trajectory: SpaceCurve, hit: vec2, current: vec4, u: Plo
 }
 
 function cachedSceneHit(trajectory: SpaceCurve, pixel: vec2, u: PlotUniforms): vec4 {
-  const tile = min(vec2u(floor(pixel / f32(u.curveTiles.z))), u.curveTiles.xy - vec2u(1));
-  const groups = (curveIntervalCount(u) * 2 + 127) / 128;
-  let best = vec4(1e20, 0, 1e20, 0);
-  for (let group = 0; group < groups; group++) {
-    const packed = textureLoad(curveCandidates, vec2i(i32(tile.x) * 8 + group, i32(tile.y)), 0);
-    for (let lane = 0; lane < 4; lane++) {
-      let bits = packed[lane];
-      for (let remaining = 0; remaining < 32; remaining++) {
-        if (bits == u32(0)) break;
-        const bit = firstTrailingBit(bits);
-        bits &= bits - u32(1);
-        const index = group * 128 + lane * 32 + i32(bit);
-        const bounds = textureLoad(curveIntervals, vec2i(index, 4), 0);
-        if (any(pixel < bounds.xy) || any(pixel > bounds.zw)) continue;
-        const parameters = textureLoad(curveIntervals, vec2i(index, 0), 0);
-        const a = textureLoad(curveIntervals, vec2i(index, 1), 0), b = textureLoad(curveIntervals, vec2i(index, 2), 0);
-        const middle = textureLoad(curveIntervals, vec2i(index, 3), 0);
-        if (min(intervalChordDistance(pixel, a.xy, middle.xy), intervalChordDistance(pixel, middle.xy, b.xy)) > middle.z) continue;
-        const delta = b.xy - a.xy;
-        const fraction = clamp(dot(pixel - a.xy, delta) / max(dot(delta, delta), 1e-20), 0, 1);
-        const seed = mix(parameters.x, parameters.y, fraction * a.z / max(mix(b.z, a.z, fraction), 1e-20));
-        let hit = refineTrajectoryHit(trajectory, pixel, vec4(0, seed, parameters.xy), u, false);
-        const first = length(pixel - a.xy), last = length(pixel - b.xy);
-        if (first < hit.x) hit = vec2(first, parameters.x);
-        if (last < hit.x) hit = vec2(last, parameters.y);
-        best = chooseSceneHit(trajectory, hit, best, u);
-      }
-    }
-  }
-  return best;
+  return cachedCurveHit(trajectory,pixel,u,0,true);
 }
 
 function referenceSceneHit(trajectory: SpaceCurve, pixel: vec2, u: PlotUniforms, bounds: vec2, jumps: bool): vec4 {
@@ -1623,8 +1716,8 @@ export function sceneLabelsReference(uv: vec2, u: PlotUniforms, surface: bool): 
   return sceneDecorLabels(uv, u, spatialBackground(uv, axesUniforms(u)), surface);
 }
 export function querySceneCurve(trajectory: SpaceCurve, position: vec4, u: PlotUniforms): vec4u {
-  const hit = cachedSceneHit(trajectory, query.pixel, u);
-  if (hit.w <= 0 || u.sceneOpacity.y <= 0) return vec4u(0);
+  const hit = cachedCurveHit(trajectory, query.pixel, u, query.radius, false);
+  if (hit.x > query.radius+u.appearance.z*0.5+pixelWidth()*0.5 || u.sceneOpacity.y <= 0 || u.appearance.z<=0) return vec4u(0);
   const point = trajectory(hit.y);
   return position.x < 1 ? vec4u(bitcast<vec3u>(point), 1) : vec4u(bitcast<u32>(hit.y), bitcast<u32>(hit.x), 0, 1);
 }

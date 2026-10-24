@@ -22,13 +22,13 @@ The website follows the TypeNN site conventions; see [website/README.md](website
 Install the versioned Git release with npm:
 
 ```sh
-npm install https://github.com/typeshade/typeplot.git#v0.2.0
+npm install https://github.com/typeshade/typeplot.git#v0.2.1
 ```
 
 The package includes JavaScript and declarations. TypeScript source in the dependency does
 not need a loader. The version tag keeps installations on the same release.
 
-The v0.2.0 release includes the data plotting API, GPU curves and surfaces, scene timelines,
+The v0.2.1 release includes the data plotting API, GPU curves and surfaces, scene timelines,
 and RTC precision improvements described below. See the [release notes](CHANGELOG.md).
 
 The package has not been published to the npm registry. Once it is published, registry
@@ -66,6 +66,8 @@ Both browser entries share the TypeShade runtime and precompiled shaders, withou
 The ESM build includes shared chunks and cacheable SDF font assets. A bundler such as Vite
 resolves these assets automatically; when serving the built modules directly, preserve the
 entire `dist/` directory, including `dist/assets/`. See [loading behavior](docs/loading.md).
+Newly compiled spatial programs allocate search work from the image footprint and cache it on
+the GPU. See [adaptive visibility and surface search](docs/adaptive-visibility.md).
 For early browser startup, `preloadFonts` from the small `typeplot/resources` entry
 starts shared font downloads without creating a GPU device or loading the plotting API.
 JavaScript callbacks are sampled on the host; all visible chart graphics are rendered by TypeShade.

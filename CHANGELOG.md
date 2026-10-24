@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.2.1
+
+- Allocate procedural curve searches from the projected image footprint, with a separate
+  exploration partition that retains folds outside the initial view. Cache parameter seeds,
+  interval bounds, tile candidates and active groups on the GPU.
+- Refine actual callback coverage to subpixel stability and share traversal with radius-based
+  picking, so lowering a search budget does not remove the resolved helix branches.
+- Store search and label caches as exact integer bit patterns, retaining the accelerated path
+  on WebGL2 without floating-point color attachments. Older manifests remain supported.
+- Add optional conservative `surface.heightRange` bounds for ray culling. Color `valueRange`
+  continues to control normalization only.
+- Inspect local ray extrema at grazing intersections and stop bracket refinement when the
+  actual height residual converges. The Playground supplies known physical bounds for its
+  sine/cosine surface.
+- Describe the advanced Playground controls as search budgets; compiled adaptive programs
+  add work required by the image instead of using a low value as a visibility cutoff.
+
 ## v0.2.0
 
 Install the versioned release with npm:

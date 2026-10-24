@@ -51,7 +51,7 @@ export default function PlotWorkbench({
   const [style, setStyle] = useState(DEFAULT_STYLE);
   const [domainExtent, setDomainExtent] = useState(6.28);
   const [unbounded, setUnbounded] = useState(true);
-  const [samples, setSamples] = useState(128);
+  const [samples, setSamples] = useState(64);
   const [motionEpoch, setMotionEpoch] = useState(0);
   const [surfaceStyle, setSurfaceStyle] = useState<SurfaceOptions>({
     colorMap: "viridis",
@@ -305,7 +305,9 @@ export default function PlotWorkbench({
                       ? { x: [-3, 3], y: [-2, 2] }
                       : { x: [-6.28, 6.28], y: [-1.5, 1.5] },
                 surface:
-                  preset === "surface" || isMulti ? surfaceStyle : undefined,
+                  preset === "surface" || isMulti
+                    ? { ...surfaceStyle, heightRange: [-1, 1] }
+                    : undefined,
                 surfaceDomain:
                   preset === "surface" || isMulti
                     ? { x: [-4, 4], z: [-4, 4] }
@@ -707,7 +709,7 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
               </div>
               <div className="plot-field">
                 <label htmlFor="curve-samples">
-                  {ko ? "곡선 탐색 정밀도" : "Curve search quality"}
+                  {ko ? "곡선 탐색 예산" : "Curve search budget"}
                 </label>
                 <Select
                   id="curve-samples"
@@ -724,7 +726,7 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
           {isSurface && (
             <div className="plot-field">
               <label htmlFor="surface-samples">
-                {ko ? "곡면 탐색 정밀도" : "Surface search quality"}
+                {ko ? "곡면 탐색 예산" : "Surface search budget"}
               </label>
               <Select
                 id="surface-samples"
