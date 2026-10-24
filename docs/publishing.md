@@ -10,6 +10,12 @@ pass. The version must match `package.json`. Include compiled JavaScript, declar
 shader sources in the committed tree so dependency installation does not need a build step.
 Install a release with `npm install https://github.com/typeshade/typeplot.git#v0.2.0`.
 
+After the reviewed tag exists, run the `release` GitHub Actions workflow with its `tag`
+input. The workflow checks that the tagged commit belongs to main and matches the package
+version, rebuilds the committed artifacts, and attaches an npm-compatible archive and
+`SHA256SUMS` to its GitHub release. It uses the repository's short-lived `GITHUB_TOKEN`
+with `contents: write`; no npm credential is needed for this GitHub-only distribution.
+
 ## Registry release procedure
 
 1. Merge the reviewed library pull request after its current build checks pass.
