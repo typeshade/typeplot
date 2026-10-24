@@ -13,6 +13,8 @@ export interface PlotProgram {
   readonly parameters: Readonly<Record<string, number>>;
   /** Programs compiled with the projective camera support both projection modes. */
   readonly camera?: "projective";
+  /** GPU-resident interval/tile search cache in newly compiled spatial programs. */
+  readonly acceleration?: "tiles-v1";
 }
 /** Numerical search controls for arbitrary spatial callbacks, evaluated on the GPU. */
 export interface PlotQuality {
@@ -46,6 +48,8 @@ export interface PlotStyle {
   readonly axisLabels?: boolean;
 }
 export interface PlotOptions {
+  /** GPU search acceleration when present in the program. Default true. */
+  readonly acceleration?: boolean;
   /** Released-drag inertia. Default true; disabled by reduced-motion preferences. */
   readonly inertia?: boolean;
   /** Double-click restores the home camera. Default true. */

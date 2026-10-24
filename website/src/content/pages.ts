@@ -176,6 +176,10 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
           code: helixCode,
         },
         {
+          title: "GPU search acceleration",
+          text: "New spatial programs cache projected search intervals, tile candidate masks and axis-label layout in GPU textures. Pixels refine nearby candidates against the original callback; the cache does not become a rendered polyline. Changed camera, domain or parameters update the affected cache, and unchanged redraws reuse it. Search quality, display density and parameter-based dashes retain their settings. Enabled by default on WebGPU and WebGL2 with EXT_color_buffer_float. acceleration: false selects the reference query; older programs need recompilation to gain acceleration. This reduces repeated work without removing the numerical limits of arbitrary or unbounded curves.",
+        },
+        {
           title: "Shader appearance and navigation",
           text: "Axes and ticks default to 1 CSS px. style and setStyle configure axisWidth, gridWidth, curveWidth, labelSize, tickDensity, labelHalo, labelBackground, grid, tickLabels and axisLabels. Widths stay independent of zoom and display density. lineStyle, dashPeriod and dashOffset define a procedural pattern in callback parameter coordinates, without cumulative path lengths. Left-drag orbits in 3D, right-drag pans, and both buttons pan in 2D. Touchscreens support one-finger pan/orbit, two-finger pinch/pan and double-tap reset. Released drags coast with damping; new input or Escape stops them. Double-click restores the home camera. inertia: false and doubleClickReset: false disable these gestures. Attach ViewControl with plot.addControl(new ViewControl(), \"top-right\"); removeControl cleans up the HTML camera UI. Spatial axes and the ground lattice are implicit distance fields using the same camera as the curve. Hierarchical world-coordinate ticks fade continuously with zoom. Numeric labels and axis names use a thin SDF halo by default, with optional rounded backgrounds. Their density follows projected spacing and formatted text width. Grid and GPU-label visibility changes fade over 160 ms, respecting reduced-motion preferences. Text uses X-GIS computeSDF encoding and its analytic antialiasing rule, with complete glyph padding at character boundaries.",
           code: `plot.setStyle({ axisWidth: 1, gridWidth: 0.5, curveWidth: 2, labelSize: 12, tickDensity: 1.25, labelHalo: 0.8, labelBackground: false, tickLabels: true });`,
@@ -342,6 +346,10 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
           title: "공간 곡선 표시",
           text: "매개변수 곡선 콜백은 vec3를 반환합니다. 첫 인수는 곡선의 매개변수입니다. domain은 카메라와 독립된 매개변수 구간입니다. 새 프로그램의 기본값은 [-Infinity, Infinity]입니다. 무한 정의역은 카메라 초점 주변으로 정밀도를 배분하는 압축 수치 탐색을 사용합니다. GPU 정밀도와 탐색 횟수의 한계가 있으며 임의의 콜백 전체를 찾는 보장은 아닙니다. 유한 구간과 한쪽만 무한한 구간도 지원합니다. GPU에서 원래 콜백의 최근접점을 수치 탐색하고 보정하며 점을 잇는 선분을 그리지 않습니다. quality.samples(16–512, 기본 128)와 quality.refinements(1–8, 기본 5)로 유한 수치 탐색의 정밀도를 조절합니다. setQuality와 setDomain은 카메라를 초기화하지 않고 설정을 갱신합니다. Perspective 투영의 3D로 시작합니다. 3D에서는 Orthographic으로 전환할 수 있습니다. 2D는 항상 Orthographic을 사용합니다.",
           code: helixCode,
+        },
+        {
+          title: "GPU 탐색 가속",
+          text: "새 공간 곡선 프로그램은 투영된 탐색 구간, 타일별 후보 목록과 축 라벨 배치를 GPU 텍스처에 보관합니다. 픽셀에서는 가까운 후보만 원래 콜백으로 보정하며 캐시를 선분으로 그리지 않습니다. 카메라·정의역·매개변수가 바뀌면 해당 캐시를 갱신하고 같은 상태의 재그리기에서는 재사용합니다. 탐색 품질, 화면 배율과 매개변수 기준 대시 설정을 유지합니다. WebGPU와 EXT_color_buffer_float를 지원하는 WebGL2에서 기본으로 활성화됩니다. acceleration: false로 참조 탐색을 선택할 수 있으며 이전 프로그램은 재컴파일해야 가속됩니다. 반복 연산을 줄이는 기능이며 임의의 곡선이나 무한 정의역에 대한 수치 탐색의 한계를 없애지는 않습니다.",
         },
         {
           title: "셰이더 스타일과 탐색",

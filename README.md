@@ -253,7 +253,7 @@ export function sample(t: f32): vec3 {
 ```
 
 Compile with `{ kind: 'parametric' }`. Set `domain: [start, end]` for the callback's parameter
-interval; its default is a copy of the initial x bounds. Camera bounds only control the view.
+interval; newly compiled programs default to `[-Infinity, Infinity]`. Camera bounds only control the view.
 Zooming and panning never change the parameter domain. Spatial plots open in 3D with perspective projection. Pass `projection: "orthographic"`
 for parallel projection, or call `plot.setProjection("orthographic")`. Two-dimensional plots
 always use orthographic projection. Switching mode preserves the selected 3D projection.
@@ -274,6 +274,16 @@ camera. Higher-frequency trajectories may require more search samples (16–512,
 Refinements accept 1–8, default 5. This is a numerical distance approximation for arbitrary
 callbacks, rather than a promise of an exact analytic SDF. Scalar fields use four footprint
 samples for antialiasing; subpixel oscillations and f32 precision still limit resolved detail.
+
+New spatial programs cache projected search intervals, tile candidate masks and axis-label
+layout in GPU textures. Fragments refine only nearby candidates against the original callback;
+the cache is not a rendered polyline. Camera/domain/parameter changes update the corresponding
+records, while unchanged redraws reuse them. Quality, display density and parameter-based
+dashes retain their settings. This acceleration is enabled by default on WebGPU and on
+WebGL2 with `EXT_color_buffer_float`. Pass `acceleration: false` to `createPlot` to use the
+reference query; old compiled programs remain supported. Recompile to enable the cache.
+See [GPU curve acceleration](docs/gpu-curve-acceleration.md) for the design, comparison with
+Manim/matplotlib, manual validation and remaining numerical limits.
 
 ## GPU function API
 

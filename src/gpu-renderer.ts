@@ -1,3 +1,4 @@
+import { GpuCompletion } from "./gpu-completion.js";
 import {
   createRuntime,
   resident,
@@ -155,12 +156,20 @@ export class GpuRenderer {
   private device?: Device;
   private samples = new Map<RenderSeries, SampleResource>();
   private destroyed = false;
+  private readonly completion: GpuCompletion;
   private constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly runtime: Runtime,
     private target: GPUCanvasContext | WebGL2RenderingContext | undefined,
     private readonly format: string,
-  ) {}
+  ) {
+    this.completion = new GpuCompletion(
+      canvas.ownerDocument.defaultView!,
+      runtime.tier === "webgl2"
+        ? (target as WebGL2RenderingContext)
+        : undefined,
+    );
+  }
   get backend(): Backend {
     return this.runtime.tier;
   }
@@ -582,6 +591,7 @@ export class GpuRenderer {
       (pass) => this.scene(pass, scene, width, height),
     );
     await frame.submit();
+    await this.completion.wait();
   }
   async pixels(
     scene: Scene,
@@ -633,6 +643,7 @@ export class GpuRenderer {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.completion.destroy();
     this.glyphs?.destroy();
     for (const resource of this.samples.values()) this.release(resource.points);
     this.samples.clear();

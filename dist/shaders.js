@@ -191,6 +191,7 @@ export class PlotViewport {
   plotCenter: vec2;
   plotSpan: vec2;
   plotRotation: vec2;
+  rotationBasis: vec4;
   plotPan: vec2;
   plotBlend: f32;
   appearance: vec4;
@@ -206,13 +207,19 @@ export class PlotUniforms extends PlotViewport {
   parameterMode: u32;
   curveQuality: vec2u;
   curvePattern: vec4;
+  curveTiles: vec4u;
 }
+
+declare const curveIntervals: texture_2d<f32>;
+declare const curveCandidates: texture_2d<u32>;
+declare const spatialLabels: texture_2d<f32>;
 
 type ScalarCurve = (x: f32) => f32;
 type SpaceCurve = (t: f32) => vec3;
 
 /** Axis names use the same compact plate as single-character numeric labels. */
 function axisLabel(pixel: vec2, at: vec2, code: i32, u: PlotViewport): vec3 {
+  if (any(abs(pixel - at) > vec2(u.appearance.w * 1.5 + 4 + pixelWidth()))) return vec3(0);
   const local = vec2(pixel.x - at.x, at.y - pixel.y + u.appearance.w * 0.75);
   return vec3(glyphLayers(local + vec2(u.appearance.w * 0.42, 0), code, u.appearance.w, u.labelStyle.y), numberPlate(local, 0, 1, 0.5, u.appearance.w) * u.labelStyle.z);
 }
@@ -261,6 +268,7 @@ function labelColor(color: vec3, labels: vec3): vec3 {
 }
 
 function pointColor(color: vec3, p: vec2, selected: vec2): vec3 {
+  if (any(abs(p - selected) > vec2(7))) return color;
   const radius = length(p - selected);
   const halo = 1 - smoothstep(5, 7, radius);
   const dot = 1 - smoothstep(3, 4.5, radius);
@@ -417,10 +425,10 @@ export function plot2D(sample: ScalarCurve, uv: vec2, u: PlotUniforms, jumps: bo
 function cameraVector(p: vec3, u: PlotUniforms): vec3 {
   const span = max(u.plotSpan, vec2(0.00001));
   const q = p / vec3(span, max(span.x, span.y));
-  const yaw = u.plotRotation.x, pitch = u.plotRotation.y;
-  const horizontal = q.x * cos(yaw) + q.z * sin(yaw);
-  const depth = -q.x * sin(yaw) + q.z * cos(yaw);
-  return vec3(horizontal, q.y * cos(pitch) - depth * sin(pitch), q.y * sin(pitch) + depth * cos(pitch));
+  const basis = u.rotationBasis;
+  const horizontal = q.x * basis.y + q.z * basis.x;
+  const depth = -q.x * basis.x + q.z * basis.y;
+  return vec3(horizontal, q.y * basis.w - depth * basis.z, q.y * basis.z + depth * basis.w);
 }
 
 function cameraPoint(p: vec3, u: PlotUniforms): vec3 {
@@ -428,10 +436,10 @@ function cameraPoint(p: vec3, u: PlotUniforms): vec3 {
 }
 
 function inverseCamera(p: vec3, u: PlotUniforms): vec3 {
-  const yaw = u.plotRotation.x, pitch = u.plotRotation.y;
-  const y = p.y * cos(pitch) + p.z * sin(pitch);
-  const depth = -p.y * sin(pitch) + p.z * cos(pitch);
-  const q = vec3(p.x * cos(yaw) - depth * sin(yaw), y, p.x * sin(yaw) + depth * cos(yaw));
+  const basis = u.rotationBasis;
+  const y = p.y * basis.w + p.z * basis.z;
+  const depth = -p.y * basis.z + p.z * basis.w;
+  const q = vec3(p.x * basis.y - depth * basis.x, y, p.x * basis.x + depth * basis.y);
   return q * vec3(u.plotSpan, max(u.plotSpan.x, u.plotSpan.y));
 }
 
@@ -523,6 +531,14 @@ function spatialLevels(axis: vec3, u: PlotUniforms): vec3 {
 function spatialTicks(pixel: vec2, axis: vec3, levels: vec3, priority: f32, u: PlotUniforms): vec4 {
   const size = plotSize(u.resolution);
   const fontSize = u.appearance.w;
+  const originH = homogeneous(vec3(0), u, false);
+  const directionH = homogeneous(axis, u, true);
+  const axisLine = cross(originH, directionH);
+  const magnitude = length(axisLine.xy);
+  if (magnitude <= 1e-12 || abs(dot(axisLine, vec3(pixel, 1))) / magnitude > fontSize * 6 + 12) return vec4(0);
+  const normal = axisLine.xy / magnitude;
+  const sign = axis.y > 0 ? (normal.x > 0 ? -1 : 1) : (normal.y > 0 ? -1 : 1);
+  const outward = normal * sign;
   const value = axisParameter(pixel, axis, u);
   let labels = vec3(0);
   let ticks = 0;
@@ -533,13 +549,13 @@ function spatialTicks(pixel: vec2, axis: vec3, levels: vec3, priority: f32, u: P
     const world = axis * t;
     if (inFront(world, u)) {
       const at = project(world, u);
+      const anchor = at + outward * (fontSize * 0.95 + 6) + vec2(0, fontSize * 0.65);
+      const delta = pixel - anchor;
+      const nearLabel = (u.decorations & u32(2)) != u32(0) && abs(delta.x) <= fontSize * 9 && delta.y >= -fontSize * 1.5 - 3 && delta.y <= 3;
+      const nearTick = u.appearance.x > 0 && all(abs(pixel - at) <= vec2(u.appearance.x * 0.5 + 4 + pixelWidth()));
+      if (!nearLabel && !nearTick) continue;
       const before = project(axis * (t - stride), u);
       const after = project(axis * (t + stride), u);
-      const tangent = after - before;
-      const normal = normalize(vec2(-tangent.y, tangent.x) + vec2(1e-12));
-      const sign = axis.y > 0 ? (normal.x > 0 ? -1 : 1) : (normal.y > 0 ? -1 : 1);
-      const outward = normal * sign;
-      const anchor = at + outward * (fontSize * 0.95 + 6) + vec2(0, fontSize * 0.65);
       const width = numberWidth(t, levels.x, fontSize);
       const room = min(min(anchor.x - width * 0.5 - 3, size.x - anchor.x - width * 0.5 - 3), min(anchor.y - fontSize * 1.5, size.y - anchor.y));
       const separation = min(abs(at - before), abs(after - at));
@@ -724,19 +740,24 @@ function refineTrajectory(trajectory: SpaceCurve, pixel: vec2, candidate: vec4, 
     const before = max(low, t - epsilon), after = min(high, t + epsilon);
     const a = project(trajectory(before), u), b = project(trajectory(after), u);
     const tangent = (b - a) / max(after - before, 1e-20);
-    const at = project(trajectory(t), u);
+    const atWorld = trajectory(t);
+    const at = project(atWorld, u);
     const delta = dot(at - pixel, tangent) / max(dot(tangent, tangent), 1e-20);
     let next = clamp(t - delta, low, high);
     let world = trajectory(next);
     let projected = project(world, u);
     const error = dot(at - pixel, at - pixel);
+    if (!jumps && all(abs(atWorld) < vec3(1e18)) && inFront(atWorld, u) && error <= pow(max(0, u.appearance.z * 0.5 - pixelWidth() * 0.5), 2)) return sqrt(error);
     if (!(all(abs(world) < vec3(1e18)) && inFront(world, u) && dot(projected - pixel, projected - pixel) <= error)) {
       next = (t + next) * 0.5;
       world = trajectory(next);
       projected = project(world, u);
     }
     // Safeguard the numerical step: refinement may not make a valid seed worse.
-    if (all(abs(world) < vec3(1e18)) && inFront(world, u) && dot(projected - pixel, projected - pixel) <= error) t = next;
+    if (all(abs(world) < vec3(1e18)) && inFront(world, u) && dot(projected - pixel, projected - pixel) <= error) {
+      if (next == t) break;
+      t = next;
+    } else break;
   }
   const world = trajectory(t);
   const middle = trajectory((low + high) * 0.5);
@@ -871,14 +892,269 @@ function trajectoryDistance(trajectory: SpaceCurve, pixel: vec2, u: PlotUniforms
   return distance;
 }
 
-export function plot3D(trajectory: SpaceCurve, uv: vec2, u: PlotUniforms, jumps: bool): vec4 {
-  const background = spatialBackground(uv, u);
-  const pixel = uv * plotSize(u.resolution);
-  const distance = trajectoryDistance(trajectory, pixel, u, u.parameterBounds, jumps);
-  let color = mix(background.color, vec3(0.09, 0.42, 0.92), distanceCoverage(distance, u.appearance.z));
-  color = labelColor(color, background.labels);
+function spatialProbe(trajectory: SpaceCurve, u: PlotUniforms): vec3 {
   const selected = trajectory(u.probe);
   const visible = ((u.parameterMode & u32(1)) != u32(0) || u.probe >= u.parameterBounds.x) && ((u.parameterMode & u32(2)) != u32(0) || u.probe <= u.parameterBounds.y) && all(abs(selected) < vec3(1e18)) && inFront(selected, u);
-  return vec4(visible ? pointColor(color, pixel, project(selected, u)) : color, 1);
+  return vec3(project(selected, u), visible ? 1 : 0);
+}
+
+function spatialCurveColor(uv: vec2, u: PlotUniforms, distance: f32, background: SpatialDecor, probe: vec3): vec4 {
+  const pixel = uv * plotSize(u.resolution);
+  let color = mix(background.color, vec3(0.09, 0.42, 0.92), distanceCoverage(distance, u.appearance.z));
+  color = labelColor(color, background.labels);
+  return vec4(probe.z > 0 ? pointColor(color, pixel, probe.xy) : color, 1);
+}
+
+export function plot3D(trajectory: SpaceCurve, uv: vec2, u: PlotUniforms, jumps: bool): vec4 {
+  const distance = u.appearance.z > 0 ? trajectoryDistance(trajectory, uv * plotSize(u.resolution), u, u.parameterBounds, jumps) : 1e20;
+  return spatialCurveColor(uv, u, distance, spatialBackground(uv, u), spatialProbe(trajectory, u));
+}
+
+export function plot3DAccelerated(trajectory: SpaceCurve, uv: vec2, u: PlotUniforms): vec4 {
+  const distance = u.appearance.z > 0 ? cachedTrajectoryDistance(trajectory, uv * plotSize(u.resolution), u) : 1e20;
+  return spatialCurveColor(uv, u, distance, cachedSpatialBackground(uv, u), textureLoad(curveIntervals, vec2i(0, 5), 0).xyz);
+}
+
+
+function curveIntervalCount(u: PlotUniforms): i32 {
+  const requested = f32(u.curveQuality.x);
+  const range = u.parameterBounds.y - u.parameterBounds.x;
+  return i32(min(512, u.parameterMode != u32(0) || u.curvePattern.x == 0 ? requested : max(requested, ceil(range / u.curvePattern.y * 4))));
+}
+
+/** A resident search record, never a renderable segment. Each original search
+ * interval has two independently clipped parts, matching the uncached query. */
+export function prepareCurveIntervals(trajectory: SpaceCurve, position: vec4, u: PlotUniforms, jumps: bool): vec4 {
+  const part = i32(position.x), row = i32(position.y);
+  if (row == 5) return part == 0 ? vec4(spatialProbe(trajectory, u), 0) : vec4(0);
+  const index = part / 2, half = part % 2;
+  const count = curveIntervalCount(u);
+  const empty = row == 4 ? vec4(1e20, 1e20, -1e20, -1e20) : vec4(0);
+  if (index >= count) return empty;
+  const range = u.parameterBounds.y - u.parameterBounds.x;
+  const stepSize = range / f32(count);
+  let low = u.parameterBounds.x + f32(index) * stepSize;
+  let high = min(u.parameterBounds.y, low + stepSize);
+  if (u.parameterMode != u32(0)) {
+    const focus = parameterFocus(trajectory, u);
+    low = parameterAt(-1 + 2 * f32(index) / f32(count), focus.y, focus.x, u);
+    high = parameterAt(-1 + 2 * f32(index + 1) / f32(count), focus.y, focus.x, u);
+  }
+  if (u.curvePattern.x != 0) {
+    const period = u.curvePattern.y;
+    const center = (floor(((low + high) * 0.5 + u.curvePattern.z) / period) + 0.5) * period - u.curvePattern.z;
+    low = max(low, center - period * u.curvePattern.w * 0.5);
+    high = min(high, center + period * u.curvePattern.w * 0.5);
+  }
+  if (high < low) return empty;
+  const middle = (low + high) * 0.5;
+  let start = half == 0 ? low : middle;
+  let end = half == 0 ? middle : high;
+  let a = trajectory(start), b = trajectory(end);
+  const frontA = inFront(a, u), frontB = inFront(b, u);
+  if (!(all(abs(a) < vec3(1e18)) && all(abs(b) < vec3(1e18))) || (!frontA && !frontB)) return empty;
+  if (frontA != frontB) {
+    let left = start, right = end;
+    for (let i = 0; i < 12; i++) {
+      const at = (left + right) * 0.5;
+      if (inFront(trajectory(at), u) == frontA) left = at;
+      else right = at;
+    }
+    if (frontA) end = left;
+    else start = right;
+    a = trajectory(start); b = trajectory(end);
+  }
+  const m = trajectory((start + end) * 0.5);
+  if (!all(abs(m) < vec3(1e18))) return empty;
+  const continuous = !jumps || length(m - (a + b) * 0.5) <= max(1e-6, length(b - a) * 0.2);
+  if (!continuous) return empty;
+  const ha = homogeneous(a, u, false), hb = homogeneous(b, u, false);
+  const pa = ha.xy / ha.z, pb = hb.xy / hb.z, pm = project(m, u);
+  const guard = intervalChordDistance(pm, pa, pb) * 4 + u.appearance.z * 0.5 + pixelWidth() * 2;
+  if (row == 0) return vec4(start, end, 1, 0);
+  if (row == 1) return vec4(pa, ha.z, 0);
+  if (row == 2) return vec4(pb, hb.z, 0);
+  if (row == 3) return vec4(pm, guard, 0);
+  if (!inFront(m, u)) return vec4(vec2(0), u.resolution);
+  return vec4(min(min(pa, pb), pm) - vec2(guard), max(max(pa, pb), pm) + vec2(guard));
+}
+
+/** Every part gets a bit. There is no top-k list, atomic race or overflow drop. */
+export function prepareCurveCandidates(position: vec4, u: PlotUniforms): vec4u {
+  const column = u32(position.x), row = u32(position.y);
+  const group = column % u32(8), tileX = column / u32(8);
+  const count = curveIntervalCount(u) * 2;
+  const start = i32(group) * 128;
+  if (start >= count) return vec4u(0);
+  const lo = vec2(f32(tileX), f32(row)) * f32(u.curveTiles.z);
+  const hi = lo + vec2(f32(u.curveTiles.z));
+  let bits = vec4u(0);
+  for (let i = 0; i < 128; i++) {
+    const part = start + i;
+    if (part >= count) break;
+    const bounds = textureLoad(curveIntervals, vec2i(part, 4), 0);
+    if (all(bounds.xy <= hi) && all(bounds.zw >= lo)) {
+      const a = textureLoad(curveIntervals, vec2i(part, 1), 0).xy;
+      const b = textureLoad(curveIntervals, vec2i(part, 2), 0).xy;
+      const middle = textureLoad(curveIntervals, vec2i(part, 3), 0);
+      const center = (lo + hi) * 0.5;
+      // Segment distance is 1-Lipschitz: beyond guard + tile radius no pixel
+      // in this tile can pass the same conservative fragment-side guard.
+      const radius = f32(u.curveTiles.z) * 0.7071068 + 1;
+      if (min(intervalChordDistance(center, a, middle.xy), intervalChordDistance(center, middle.xy, b)) > middle.z + radius) continue;
+      const bit = u32(1) << u32(i % 32);
+      if (i < 32) bits.x |= bit;
+      else if (i < 64) bits.y |= bit;
+      else if (i < 96) bits.z |= bit;
+      else bits.w |= bit;
+    }
+  }
+  return bits;
+}
+
+function cachedTrajectoryDistance(trajectory: SpaceCurve, pixel: vec2, u: PlotUniforms): f32 {
+  const tile = min(vec2u(floor(pixel / f32(u.curveTiles.z))), u.curveTiles.xy - vec2u(1));
+  const groups = (curveIntervalCount(u) * 2 + 127) / 128;
+  let distance = 1e20;
+  for (let group = 0; group < groups; group++) {
+    const packed = textureLoad(curveCandidates, vec2i(i32(tile.x) * 8 + group, i32(tile.y)), 0);
+    if (all(packed == vec4u(0))) continue;
+    for (let lane = 0; lane < 4; lane++) {
+      let bits = packed[lane];
+      for (let remaining = 0; remaining < 32; remaining++) {
+        if (bits == u32(0)) break;
+        const bit = firstTrailingBit(bits);
+        bits &= bits - u32(1);
+        const index = group * 128 + lane * 32 + i32(bit);
+        const bounds = textureLoad(curveIntervals, vec2i(index, 4), 0);
+        if (any(pixel < bounds.xy) || any(pixel > bounds.zw)) continue;
+        const parameters = textureLoad(curveIntervals, vec2i(index, 0), 0);
+        const a = textureLoad(curveIntervals, vec2i(index, 1), 0);
+        const b = textureLoad(curveIntervals, vec2i(index, 2), 0);
+        const middle = textureLoad(curveIntervals, vec2i(index, 3), 0);
+        if (min(intervalChordDistance(pixel, a.xy, middle.xy), intervalChordDistance(pixel, middle.xy, b.xy)) > middle.z) continue;
+        const delta = b.xy - a.xy;
+        const screenFraction = clamp(dot(pixel - a.xy, delta) / max(dot(delta, delta), 1e-20), 0, 1);
+        const fraction = screenFraction * a.z / max(mix(b.z, a.z, screenFraction), 1e-20);
+        const seed = mix(parameters.x, parameters.y, fraction);
+        // Continuity and near-plane clipping were computed once in the first pass.
+        const refined = refineTrajectory(trajectory, pixel, vec4(0, seed, parameters.xy), u, false);
+        distance = min(distance, min(refined, min(length(pixel - a.xy), length(pixel - b.xy))));
+        if (distance <= max(0, u.appearance.z * 0.5 - pixelWidth() * 0.5)) return distance;
+      }
+    }
+  }
+  return distance;
+}
+
+
+/** One-dimensional projected-axis layout. The table's column spacing is at most
+ * one physical pixel; candidates retain exact world multiples and anchors. */
+export function prepareSpatialLabels(position: vec4, u: PlotUniforms): vec4 {
+  const row = i32(position.y), column = i32(position.x);
+  const size = plotSize(u.resolution);
+  if (row >= 36) {
+    if (column >= 3) return vec4(0);
+    const axis = column == 0 ? vec3(1, 0, 0) : column == 1 ? vec3(0, 1, 0) : vec3(0, 0, 1);
+    if (row == 37) return vec4(spatialLevels(axis, u), 1);
+    const edge = column == 1 ? vec2(size.x * 0.5, size.y - 30) : vec2(size.x - 30, size.y * 0.5);
+    const world = axis * axisParameter(edge, axis, u);
+    const at = clamp(project(world, u) + vec2(10, 18), vec2(18), size - vec2(18));
+    return vec4(at, f32(120 + column), inFront(world, u) ? 1 : 0);
+  }
+  const axisIndex = row / 12, candidate = (row / 2) % 6;
+  const axis = axisIndex == 0 ? vec3(1, 0, 0) : axisIndex == 1 ? vec3(0, 1, 0) : vec3(0, 0, 1);
+  const originH = homogeneous(vec3(0), u, false);
+  const axisLine = cross(originH, homogeneous(axis, u, true));
+  const magnitude = length(axisLine.xy);
+  if (magnitude <= 1e-12) return vec4(0);
+  const normal = axisLine.xy / magnitude;
+  const tangent = vec2(normal.y, -normal.x);
+  const extent = dot(abs(tangent), size);
+  const low = min(0, tangent.x * size.x) + min(0, tangent.y * size.y);
+  const along = low + position.x / f32(u.curveTiles.w) * extent;
+  const foot = tangent * along - normal * (axisLine.z / magnitude);
+  const levels = spatialLevels(axis, u);
+  const stride = candidate < 3 ? levels.x : levels.y;
+  const nearest = floor(axisParameter(foot, axis, u) / stride + 0.5) * stride;
+  const t = nearest + f32(candidate % 3 - 1) * stride;
+  const world = axis * t;
+  if (!inFront(world, u)) return vec4(0);
+  const at = project(world, u);
+  const fontSize = u.appearance.w;
+  const sign = axis.y > 0 ? (normal.x > 0 ? -1 : 1) : (normal.y > 0 ? -1 : 1);
+  const outward = normal * sign;
+  if (row % 2 == 0) return vec4(at, outward);
+  const anchor = at + outward * (fontSize * 0.95 + 6) + vec2(0, fontSize * 0.65);
+  const width = numberWidth(t, levels.x, fontSize);
+  const before = project(axis * (t - stride), u), after = project(axis * (t + stride), u);
+  const separation = min(abs(at - before), abs(after - at));
+  const box = vec2(width + fontSize, fontSize * 1.8 + 6);
+  const fit = smoothstep(0.85, 1.15, max(separation.x / box.x, separation.y / box.y));
+  const visibility = (candidate < 3 ? tickOpacity(t, levels) : coarseTickOpacity(t, levels)) * fit;
+  const room = min(min(anchor.x - width * 0.5 - 3, size.x - anchor.x - width * 0.5 - 3), min(anchor.y - fontSize * 1.5, size.y - anchor.y));
+  const zero = abs(t) <= levels.x * 0.001;
+  const crossing = zero ? (axis.x > 0 ? 1 : 0) : smoothstep(fontSize * 2, fontSize * 4, length(at - project(vec3(0), u)));
+  let priority = 1;
+  if (axisIndex == 2) {
+    const origin = project(vec3(0), u);
+    const xDirection = homogeneous(vec3(1, 0, 0), u, true), zDirection = homogeneous(vec3(0, 0, 1), u, true);
+    const xTangent = normalize(xDirection.xy - origin * xDirection.z + vec2(1e-12));
+    const zTangent = normalize(zDirection.xy - origin * zDirection.z + vec2(1e-12));
+    priority = smoothstep(0.08, 0.25, abs(xTangent.x * zTangent.y - xTangent.y * zTangent.x));
+  }
+  return vec4(t, levels.x, visibility, visibility * smoothstep(0, 6, room) * crossing * priority);
+}
+
+function cachedSpatialTicks(pixel: vec2, axis: vec3, index: i32, u: PlotUniforms): vec4 {
+  const size = plotSize(u.resolution), fontSize = u.appearance.w;
+  const axisLine = cross(homogeneous(vec3(0), u, false), homogeneous(axis, u, true));
+  const magnitude = length(axisLine.xy);
+  if (magnitude <= 1e-12 || abs(dot(axisLine, vec3(pixel, 1))) / magnitude > fontSize * 6 + 12 + pixelWidth()) return vec4(0);
+  const normal = axisLine.xy / magnitude;
+  const tangent = vec2(normal.y, -normal.x);
+  const low = min(0, tangent.x * size.x) + min(0, tangent.y * size.y);
+  const coordinate = (dot(pixel, tangent) - low) / max(dot(abs(tangent), size), 1e-20);
+  const column = clamp(i32(floor(coordinate * f32(u.curveTiles.w))), 0, i32(u.curveTiles.w) - 1);
+  let labels = vec3(0);
+  let ticks = 0;
+  for (let candidate = 0; candidate < 6; candidate++) {
+    const row = index * 12 + candidate * 2;
+    const location = textureLoad(spatialLabels, vec2i(column, row), 0);
+    const at = location.xy, outward = location.zw;
+    const anchor = at + outward * (fontSize * 0.95 + 6) + vec2(0, fontSize * 0.65);
+    const delta = pixel - anchor;
+    const nearLabel = (u.decorations & u32(2)) != u32(0) && abs(delta.x) <= fontSize * 9 && delta.y >= -fontSize * 1.5 - 3 - pixelWidth() && delta.y <= 3 + pixelWidth();
+    const nearTick = u.appearance.x > 0 && all(abs(pixel - at) <= vec2(u.appearance.x * 0.5 + 4 + pixelWidth()));
+    if (!nearLabel && !nearTick) continue;
+    const style = textureLoad(spatialLabels, vec2i(column, row + 1), 0);
+    if (nearTick && style.z > 0) ticks = max(ticks, stroke(pixel, at - outward * 3, at + outward * 3, u.appearance.x) * style.z);
+    if (nearLabel && style.w > 0) labels = max(labels, numberAt(pixel, anchor, style.x, style.y, 0.5, fontSize, u.labelStyle.y, u.labelStyle.z) * style.w * u.decorationOpacity.y);
+  }
+  return vec4(ticks, labels);
+}
+
+function cachedSpatialBackground(uv: vec2, u: PlotUniforms): SpatialDecor {
+  const size = plotSize(u.resolution), pixel = uv * size;
+  const ray = viewRay(uv, u);
+  const xLevels = textureLoad(spatialLabels, vec2i(0, 37), 0).xyz;
+  const zLevels = textureLoad(spatialLabels, vec2i(2, 37), 0).xyz;
+  const grid = groundField(ray, u, xLevels, zLevels);
+  const xTicks = cachedSpatialTicks(pixel, vec3(1, 0, 0), 0, u);
+  const yTicks = cachedSpatialTicks(pixel, vec3(0, 1, 0), 1, u);
+  const zTicks = cachedSpatialTicks(pixel, vec3(0, 0, 1), 2, u);
+  let labels = max(max(xTicks.yzw, yTicks.yzw), zTicks.yzw);
+  let color = mix(vec3(0.965, 0.973, 0.985), vec3(0.8, 0.82, 0.85), grid * 0.65);
+  color = mix(color, vec3(0.67, 0.28, 0.25), axisField(pixel, vec3(1, 0, 0), ray, u));
+  color = mix(color, vec3(0.23, 0.47, 0.3), axisField(pixel, vec3(0, 1, 0), ray, u));
+  color = mix(color, vec3(0.4, 0.35, 0.62), axisField(pixel, vec3(0, 0, 1), ray, u));
+  color = mix(color, vec3(0.25, 0.29, 0.35), max(max(xTicks.x, yTicks.x), zTicks.x));
+  if ((u.decorations & u32(4)) != u32(0)) {
+    for (let index = 0; index < 3; index++) {
+      const name = textureLoad(spatialLabels, vec2i(index, 36), 0);
+      if (name.w > 0) labels = max(labels, axisLabel(pixel, name.xy, i32(name.z), u) * u.decorationOpacity.z);
+    }
+  }
+  return { color, labels };
 }
 `;var s=Object.freeze({"function-plot.shade.ts":t,"font.shade.ts":e});export{s as plotShaderFiles};

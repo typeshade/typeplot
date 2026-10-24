@@ -1,3 +1,4 @@
+import { GpuCompletion } from "./gpu-completion.js";
 import { PlotControlHost } from "./controls.js";
 export { ViewControl } from "./controls.js";
 export type { PlotControl, ControlPosition } from "./controls.js";
@@ -54,6 +55,7 @@ const RESERVED = new Set([
   "plotCenter",
   "plotSpan",
   "plotRotation",
+  "rotationBasis",
   "plotPan",
   "plotBlend",
   "probe",
@@ -66,6 +68,7 @@ const RESERVED = new Set([
   "parameterMode",
   "curveQuality",
   "curvePattern",
+  "curveTiles",
 ]);
 
 function finite(value: number, name: string): number {
@@ -141,6 +144,11 @@ export async function createPlot(
       "2D plots use orthographic projection. Switch to 3d first.",
     );
   const initialProjection = projection;
+  if (
+    options.acceleration !== undefined &&
+    typeof options.acceleration !== "boolean"
+  )
+    throw new TypeError("acceleration must be a boolean.");
   if (
     options.label !== undefined &&
     (typeof options.label !== "string" || !options.label.trim())
@@ -363,7 +371,11 @@ export async function createPlot(
   }
   if (original.role === null) canvas.setAttribute("role", "img");
   let rt: Runtime | undefined;
+  let completion: GpuCompletion | undefined;
   let glyphs: Texture | undefined;
+  let intervals: Texture | undefined;
+  let candidates: Texture | undefined;
+  let labels: Texture | undefined;
   let context: GPUCanvasContext | WebGL2RenderingContext | undefined;
   let controller: ReturnType<typeof createPlotInteraction> | undefined;
   let controls: PlotControlHost | undefined;
@@ -418,6 +430,10 @@ export async function createPlot(
     controller?.destroy();
     if (rt?.tier === "webgpu")
       (context as GPUCanvasContext | undefined)?.unconfigure();
+    completion?.destroy();
+    intervals?.destroy();
+    candidates?.destroy();
+    labels?.destroy();
     glyphs?.destroy();
     rt?.destroy();
     restoreCanvas();
@@ -478,7 +494,61 @@ export async function createPlot(
     }
     const runtime = rt;
     const target = context;
-    const pipeline = await runtime.load(manifest).render({ targets: [format] });
+    completion = new GpuCompletion(
+      win,
+      runtime.tier === "webgl2"
+        ? (target as WebGL2RenderingContext)
+        : undefined,
+    );
+    const loaded = runtime.load(manifest);
+    const hasCache = program.acceleration === "tiles-v1";
+    const accelerated =
+      hasCache &&
+      options.acceleration !== false &&
+      (runtime.tier === "webgpu" ||
+        !!(target as WebGL2RenderingContext).getExtension(
+          "EXT_color_buffer_float",
+        ));
+    const pipeline = await loaded.render({
+      targets: [format],
+      ...(hasCache
+        ? {
+            vertex: "fullscreen",
+            fragment: accelerated ? "draw" : "drawReference",
+          }
+        : {}),
+    });
+    const intervalPipeline = accelerated
+      ? await loaded.render({
+          vertex: "fullscreen",
+          fragment: "buildCurveIntervals",
+          targets: ["rgba32float"],
+        })
+      : undefined;
+    const labelPipeline = accelerated
+      ? await loaded.render({
+          vertex: "fullscreen",
+          fragment: "buildSpatialLabels",
+          targets: ["rgba32float"],
+        })
+      : undefined;
+    const candidatePipeline = accelerated
+      ? await loaded.render({
+          vertex: "fullscreen",
+          fragment: "buildCurveCandidates",
+          targets: ["rgba32uint"],
+        })
+      : undefined;
+    if (accelerated) {
+      intervals = runtime.texture({
+        size: [1024, 6],
+        format: "rgba32float",
+      });
+      candidates = runtime.texture({ size: [1, 1], format: "rgba32uint" });
+      labels = runtime.texture({ size: [1, 38], format: "rgba32float" });
+    }
+    let preparedKey = "";
+    let preparedLabelsKey = "";
     // Older manifests have no font binding and remain usable without recompilation.
     if (manifest.bindings.some((binding) => binding.name === "glyphAtlas"))
       glyphs = await loadGlyphAtlas(runtime);
@@ -529,8 +599,47 @@ export async function createPlot(
       const nextHeight = Math.max(1, Math.round(height * scale));
       if (canvas.width !== nextWidth) canvas.width = nextWidth;
       if (canvas.height !== nextHeight) canvas.height = nextHeight;
+      const pixelRatio = Math.min(
+        canvas.width / box.width,
+        canvas.height / box.height,
+      );
+      const tileSize = Math.max(
+        4,
+        Math.ceil(16 / pixelRatio),
+        Math.ceil(box.width / Math.max(1, Math.floor(limit / 8))),
+        Math.ceil(box.height / limit),
+      );
+      const tileColumns = Math.ceil(box.width / tileSize),
+        tileRows = Math.ceil(box.height / tileSize);
+      if (
+        accelerated &&
+        (candidates!.width !== tileColumns * 8 ||
+          candidates!.height !== tileRows)
+      ) {
+        candidates!.resize(tileColumns * 8, tileRows);
+        preparedKey = "";
+      }
+      const labelColumns = Math.min(
+        limit,
+        Math.ceil(Math.hypot(box.width, box.height) * pixelRatio) + 2,
+      );
+      if (accelerated && labels!.width !== labelColumns) {
+        labels!.resize(labelColumns, 38);
+        preparedLabelsKey = "";
+      }
+      const rotation = [...controller!.value("plotRotation")!];
+      const yaw = Math.fround(rotation[0]),
+        pitch = Math.fround(rotation[1]);
       const u = {
         ...parameters,
+        ...(uniformLayout?.kind === "struct" &&
+        uniformLayout.fields.some((field) => field.name === "curveTiles")
+          ? {
+              curveTiles: accelerated
+                ? [tileColumns, tileRows, tileSize, labelColumns]
+                : [0, 0, 16, 0],
+            }
+          : {}),
         ...(supportsFields
           ? {
               parameterBounds: domain.map((endpoint) =>
@@ -584,20 +693,91 @@ export async function createPlot(
                   : 0),
             }
           : {}),
-        plotCenter: controller!.value("plotCenter"),
-        plotSpan: controller!.value("plotSpan"),
-        plotRotation: controller!.value("plotRotation"),
-        plotPan: controller!.value("plotPan"),
+        plotCenter: [...controller!.value("plotCenter")!],
+        plotSpan: [...controller!.value("plotSpan")!],
+        plotRotation: rotation,
+        ...(uniformLayout?.kind === "struct" &&
+        uniformLayout.fields.some((field) => field.name === "rotationBasis")
+          ? {
+              rotationBasis: [
+                Math.sin(yaw),
+                Math.cos(yaw),
+                Math.sin(pitch),
+                Math.cos(pitch),
+              ],
+            }
+          : {}),
+        plotPan: [...controller!.value("plotPan")!],
         plotBlend: controller!.value("plotBlend")![0],
         probe,
         view3d: mode === "3d" ? (projection === "perspective" ? 2 : 1) : 0,
       };
       const frame = runtime.frame();
+      const geometryKey = accelerated
+        ? JSON.stringify([
+            u.resolution,
+            u.plotCenter,
+            u.plotSpan,
+            u.plotRotation,
+            u.plotPan,
+            u.probe,
+            u.view3d,
+            domain,
+            quality.samples,
+            style.curveWidth,
+            style.lineStyle,
+            style.dashPeriod,
+            style.dashOffset,
+            pixelRatio,
+            parameters,
+          ])
+        : "";
+      const labelsKey = accelerated
+        ? JSON.stringify([
+            u.resolution,
+            u.plotCenter,
+            u.plotSpan,
+            u.plotRotation,
+            u.plotPan,
+            u.view3d,
+            style.labelSize,
+            style.tickDensity,
+            pixelRatio,
+          ])
+        : "";
+      if (accelerated && preparedLabelsKey !== labelsKey) {
+        frame.pass({ color: [labels!] }, (pass) =>
+          pass.draw(labelPipeline!, { u } as never, { count: 3 }),
+        );
+      }
+      if (accelerated && preparedKey !== geometryKey) {
+        frame.pass({ color: [intervals!] }, (pass) => {
+          if (style.curveWidth === 0) pass.setScissorRect(0, 5, 1, 1);
+          pass.draw(intervalPipeline!, { u, font: { pixelRatio } } as never, {
+            count: 3,
+          });
+        });
+        if (style.curveWidth > 0)
+          frame.pass({ color: [candidates!] }, (pass) =>
+            pass.draw(
+              candidatePipeline!,
+              { u, curveIntervals: intervals } as never,
+              { count: 3 },
+            ),
+          );
+      }
       frame.pass({ color: [target] }, (pass) =>
         pass.draw(
           pipeline,
           {
             u,
+            ...(accelerated
+              ? {
+                  curveIntervals: intervals,
+                  curveCandidates: candidates,
+                  spatialLabels: labels,
+                }
+              : {}),
             ...(glyphs
               ? {
                   glyphAtlas: glyphs,
@@ -614,6 +794,9 @@ export async function createPlot(
         ),
       );
       await frame.submit();
+      await completion!.wait();
+      preparedKey = geometryKey;
+      preparedLabelsKey = labelsKey;
     };
     controller.setMode(mode === "3d");
     if (typeof win.ResizeObserver === "function") {

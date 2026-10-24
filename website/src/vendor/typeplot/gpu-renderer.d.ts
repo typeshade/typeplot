@@ -45,6 +45,7 @@ export declare class GpuRenderer {
     private device?;
     private samples;
     private destroyed;
+    private readonly completion;
     private constructor();
     get backend(): Backend;
     static create(canvas: HTMLCanvasElement, backend?: "auto" | Backend): Promise<GpuRenderer>;

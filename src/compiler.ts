@@ -42,6 +42,7 @@ const reserved = new Set([
   "plotCenter",
   "plotSpan",
   "plotRotation",
+  "rotationBasis",
   "plotPan",
   "plotBlend",
   "probe",
@@ -54,6 +55,7 @@ const reserved = new Set([
   "parameterMode",
   "curveQuality",
   "curvePattern",
+  "curveTiles",
 ]);
 
 /** Compile a named TypeShade callback once, on the build machine. */
@@ -97,10 +99,27 @@ export function compilePlot(
   const fragment =
     kind === "scalar"
       ? `if (u.plotBlend >= 1.) { return plotScalar3D(sample, trajectory, uv, u, ${jumps}); }\n  const flat = plot2D(sample, uv, u, ${jumps});\n  if (u.plotBlend <= 0.) { return flat; }\n  return mix(flat, plotScalar3D(sample, trajectory, uv, u, ${jumps}), clamp(u.plotBlend, 0., 1.));`
-      : `return plot3D(trajectory, uv, u, ${jumps});`;
+      : `return plot3DAccelerated(trajectory, uv, u);`;
+  const cacheEntries =
+    kind === "parametric"
+      ? `
+@fragment export function drawReference(@location(0) uv: vec2): vec4 {
+  return plot3D(trajectory, uv, u, ${jumps});
+}
+@fragment export function buildCurveIntervals(@builtin("position") position: vec4): vec4 {
+  return prepareCurveIntervals(trajectory, position, u, ${jumps});
+}
+@fragment export function buildSpatialLabels(@builtin("position") position: vec4): vec4 {
+  return prepareSpatialLabels(position, u);
+}
+@fragment export function buildCurveCandidates(@builtin("position") position: vec4): vec4u {
+  return prepareCurveCandidates(position, u);
+}
+`
+      : "";
   const wrapper = `"use typeshade";
 import { ${entry} as callback } from ${JSON.stringify("./" + path.basename(userFile))};
-import { PlotUniforms, plot2D, plot3D, plotScalar3D } from "./__typeplot-shared.shade.ts";
+import { PlotUniforms, plot2D, plot3D, plotScalar3D, plot3DAccelerated, prepareCurveIntervals, prepareCurveCandidates, prepareSpatialLabels } from "./__typeplot-shared.shade.ts";
 class Uniforms extends PlotUniforms { ${names.map((n) => `${n}: f32;`).join(" ")} }
 declare const u: uniform<Uniforms>;
 ${callback}
@@ -112,6 +131,7 @@ class VertexOutput { @builtin("position") position: vec4; @location(0) uv: vec2;
 @fragment export function draw(@location(0) uv: vec2): vec4 {
   ${fragment}
 }
+${cacheEntries}
 `;
   const documents = new Map(
     Object.entries(options.files ?? {}).map(([name, text]) => [
@@ -140,9 +160,15 @@ class VertexOutput { @builtin("position") position: vec4; @location(0) uv: vec2;
   const result = compile(wrapper, { fileName: wrapperFile, readDocument });
   const errors = result.diagnostics.filter((d) => d.category === "error");
   if (errors.length) throw new PlotCompileError(errors);
-  if (!result.wgsl || !result.glsl)
-    throw new Error("The plot must emit both WGSL and GLSL.");
+  if (!result.wgsl) throw new Error("The plot must emit WGSL.");
   const packed = packModule(result.module);
+  // Multiple named fragment passes have per-entry GLSL packs, not one result.glsl.
+  if (!packed.gl) throw new Error("The plot must emit GLSL render entries.");
+  for (const entry of [
+    ...Object.values(packed.gl.draws ?? {}),
+    ...Object.values(packed.gl.vertices ?? {}),
+  ])
+    if ("none" in entry) throw new Error(entry.none);
   const manifest = {
     ...packed,
     entries: packed.entries.map((entry) => ({
@@ -160,6 +186,13 @@ class VertexOutput { @builtin("position") position: vec4; @location(0) uv: vec2;
         : {}),
     })),
   };
-  return { version: 1, kind, manifest, parameters, camera: "projective" };
+  return {
+    version: 1,
+    kind,
+    manifest,
+    parameters,
+    camera: "projective",
+    ...(kind === "parametric" ? { acceleration: "tiles-v1" as const } : {}),
+  };
 }
 export type { PlotProgram, PlotKind } from "./types.js";
