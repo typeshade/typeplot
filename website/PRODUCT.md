@@ -15,8 +15,8 @@ these paths explicit: ordinary JavaScript callbacks are not compiled shaders. Do
 full matplotlib compatibility, compilation of ordinary JavaScript callbacks, or fabricated benchmarks.
 
 Use the repository README, source, declarations, and named shader examples as evidence.
-Data APIs are currently unreleased. Pin installations to the recorded runtime source commit;
-the v0.1.1 tag contains the GPU function API. Browser demos ship a local runtime with its
+Data APIs ship in v0.2.0. Pin installations to the version tag and retain the recorded runtime
+source commit for browser-demo provenance. Browser demos ship a local runtime with its
 source commit and license. Never load a remote CDN runtime or evaluate arbitrary source text.
 
 Visitor path: overview → first plot → data or GPU guide → API reference / playground / examples.

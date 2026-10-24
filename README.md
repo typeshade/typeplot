@@ -22,14 +22,14 @@ The website follows the TypeNN site conventions; see [website/README.md](website
 Install the versioned Git release with npm:
 
 ```sh
-npm install https://github.com/typeshade/typeplot.git#v0.1.1
+npm install https://github.com/typeshade/typeplot.git#v0.2.0
 ```
 
 The package includes JavaScript and declarations. TypeScript source in the dependency does
 not need a loader. The version tag keeps installations on the same release.
 
-The data plotting API described below targets the next release. The existing v0.1.1 tag
-contains the GPU function API; install a Git commit containing these changes to use the new data API.
+The v0.2.0 release includes the data plotting API, GPU curves and surfaces, scene timelines,
+and RTC precision improvements described below. See the [release notes](CHANGELOG.md).
 
 The package has not been published to the npm registry. Once it is published, registry
 installation will use `npm install typeplot`. See the

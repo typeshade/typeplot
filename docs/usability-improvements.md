@@ -21,7 +21,7 @@ newly compiled 3D programs default to perspective and permit orthographic projec
 uses the viewport aspect ratio and rejects curve segments behind the near plane. The website
 keeps mounted plots alive while changing parameters, view mode and projection.
 
-## Data plotting (next release)
+## Data plotting (v0.2.0)
 
 TypePlot now accepts arrays, typed arrays and JavaScript callbacks through `plot(y)` and
 `plot(x, yOrFunction)`. The data API creates a synchronous figure handle and renders every graphic through TypeShade shaders,
