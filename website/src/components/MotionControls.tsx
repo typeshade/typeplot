@@ -1,17 +1,24 @@
 import { useEffect, useRef, useState } from "react";
-import { Button, Slider } from "antd";
+import { Button, Select, Slider } from "antd";
 import type { Plot, Timeline } from "../vendor/typeplot/index.js";
 
 export default function MotionControls({
   plot,
   locale,
+  spatial,
 }: {
   plot: Plot;
   locale: "en" | "ko";
+  spatial: boolean;
 }) {
   const ko = locale === "ko",
     timeline = useRef<Timeline | undefined>(undefined),
     frame = useRef(0);
+  const [target, setTarget] = useState<
+    "function" | "content" | "axes" | "root"
+  >("function");
+  const preparing = useRef<Promise<Timeline> | undefined>(undefined),
+    generation = useRef(0);
   const [time, setTime] = useState(0),
     [playing, setPlaying] = useState(false),
     [busy, setBusy] = useState(false),
@@ -43,23 +50,67 @@ export default function MotionControls({
       frame.current = requestAnimationFrame(poll);
     else snapshot();
   }
-  function motion() {
-    if (!timeline.current) {
-      const camera = plot.getCamera();
-      timeline.current = plot.animate(
-        {
-          parameters: { [phaseKey]: phaseKey === "phase" ? 2 * Math.PI : 1.5 },
-          camera: {
-            rotation: [camera.rotation[0] + 1.2, 0.6],
-            distance: 3.6,
-            fov: Math.PI / 3,
-          },
-        },
-        { duration: 6 },
-      );
-      timeline.current.pause();
+  async function motion(): Promise<Timeline> {
+    if (timeline.current) return timeline.current;
+    if (!preparing.current) {
+      const version = generation.current;
+      preparing.current = (async () => {
+        const {
+          parallel,
+          multiplyMatrices,
+          rotationMatrix,
+          translationMatrix,
+        } = await import("../vendor/typeplot/index.js");
+        if (!live.current || version !== generation.current)
+          throw new Error("Motion was cancelled.");
+        const camera = plot.getCamera(),
+          route = spatial ? target : "function";
+        const clips = [];
+        if (route !== "axes")
+          clips.push(
+            plot.transition(
+              {
+                parameters: {
+                  [phaseKey]: phaseKey === "phase" ? 2 * Math.PI : 1.5,
+                },
+                ...(route !== "content"
+                  ? {
+                      camera: {
+                        rotation: [camera.rotation[0] + 1.2, 0.6],
+                        distance: 3.6,
+                        fov: Math.PI / 3,
+                      },
+                    }
+                  : {}),
+              },
+              { duration: 6 },
+            ),
+          );
+        if (route !== "function") {
+          const node = plot.scene[route];
+          const transform = multiplyMatrices(
+            node.getTransform(),
+            multiplyMatrices(
+              translationMatrix(0, route === "content" ? 0.65 : 0, 0),
+              rotationMatrix(0.85, [0, 0, 1]),
+            ),
+          );
+          clips.push(
+            node.transition(
+              { transform, opacity: route === "content" ? 0.45 : 1 },
+              { duration: 6 },
+            ),
+          );
+        }
+        const result = plot.timeline();
+        result.add(parallel(...clips), 0);
+        timeline.current = result;
+        return result;
+      })().finally(() => {
+        if (version === generation.current) preparing.current = undefined;
+      });
     }
-    return timeline.current;
+    return preparing.current;
   }
   function pause() {
     timeline.current?.pause();
@@ -71,38 +122,88 @@ export default function MotionControls({
     pause();
     setBusy(true);
     try {
-      await motion().seek(value);
+      await (await motion()).seek(value);
       snapshot();
     } catch (error) {
-      setError(String(error));
+      if (live.current) setError(String(error));
     } finally {
       if (live.current) setBusy(false);
     }
   }
   useEffect(() => {
     live.current = true;
+    timeline.current = undefined;
+    preparing.current = undefined;
     return () => {
+      generation.current++;
       live.current = false;
       if (frame.current) cancelAnimationFrame(frame.current);
       timeline.current?.cancel();
     };
-  }, [plot]);
+  }, [plot, spatial]);
   return (
     <div className="plot-motion">
+      {spatial && (
+        <div className="plot-toolbar">
+          <div className="plot-field">
+            <label htmlFor="motion-target">
+              {ko ? "애니메이션 대상" : "Animation target"}
+            </label>
+            <Select
+              id="motion-target"
+              value={target}
+              disabled={busy}
+              options={[
+                {
+                  value: "function",
+                  label: ko ? "함수와 카메라" : "Function and camera",
+                },
+                {
+                  value: "content",
+                  label: ko ? "곡면 이동·페이드" : "Move and fade surface",
+                },
+                {
+                  value: "axes",
+                  label: ko ? "좌표계만 회전" : "Rotate coordinate frame",
+                },
+                { value: "root", label: ko ? "전체 장면" : "Whole scene" },
+              ]}
+              onChange={async (value) => {
+                pause();
+                setBusy(true);
+                try {
+                  if (timeline.current) await timeline.current.seek(0);
+                  timeline.current?.cancel();
+                  timeline.current = undefined;
+                  setTime(0);
+                  setTarget(value);
+                } catch (error) {
+                  if (live.current) setError(String(error));
+                } finally {
+                  if (live.current) setBusy(false);
+                }
+              }}
+            />
+          </div>
+        </div>
+      )}
       <div className="plot-toolbar">
         <div className="plot-actions">
           <Button
             disabled={busy}
-            onClick={() => {
+            onClick={async () => {
+              setBusy(true);
               try {
                 if (playing) pause();
                 else {
-                  motion().play();
+                  (await motion()).play();
                   setPlaying(true);
                   frame.current = requestAnimationFrame(poll);
                 }
               } catch (error) {
-                setError(String(error));
+                if (live.current) setError(String(error));
+              } finally {
+                if (live.current) setBusy(false);
               }
             }}
           >

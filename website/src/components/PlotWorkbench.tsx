@@ -911,6 +911,7 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
           <MotionControls
             key={`${preset}-${backend}-${motionEpoch}`}
             plot={active.current.gpu}
+            spatial={threeD}
             locale={locale}
           />
         )}

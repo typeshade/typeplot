@@ -388,6 +388,65 @@ Its callbacks include `plot2D`, `plot3D`, `plotFilled` and `plotComparison`. The
 controller supplies `plotCenter`, `plotSpan`, `plotRotation` and `plotBlend` uniforms.
 These entry points let a host reuse an existing device and frame lifecycle.
 
+## Spatial scene transforms
+
+Newly compiled plots expose `plot.scene.root`, `plot.scene.axes` and `plot.scene.content`.
+A plot still renders its compiled mathematical callback and coordinate frame on one canvas,
+with one TypeShade Runtime. The content branch transforms a curve or height field while the
+axes branch transforms the lattice, ticks and labels independently. The root transforms both.
+Matrices apply in 3D; the 2D mode remains the original mathematical field view. Visibility and
+inherited opacity apply in either mode. Older manifests remain renderable and need recompilation
+to expose the independent branches.
+
+```ts
+import {
+  parallel,
+  multiplyMatrices,
+  translationMatrix,
+  rotationMatrix,
+} from "typeplot";
+
+const group = plot.scene.group(plot.scene.content);
+const timeline = plot.timeline();
+timeline.add(
+  parallel(
+    group.transition(
+      {
+        transform: multiplyMatrices(
+          translationMatrix(0, 0.5, 0),
+          rotationMatrix(Math.PI / 4, [0, 0, 1]),
+        ),
+        opacity: 0.6,
+      },
+      { duration: 4 },
+    ),
+    plot.transition(
+      {
+        parameters: { phase: 2 * Math.PI },
+        camera: { rotation: [1.2, 0.6], distance: 3.6 },
+      },
+      { duration: 4 },
+    ),
+  ),
+);
+await timeline.seek(2); // Evaluate the same state when seeking in either direction.
+timeline.play();
+```
+
+`scene.group(...nodes)` creates a group under the root and reparents its children, retaining
+local matrices. Compose transforms as `parent × local`. `getWorldTransform()` returns the
+composed matrix; `setTransform`, `setOpacity` and `setVisible` invalidate the existing renderer.
+Cycles, cross-plot parenting and invalid/singular transforms are refused without changing the
+rendered branches. Removed subtrees remain reusable and are hidden until attached to the root.
+`plot.reset()` restores the original root and default axes/content branches; custom groups detach.
+
+`plot.timeline()` owns render completion and cancels on plot destruction. Pointer input pauses
+its playback, as it does `plot.animate()`. Use `parallel` for distinct properties/nodes and
+`sequence` for successive clips. Transitions capture local endpoints; reverse seeking never
+accumulates matrix or opacity deltas. One timeline coalesces the resulting uniform changes into
+complete frames. All grid, curve and surface work stays in named TypeShade shaders, with resident
+observations reused. Picking returns the content's original mathematical coordinates.
+
 ## Development
 
 See the [rendering architecture](docs/architecture.md) for TypeShade capabilities,

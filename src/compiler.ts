@@ -59,6 +59,9 @@ const reserved = new Set([
   "curveTiles",
   "model",
   "inverseModel",
+  "axesModel",
+  "inverseAxesModel",
+  "sceneOpacity",
   "cameraLens",
   "plotCenterZ",
   "surfaceBounds",
@@ -125,7 +128,7 @@ export function compilePlot(
   return prepareCurveIntervals(trajectory, position, u, ${jumps});
 }
 @fragment export function buildSpatialLabels(@builtin("position") position: vec4): vec4 {
-  return prepareSpatialLabels(position, u);
+  return prepareSpatialLabels(position, axesUniforms(u));
 }
 @fragment export function buildCurveCandidates(@builtin("position") position: vec4): vec4u {
   return prepareCurveCandidates(position, u);
@@ -137,13 +140,13 @@ export function compilePlot(
   return plotSurface(heightField, uv, u, false);
 }
 @fragment export function buildSpatialLabels(@builtin("position") position: vec4): vec4 {
-  return prepareSpatialLabels(position, u);
+  return prepareSpatialLabels(position, axesUniforms(u));
 }
 `
         : "";
   const wrapper = `"use typeshade";
 import { ${entry} as callback } from ${JSON.stringify("./" + path.basename(userFile))};
-import { PlotUniforms, plot2D, plot3D, plotScalar3D, plot3DAccelerated, prepareCurveIntervals, prepareCurveCandidates, prepareSpatialLabels, plotSurface, pickSurface, pickTrajectory } from "./__typeplot-shared.shade.ts";
+import { PlotUniforms, axesUniforms, plot2D, plot3D, plotScalar3D, plot3DAccelerated, prepareCurveIntervals, prepareCurveCandidates, prepareSpatialLabels, plotSurface, pickSurface, pickTrajectory } from "./__typeplot-shared.shade.ts";
 class Uniforms extends PlotUniforms { ${names.map((n) => `${n}: f32;`).join(" ")} }
 declare const u: uniform<Uniforms>;
 ${callback}
@@ -225,6 +228,7 @@ ${cacheEntries}
     manifest,
     parameters,
     camera: "projective",
+    scene: "transform-v1",
     ...(kind === "parametric"
       ? { acceleration: "tiles-v1" as const }
       : kind === "surface"

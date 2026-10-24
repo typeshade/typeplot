@@ -48,7 +48,8 @@ Figure / Axes / Plot public API          Timeline and interaction
 
 The public facade exports APIs and overloads. Procedural plot implementation, figure/data
 models, host scheduling and session lifetime have separate modules. A figure snapshot
-describes one render; it is not the future public scene graph. Numeric source values retain
+describes one figure render. Procedural plots additionally expose a retained `PlotScene`
+for their existing coordinate frame and mathematical content. Numeric source values retain
 their logical identity while renderer-specific packing chooses the current f32 representation.
 
 Host scheduling coalesces invalidations and keeps one display render in flight. It does not
@@ -110,8 +111,19 @@ Adding an internal module therefore does not require another hand-maintained dec
 
 ## Compatibility and subsequent work
 
-This migration uses existing data artists, callbacks, cameras, picking, PNG and timelines as
-its compatibility baseline. Public scene nodes, group transforms, additional charts, general
-surfaces, text layout and video production are subsequent consumers of the foundation.
+The scene layer in `scene.ts` owns parent/local matrices, visibility and inherited opacity;
+it owns no Runtime, buffers, pipelines or geometry. `root` contains the axes and content branches.
+The renderer snapshots both before binding TypeShade uniforms. Curve/height-field projection
+and picking use the content transform, while the ground field, axes and labels use the axes
+transform. A content-only matrix change does not invalidate the spatial-label cache.
+
+`plot.timeline()` uses the existing render scheduler and lifecycle tracking. Group clips share
+its absolute time with camera/parameter clips. Reparenting keeps local matrices and is validated
+before committing; removing a branch hides it. Matrices apply to spatial views; flat mathematical
+views retain their original domain mapping. Inherited opacity/visibility apply to both views.
+
+Existing data artists, callbacks, cameras, picking, PNG and timelines remain the compatibility
+baseline. Multiple mathematical callbacks in one scene, additional charts, general surfaces,
+text layout and video production are subsequent consumers of the foundation.
 Rendering remains in named TypeShade shaders, with the existing axis widths, procedural dash
 semantics, asynchronous startup and complete-frame readiness.

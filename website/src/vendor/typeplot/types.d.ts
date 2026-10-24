@@ -1,5 +1,6 @@
 import type { PlotControl, ControlPosition } from "./controls.js";
-import type { AnimationClip, AnimationOptions, Timeline, TweenOptions } from "./animation.js";
+import type { AnimationClip, AnimationOptions, Timeline, TimelineOptions, TweenOptions } from "./animation.js";
+import type { PlotScene } from "./scene.js";
 import type { Matrix4 } from "./transform.js";
 export type PlotKind = "scalar" | "parametric" | "surface";
 export type PlotProjection = "perspective" | "orthographic";
@@ -15,6 +16,8 @@ export interface PlotProgram {
     readonly parameters: Readonly<Record<string, number>>;
     /** Programs compiled with the projective camera support both projection modes. */
     readonly camera?: "projective";
+    /** Independent coordinate-frame and content transforms in newly compiled programs. */
+    readonly scene?: "transform-v1";
     /** GPU-resident interval/tile search cache in newly compiled spatial programs. */
     readonly acceleration?: "tiles-v1" | "surface-v1";
     /** One-query GPU picking entry points, available after recompilation. */
@@ -142,6 +145,10 @@ export interface PlotOptions {
     readonly onError?: (error: Error) => void;
 }
 export interface Plot {
+    /** Retained 3D axes/content hierarchy; older compiled programs require recompilation. */
+    readonly scene: PlotScene;
+    /** Shared render/lifecycle ownership for composed camera, function and scene clips. */
+    timeline(options?: Omit<TimelineOptions, "render" | "window">): Timeline;
     readonly kind: PlotKind;
     getMode(): "2d" | "3d";
     getProjection(): PlotProjection;

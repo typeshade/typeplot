@@ -1,3 +1,4 @@
+import { PlotScene } from "./scene.js";
 import { FrameScheduler } from "./render/queue.js";
 import { RenderSession } from "./render/session.js";
 import {
@@ -71,6 +72,9 @@ const RESERVED = new Set([
   "curveTiles",
   "model",
   "inverseModel",
+  "axesModel",
+  "inverseAxesModel",
+  "sceneOpacity",
   "cameraLens",
   "plotCenterZ",
   "surfaceBounds",
@@ -204,11 +208,18 @@ export async function createPlot(
     modelLayout?.kind === "matrix" &&
     modelLayout.columns === 4 &&
     modelLayout.rows === 4;
+  const supportsScene =
+    program.scene === "transform-v1" &&
+    fieldLayout("axesModel")?.kind === "matrix" &&
+    vectorUniform("sceneOpacity", 2, "f32");
   const optionalReserved = new Set([
     "rotationBasis",
     "curveTiles",
     "model",
     "inverseModel",
+    "axesModel",
+    "inverseAxesModel",
+    "sceneOpacity",
     "cameraLens",
     "plotCenterZ",
     "surfaceBounds",
@@ -281,11 +292,15 @@ export async function createPlot(
       throw new TypeError(`Missing data for shader storage binding '${name}'.`);
   if (options.transform && !supportsTransform)
     throw new Error("Recompile this program to transform the scene.");
-  let model = options.transform
+  const initialModel = options.transform
     ? ([...options.transform] as unknown as Matrix4)
     : identityMatrix();
-  let inverseModel = invertAffineMatrix(model);
-  const initialModel = [...model] as unknown as Matrix4;
+  invertAffineMatrix(initialModel);
+  const scene = new PlotScene(
+    initialModel,
+    () => requestDraw(),
+    () => alive(),
+  );
   if ((options.surface || options.surfaceDomain) && program.kind !== "surface")
     throw new TypeError("Surface settings require a surface program.");
   let surface = surfaceOptions(options.surface ?? {});
@@ -833,8 +848,20 @@ export async function createPlot(
       const lens = [...controller!.value("plotLens")!];
       const yaw = Math.fround(rotation[0]),
         pitch = Math.fround(rotation[1]);
+      const sceneState = scene.snapshot();
+      const { transform: model, inverse: inverseModel } = sceneState.content;
       const u = {
         ...parameters,
+        ...(supportsScene
+          ? {
+              axesModel: sceneState.axes.transform,
+              inverseAxesModel: sceneState.axes.inverse,
+              sceneOpacity: [
+                sceneState.axes.opacity,
+                sceneState.content.opacity,
+              ],
+            }
+          : {}),
         ...(supportsTransform ? { model, inverseModel } : {}),
         ...(supportsTransform
           ? { cameraLens: [Math.tan(Math.fround(lens[0]) * 0.5), lens[1]] }
@@ -973,7 +1000,7 @@ export async function createPlot(
             style.labelSize,
             style.tickDensity,
             pixelRatio,
-            model,
+            supportsScene ? sceneState.axes.transform : model,
           ])
         : "";
       if (accelerated && preparedLabelsKey !== labelsKey) {
@@ -1042,6 +1069,14 @@ export async function createPlot(
     win.addEventListener("resize", requestDraw);
     await redraw();
     const plot: Plot = {
+      get scene() {
+        alive();
+        if (!supportsScene)
+          throw new Error(
+            "Recompile this program to enable independent scene branches.",
+          );
+        return scene;
+      },
       kind: program.kind,
       getMode() {
         alive();
@@ -1183,16 +1218,13 @@ export async function createPlot(
       },
       getTransform() {
         alive();
-        return [...model] as unknown as Matrix4;
+        return scene.root.getTransform();
       },
       setTransform(value) {
         alive();
         if (!supportsTransform)
           throw new Error("Recompile this program to transform the scene.");
-        const inverse = invertAffineMatrix(value);
-        model = [...value] as unknown as Matrix4;
-        inverseModel = inverse;
-        requestDraw();
+        scene.root.setTransform(value);
       },
       setSurface(value) {
         alive();
@@ -1229,7 +1261,7 @@ export async function createPlot(
         if (to.transform && !supportsTransform)
           throw new Error("Recompile this program to transform the scene.");
         const interpolateModel = to.transform
-          ? matrixInterpolator(model, to.transform)
+          ? matrixInterpolator(scene.root.getTransform(), to.transform)
           : undefined;
         return tween(
           0,
@@ -1269,24 +1301,31 @@ export async function createPlot(
           settings,
         );
       },
-      animate(to, settings = {}) {
+      timeline(settings = {}) {
         alive();
         const animation = new Timeline({
+          ...settings,
           window: win,
           render: redraw,
-          onError: report,
-          repeat: settings.repeat,
-          yoyo: settings.yoyo,
-          reducedMotion: settings.reducedMotion,
+          onError(error) {
+            if (settings.onError) settings.onError(error);
+            else report(error);
+          },
           onStateChange(state) {
             if (state === "playing" || state === "paused")
               animations.add(animation);
             else if (state === "finished" || state === "cancelled")
               animations.delete(animation);
+            settings.onStateChange?.(state);
           },
         });
-        animation.add(plot.transition(to, settings), 0);
         animations.add(animation);
+        return animation;
+      },
+      animate(to, settings = {}) {
+        const clip = plot.transition(to, settings);
+        const animation = plot.timeline(settings);
+        animation.add(clip, 0);
         return animation.play();
       },
       async pick(position, radius = 8) {
@@ -1305,6 +1344,8 @@ export async function createPlot(
             throw new RangeError(
               "Picking needs a finite CSS-pixel position and radius between zero and 64.",
             );
+          if (supportsScene && scene.snapshot().content.opacity === 0)
+            return null;
           const box = canvas.getBoundingClientRect();
           if (
             box.width <= 0 ||
@@ -1545,8 +1586,7 @@ export async function createPlot(
           ),
         );
         Object.assign(parameters, initialParameters);
-        model = [...initialModel] as unknown as Matrix4;
-        inverseModel = invertAffineMatrix(model);
+        scene.reset();
         surface = surfaceOptions(initialSurface);
         surfaceBounds = surfaceDomain(initialSurfaceBounds);
         automaticDepth = options.surface?.depthRange === undefined;

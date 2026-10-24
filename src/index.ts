@@ -2,6 +2,8 @@ import { createPlot } from "./procedural-plot.js";
 import { plot as plotData } from "./data.js";
 import type { Figure, NumericData, QuickPlotOptions } from "./data.js";
 import type { Plot, PlotOptions, PlotProgram } from "./types.js";
+export { PlotScene, SceneNode, SceneGroup } from "./scene.js";
+export type { SceneTransition } from "./scene.js";
 export { createPlot } from "./procedural-plot.js";
 export {
   Timeline,

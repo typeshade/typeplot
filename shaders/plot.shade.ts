@@ -20,6 +20,9 @@ export class PlotViewport {
 export class PlotUniforms extends PlotViewport {
   model: mat4;
   inverseModel: mat4;
+  axesModel: mat4;
+  inverseAxesModel: mat4;
+  sceneOpacity: vec2;
   cameraLens: vec2;
   plotCenterZ: f32;
   probe: f32;
@@ -35,6 +38,11 @@ export class PlotUniforms extends PlotViewport {
   surfaceDepth: vec2;
   surfaceRender: vec4;
   surfaceFlags: u32;
+}
+
+/** Coordinate-frame fields use their own matrix while the callback remains in content space. */
+export function axesUniforms(u: PlotUniforms): PlotUniforms {
+  return { resolution: u.resolution, plotCenter: u.plotCenter, plotSpan: u.plotSpan, plotRotation: u.plotRotation, rotationBasis: u.rotationBasis, plotPan: u.plotPan, plotBlend: u.plotBlend, appearance: u.appearance, decorations: u.decorations, labelStyle: u.labelStyle, decorationOpacity: u.decorationOpacity, model: u.axesModel, inverseModel: u.inverseAxesModel, axesModel: u.axesModel, inverseAxesModel: u.inverseAxesModel, sceneOpacity: u.sceneOpacity, cameraLens: u.cameraLens, plotCenterZ: u.plotCenterZ, probe: u.probe, view3d: u.view3d, parameterBounds: u.parameterBounds, parameterMode: u.parameterMode, curveQuality: u.curveQuality, curvePattern: u.curvePattern, curveTiles: u.curveTiles, surfaceBounds: u.surfaceBounds, surfaceDomainMode: u.surfaceDomainMode, surfaceRange: u.surfaceRange, surfaceDepth: u.surfaceDepth, surfaceRender: u.surfaceRender, surfaceFlags: u.surfaceFlags };
 }
 
 declare const curveIntervals: texture_2d<f32>;
@@ -243,12 +251,13 @@ export function plot2D(sample: ScalarCurve, uv: vec2, u: PlotUniforms, jumps: bo
     const offset = vec2((i & 1) == 0 ? -0.25 : 0.25, (i & 2) == 0 ? -0.25 : 0.25);
     curve += scalarField(sample, p + dx * offset.x + dy * offset.y, dx, dy, u, jumps) * 0.25;
   }
-  const decor = axes2D(uv, u, 121);
+  const decor = axes2D(uv, u, 121) * u.sceneOpacity.x;
   let color = mix(vec3(0.965, 0.973, 0.985), vec3(0.39, 0.43, 0.49), decor.x);
   color = mix(color, vec3(0.09, 0.42, 0.92), curve);
   color = labelColor(color, decor.yzw);
   const selected = ((vec2(u.probe, sample(u.probe)) - u.plotCenter) / span + 0.5) * size;
-  return vec4(abs(sample(u.probe)) < 1e18 ? pointColor(color, uv * size, selected) : color, 1);
+  const base = labelColor(mix(vec3(0.965, 0.973, 0.985), vec3(0.39, 0.43, 0.49), decor.x), decor.yzw);
+  return vec4(mix(base, abs(sample(u.probe)) < 1e18 ? pointColor(color, uv * size, selected) : color, u.sceneOpacity.y), 1);
 }
 
 /** Camera coordinates in normalized world units, shared by projection and inverse rays. */
@@ -445,7 +454,7 @@ function spatialBackground(uv: vec2, u: PlotUniforms): SpatialDecor {
       }
     }
   }
-  return { color, labels };
+  return { color: mix(vec3(0.965, 0.973, 0.985), color, u.sceneOpacity.x), labels: labels * u.sceneOpacity.x };
 }
 
 /** Parameter coordinate of a ray/graph-plane intersection, with visibility. */
@@ -547,7 +556,7 @@ function projectedScalarDistance(sample: ScalarCurve, pixel: vec2, u: PlotUnifor
 export function plotScalar3D(sample: ScalarCurve, trajectory: SpaceCurve, uv: vec2, u: PlotUniforms, jumps: bool): vec4 {
   const size = plotSize(u.resolution);
   const pixel = uv * size;
-  const background = spatialBackground(uv, u);
+  const background = spatialBackground(uv, axesUniforms(u));
   let curve = 0;
   const edgeOn = abs(inverseCamera(vec3(0, 0, -1), u).z) < max(u.plotSpan.x, u.plotSpan.y) * 0.003;
   if (edgeOn) {
@@ -562,7 +571,7 @@ export function plotScalar3D(sample: ScalarCurve, trajectory: SpaceCurve, uv: ve
   let color = mix(background.color, vec3(0.09, 0.42, 0.92), curve);
   color = labelColor(color, background.labels);
   const selected = vec3(u.probe, sample(u.probe), 0);
-  return vec4(abs(selected.y) < 1e18 && inFront(selected, u) ? pointColor(color, pixel, project(selected, u)) : color, 1);
+  return vec4(mix(labelColor(background.color, background.labels), abs(selected.y) < 1e18 && inFront(selected, u) ? pointColor(color, pixel, project(selected, u)) : color, u.sceneOpacity.y), 1);
 }
 
 /** Refine a candidate against the actual projected callback, never a chord SDF. */
@@ -736,17 +745,17 @@ function spatialCurveColor(uv: vec2, u: PlotUniforms, distance: f32, background:
   const pixel = uv * plotSize(u.resolution);
   let color = mix(background.color, vec3(0.09, 0.42, 0.92), distanceCoverage(distance, u.appearance.z));
   color = labelColor(color, background.labels);
-  return vec4(probe.z > 0 ? pointColor(color, pixel, probe.xy) : color, 1);
+  return vec4(mix(labelColor(background.color, background.labels), probe.z > 0 ? pointColor(color, pixel, probe.xy) : color, u.sceneOpacity.y), 1);
 }
 
 export function plot3D(trajectory: SpaceCurve, uv: vec2, u: PlotUniforms, jumps: bool): vec4 {
   const distance = u.appearance.z > 0 ? trajectoryDistance(trajectory, uv * plotSize(u.resolution), u, u.parameterBounds, jumps) : 1e20;
-  return spatialCurveColor(uv, u, distance, spatialBackground(uv, u), spatialProbe(trajectory, u));
+  return spatialCurveColor(uv, u, distance, spatialBackground(uv, axesUniforms(u)), spatialProbe(trajectory, u));
 }
 
 export function plot3DAccelerated(trajectory: SpaceCurve, uv: vec2, u: PlotUniforms): vec4 {
   const distance = u.appearance.z > 0 ? cachedTrajectoryDistance(trajectory, uv * plotSize(u.resolution), u) : 1e20;
-  return spatialCurveColor(uv, u, distance, cachedSpatialBackground(uv, u), textureLoad(curveIntervals, vec2i(0, 5), 0).xyz);
+  return spatialCurveColor(uv, u, distance, cachedSpatialBackground(uv, axesUniforms(u)), textureLoad(curveIntervals, vec2i(0, 5), 0).xyz);
 }
 
 
@@ -989,7 +998,7 @@ function cachedSpatialBackground(uv: vec2, u: PlotUniforms): SpatialDecor {
       if (name.w > 0) labels = max(labels, axisLabel(pixel, name.xy, i32(name.z), u) * u.decorationOpacity.z);
     }
   }
-  return { color, labels };
+  return { color: mix(vec3(0.965, 0.973, 0.985), color, u.sceneOpacity.x), labels: labels * u.sceneOpacity.x };
 }
 
 class SurfaceHit { point: vec3; depth: f32; valid: bool; }
@@ -1093,9 +1102,9 @@ export function plotSurface(field: HeightField, uv: vec2, u: PlotUniforms, cache
   let color = vec3(0.965, 0.973, 0.985), labels = vec3(0);
   let decor = vec4(0);
   if (u.view3d != u32(0)) {
-    const background = cached ? cachedSpatialBackground(uv, u) : spatialBackground(uv, u);
+    const background = cached ? cachedSpatialBackground(uv, axesUniforms(u)) : spatialBackground(uv, axesUniforms(u));
     color = background.color; labels = background.labels;
-  } else decor = axes2D(uv, u, 122);
+  } else decor = axes2D(uv, u, 122) * u.sceneOpacity.x;
   if (hit.valid) {
     const t = (hit.point.y - u.surfaceRange.x) / (u.surfaceRange.y - u.surfaceRange.x);
     let ink = colorMap(t, u32(u.surfaceRender.x));
@@ -1119,10 +1128,11 @@ export function plotSurface(field: HeightField, uv: vec2, u: PlotUniforms, cache
     const lines = max((u.surfaceFlags & u32(2)) != u32(0) ? wire : 0, (u.surfaceFlags & u32(4)) != u32(0) ? contours : 0);
     const filled = (u.surfaceFlags & u32(16)) != u32(0);
     if (filled) ink = mix(ink, vec3(0.12, 0.16, 0.22), lines * 0.65);
-    color = mix(color, ink, u.surfaceRender.y * (filled ? 1 : lines));
+    color = mix(color, ink, u.surfaceRender.y * u.sceneOpacity.y * (filled ? 1 : lines));
   }
   if (u.view3d == u32(0)) {color = mix(color, vec3(0.39, 0.43, 0.49), decor.x); labels = decor.yzw;}
-  return vec4(surfaceColorBar(labelColor(color, labels), uv, u), 1);
+  const decorated = labelColor(color, labels);
+  return vec4(mix(decorated, surfaceColorBar(decorated, uv, u), u.sceneOpacity.y), 1);
 }
 
 /** Integer targets preserve exact f32 point bits on both backends, without float targets. */
