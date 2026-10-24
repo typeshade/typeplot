@@ -1,6 +1,6 @@
 # TypePlot browser runtime
 
-Built from [typeshade/typeplot](https://github.com/typeshade/typeplot/tree/a6c5bda05e061faac3fcb8ae4a6c1c85ee6fd0d9) at runtime source commit `a6c5bda05e061faac3fcb8ae4a6c1c85ee6fd0d9`.
+Built from [typeshade/typeplot](https://github.com/typeshade/typeplot/tree/360e3d7e7ef482730f5815c1bd066a4d8ad2bd28) at runtime source commit `360e3d7e7ef482730f5815c1bd066a4d8ad2bd28`.
 
 Run the library build and examples generation, then `npm run sync:typeplot` in website/.
 JavaScript is generated and ignored by Git. Declarations, source provenance, Apache-2.0 LICENSE,
