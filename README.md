@@ -257,9 +257,9 @@ interval; its default is a copy of the initial x bounds. Camera bounds only cont
 Zooming and panning never change the parameter domain. Spatial plots open in 3D with perspective projection. Pass `projection: "orthographic"`
 for parallel projection, or call `plot.setProjection("orthographic")`. Two-dimensional plots
 always use orthographic projection. Switching mode preserves the selected 3D projection.
-Scalar graphs use the implicit field `y - f(x)` in both 2D and 3D. The spatial renderer
+Scalar graphs use the implicit field `y - f(x)` in 2D. In 3D, the spatial renderer
 intersects each camera ray with the graph's z=0 plane, then evaluates the function directly.
-There are no sampled endpoints, connecting segments or path vertex buffers for scalar graphs.
+There are no host-sampled paths, connecting segments or path vertex buffers for scalar graphs.
 They extend throughout the visible mathematical domain, including after zooming out. An exactly
 edge-on graph plane uses a bounded numerical callback search to handle its singular inverse
 projection. Arrays
@@ -468,3 +468,11 @@ centroid (the focus plane in perspective). Switching between one and two fingers
 input without a camera jump. Touch cancellation clears the gesture. Double-tap restores
 the home camera and follows `doubleClickReset`; released single-finger drags retain the
 existing inertia/reduced-motion behavior. The page remains scrollable outside the plot.
+
+
+Spatial scalar graphs measure stroke coverage against actual projected callback positions.
+Each physical subpixel gets its own inverse ray; compressed crossings use a bounded
+bracket query within the pixel footprint. This avoids spurious wide fields at the graph
+plane's projective pole without truncating its mathematical domain. The query is numerical,
+not an exact global SDF; arbitrary subpixel frequencies and f32 phase precision still bound
+resolved detail. See [projective-pole notes](docs/gpu-curve-quality.md).

@@ -598,33 +598,121 @@ function spatialBackground(uv: vec2, u: PlotUniforms): SpatialDecor {
   return { color, labels };
 }
 
-/** The graph y=f(x), z=0 is an implicit mathematical field on an infinite plane.
- * Inverse projection evaluates that field per fragment, just like the grid. */
+/** Parameter coordinate of a ray/graph-plane intersection, with visibility. */
+function scalarParameter(pixel: vec2, u: PlotUniforms): vec2 {
+  const ray = viewRay(pixel / plotSize(u.resolution), u);
+  if (abs(ray.direction.z) < 1e-12) return vec2(0);
+  const depth = -ray.origin.z / ray.direction.z;
+  return vec2((ray.origin + ray.direction * depth).x, u.view3d != u32(2) || depth >= 0.101 ? 1 : 0);
+}
+
+/** Bracket within the pixel's inverse-projected interval. This resolves dense
+ * crossings without trusting a single tangent, and accepts only actual projected
+ * callback points. No chord supplies coverage, including at the horizon. */
+function scalarFootprintDistance(sample: ScalarCurve, pixel: vec2, seed: f32, u: PlotUniforms): f32 {
+  const h = max(abs(seed) * 1e-6, 0.0001);
+  const direction = project(vec3(seed + h, 0, 0), u) - project(vec3(seed - h, 0, 0), u);
+  const along = normalize(direction + vec2(1e-20));
+  const normal = vec2(-along.y, along.x);
+  const radius = u.appearance.z * 0.5 + pixelWidth();
+  const first = scalarParameter(pixel - along * radius, u);
+  const last = scalarParameter(pixel + along * radius, u);
+  if (first.y <= 0 || last.y <= 0) return 1e20;
+  const low = min(first.x, last.x), high = max(first.x, last.x);
+  // Well-resolved areas already have an accurate local closest-point query.
+  if (high - low < u.plotSpan.x / max(u.resolution.x, 1) * 4) return 1e20;
+  let best = 1e20;
+  let previous = low;
+  let previousValue = sample(previous);
+  let previousWorld = vec3(previous, previousValue, 0);
+  let previousSide = dot(project(previousWorld, u) - pixel, normal);
+  for (let i = 1; i <= 8; i++) {
+    const next = mix(low, high, f32(i) / 8);
+    const nextValue = sample(next);
+    const nextWorld = vec3(next, nextValue, 0);
+    const nextSide = dot(project(nextWorld, u) - pixel, normal);
+    if (abs(previousValue) < 1e18 && abs(nextValue) < 1e18 && inFront(previousWorld, u) && inFront(nextWorld, u) && previousSide * nextSide <= 0) {
+      let a = previous, b = next, side = previousSide;
+      for (let step = 0; step < 8; step++) {
+        const t = (a + b) * 0.5;
+        const at = vec3(t, sample(t), 0);
+        const signed = dot(project(at, u) - pixel, normal);
+        if (side * signed <= 0) b = t;
+        else { a = t; side = signed; }
+      }
+      const t = (a + b) * 0.5;
+      const value = sample(t), at = vec3(t, value, 0);
+      if (abs(value) < 1e18 && inFront(at, u)) {
+        const before = project(vec3(t - h, sample(t - h), 0), u);
+        const after = project(vec3(t + h, sample(t + h), 0), u);
+        const rate = pixelWidth() * 2 * h / max(length(after - before), 1e-20);
+        const gap = patternDistance(t, rate, u);
+        best = min(best, length(vec2(length(project(at, u) - pixel), gap)));
+      }
+    }
+    previous = next; previousValue = nextValue; previousWorld = nextWorld; previousSide = nextSide;
+  }
+  return best;
+}
+
+/** A projected scalar query measures an actual point on the callback. Dividing
+ * a world-space residual by an unbounded inverse-projection derivative invents
+ * coverage near the projective pole, even far outside the projected graph. */
+function projectedScalarDistance(sample: ScalarCurve, pixel: vec2, u: PlotUniforms, jumps: bool): f32 {
+  const ray = viewRay(pixel / plotSize(u.resolution), u);
+  if (abs(ray.direction.z) < 1e-12) return 1e20;
+  const depth = -ray.origin.z / ray.direction.z;
+  if (u.view3d == u32(2) && depth < 0.101) return 1e20;
+  const world = ray.origin + ray.direction * depth;
+  let t = world.x;
+  let best = 1e20;
+  for (let iteration = 0; iteration < 5; iteration++) {
+    const value = sample(t);
+    const point = vec3(t, value, 0);
+    const h = max(abs(t) * 1e-6, 0.0001);
+    const before = sample(t - h), after = sample(t + h);
+    const at = project(point, u);
+    const validBefore = abs(before) < 1e18 && inFront(vec3(t - h, before, 0), u);
+    const validAfter = abs(after) < 1e18 && inFront(vec3(t + h, after, 0), u);
+    const a = validBefore ? project(vec3(t - h, before, 0), u) : at;
+    const b = validAfter ? project(vec3(t + h, after, 0), u) : at;
+    const tangent = (b - a) / (validBefore && validAfter ? 2 * h : h);
+    const norm = dot(tangent, tangent);
+    const continuous = !jumps || abs(value - (before + after) * 0.5) <= max(u.plotSpan.y * 1e-4, abs(after - before) * 0.2);
+    if (abs(value) < 1e18 && inFront(point, u) && continuous) {
+      const gap = patternDistance(t, pixelWidth() / max(sqrt(norm), 1e-20), u);
+      best = min(best, length(vec2(length(pixel - at), gap)));
+    }
+    if (!(norm > 1e-20 && norm < 1e30)) break;
+    const correction = dot(at - pixel, tangent) / norm;
+    const limit = max(u.plotSpan.x, abs(t) * 0.5);
+    t -= clamp(correction, -limit, limit);
+  }
+  if (best > u.appearance.z * 0.25) best = min(best, scalarFootprintDistance(sample, pixel, world.x, u));
+  return best;
+}
+
+/** Invert each physical subpixel separately. The projective plane has a pole;
+ * linearizing one center ray across that pole is not a valid pixel footprint. */
 export function plotScalar3D(sample: ScalarCurve, trajectory: SpaceCurve, uv: vec2, u: PlotUniforms, jumps: bool): vec4 {
-  const ray = viewRay(uv, u);
-  const denominator = abs(ray.direction.z) < 1e-8 ? (ray.direction.z < 0 ? -1e-8 : 1e-8) : ray.direction.z;
-  const depth = -ray.origin.z / denominator;
-  const p = (ray.origin + ray.direction * depth).xy;
-  const dx = dpdx(p), dy = dpdy(p);
+  const size = plotSize(u.resolution);
+  const pixel = uv * size;
   const background = spatialBackground(uv, u);
   let curve = 0;
-  for (let i = 0; i < 4; i++) {
-    const offset = vec2((i & 1) == 0 ? -0.25 : 0.25, (i & 2) == 0 ? -0.25 : 0.25);
-    curve += scalarField(sample, p + dx * offset.x + dy * offset.y, dx, dy, u, jumps) * 0.25;
-  }
-  // An exactly edge-on plane has no unique inverse-plane coordinate. Use the
-  // same callback-distance search as spatial curves in this narrow singular view;
-  // this is still a procedural curve query, never a line mesh.
   const edgeOn = abs(inverseCamera(vec3(0, 0, -1), u).z) < max(u.plotSpan.x, u.plotSpan.y) * 0.003;
   if (edgeOn) {
     const extent = max(u.plotSpan.x, u.plotSpan.y) * 32;
-    curve = distanceCoverage(trajectoryDistance(trajectory, uv * plotSize(u.resolution), u, vec2(u.plotCenter.x - extent, u.plotCenter.x + extent), jumps), u.appearance.z);
+    curve = distanceCoverage(trajectoryDistance(trajectory, pixel, u, vec2(u.plotCenter.x - extent, u.plotCenter.x + extent), jumps), u.appearance.z);
+  } else {
+    for (let i = 0; i < 4; i++) {
+      const offset = vec2((i & 1) == 0 ? -0.25 : 0.25, (i & 2) == 0 ? -0.25 : 0.25) * pixelWidth();
+      curve += distanceCoverage(projectedScalarDistance(sample, pixel + offset, u, jumps), u.appearance.z) * 0.25;
+    }
   }
-  const visible = edgeOn || (abs(ray.direction.z) >= 1e-8 && (u.view3d != u32(2) || depth >= 0.101));
-  let color = mix(background.color, vec3(0.09, 0.42, 0.92), visible ? curve : 0);
+  let color = mix(background.color, vec3(0.09, 0.42, 0.92), curve);
   color = labelColor(color, background.labels);
   const selected = vec3(u.probe, sample(u.probe), 0);
-  return vec4(abs(selected.y) < 1e18 && inFront(selected, u) ? pointColor(color, uv * plotSize(u.resolution), project(selected, u)) : color, 1);
+  return vec4(abs(selected.y) < 1e18 && inFront(selected, u) ? pointColor(color, pixel, project(selected, u)) : color, 1);
 }
 
 /** Refine a candidate against the actual projected callback, never a chord SDF. */

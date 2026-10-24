@@ -2,12 +2,16 @@
 
 Scalar callbacks and arbitrary spatial callbacks have distinct mathematical representations.
 
-Scalar graphs evaluate the implicit field y - f(x) over the entire visible plane. In 3D,
+Scalar graphs represent y = f(x) over the entire visible plane. In 3D,
 the shader intersects inverse camera rays with z=0, using the same camera as the ground
 lattice. No fixed parameter domain, 96-segment loop or path mesh remains in this path.
-The screen-distance estimate uses derivatives of the coordinate transform and finite
-callback slopes, with four footprint samples for antialiasing. The estimate is local;
-arbitrary frequencies below a pixel and f32 precision still limit resolved detail. Exact
+The 2D screen-distance estimate uses derivatives of the coordinate transform and finite
+callback slopes. In 3D each of four physical subpixel rays is inverted separately, then a
+local projected closest-point query measures distance to actual callback positions. In
+compressed regions a bracketed search inside the inverse-projected pixel interval resolves
+additional crossings. Chords and world-gradient divisions never supply 3D scalar coverage.
+The query remains numerical; arbitrary subpixel frequencies and f32 precision still limit
+resolved detail. Exact
 edge-on views of the graph plane are degenerate and do not have a unique inverse-plane
 coordinate. In this narrow singular view, a bounded numerical callback-distance search
 covers a view-relative parameter window extending 32 maximum camera spans on either side
@@ -79,3 +83,23 @@ Screen fractions are mapped back to parameters using homogeneous w, shared inter
 endpoints remain in the result, and near-plane clipping bisects actual callback positions.
 No sampled polyline is introduced as a rendering primitive. The guard remains numerical,
 not a certified enclosure for arbitrary high-frequency callbacks.
+
+
+## Projective-pole correction
+
+Near the graph plane's vanishing line, the inverse coordinates and their derivatives grow
+without bound. The old linearized `abs(y-f(x))/length(gradient)` estimate could shrink toward
+zero for pixels far outside the projected curve. Four samples of that same center-ray
+linearization did not fix its geometry and could cross the pole together.
+
+The replacement uses actual projected callback points for distance. A finite-search miss
+can omit coverage, but cannot create an arbitrarily wide stroke by inflating the inverse
+Jacobian. Pixel samples have independent rays and near-plane visibility checks. Dense
+crossings receive a safeguarded bracket query, followed by actual-point validation; no
+polyline mesh or artificial domain clipping is introduced. Exact edge-on views retain the
+existing explicitly bounded fallback described above.
+
+The acceptance radius is the requested CSS stroke radius plus physical-pixel AA; it does
+not grow with inverse-projection derivatives. This is a geometric coverage bound, not a
+claim of exact global closest-point distance or arbitrary-precision phase evaluation.
+Increasing arithmetic precision alone would not correct the former invalid distance model.

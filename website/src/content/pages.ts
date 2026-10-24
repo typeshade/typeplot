@@ -167,7 +167,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "Render a scalar function",
-          text: "The first scalar argument is x. In 2D and 3D, the renderer evaluates y − f(x) as an implicit field over the visible plane. Camera bounds never truncate its mathematical domain. Extra arguments are configurable parameters. Guard the mathematical domain in the callback; a magnitude of at least 1e18 omits a point. Configure parameters for curve.shade.ts as shown above.",
+          text: "The first scalar argument is x. In 2D the renderer evaluates y − f(x) as an implicit field. In 3D, independent subpixel rays seed an actual projected-point distance query, with bracket refinement in compressed regions. This avoids false coverage at the projective pole. The finite numerical query is not a guaranteed global SDF. Camera bounds never truncate its mathematical domain. Extra arguments are configurable parameters. Guard the mathematical domain in the callback; a magnitude of at least 1e18 omits a point. Configure parameters for curve.shade.ts as shown above.",
           code: gpuCode,
         },
         {
@@ -335,7 +335,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "스칼라 함수 표시",
-          text: "첫 스칼라 인수는 x입니다. 2D와 3D에서 보이는 평면 전체에 y − f(x) 암시적 필드를 직접 평가합니다. 카메라 범위는 함수의 정의역을 자르지 않습니다. 추가 인수는 갱신 가능한 매개변수입니다. 수학적 정의역을 콜백 안에서 처리하십시오. 크기가 1e18 이상인 반환값은 해당 점을 생략합니다. 위 설정처럼 curve.shade.ts의 매개변수 기본값을 지정합니다.",
+          text: "첫 스칼라 인수는 x입니다. 2D에서는 y − f(x)를 암시적 필드로 평가합니다. 3D에서는 서브픽셀마다 독립적으로 역투영하고 실제 투영된 곡선 위 점까지의 거리를 계산하며, 압축된 구간은 구간 탐색으로 보정합니다. 소실점 부근의 잘못된 면적 판정을 막지만 유한 수치 탐색이므로 전역적으로 정확한 SDF를 보장하지는 않습니다. 카메라 범위는 함수의 정의역을 자르지 않습니다. 추가 인수는 갱신 가능한 매개변수입니다. 수학적 정의역을 콜백 안에서 처리하십시오. 크기가 1e18 이상인 반환값은 해당 점을 생략합니다. 위 설정처럼 curve.shade.ts의 매개변수 기본값을 지정합니다.",
           code: gpuCode,
         },
         {
