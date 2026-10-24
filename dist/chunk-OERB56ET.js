@@ -46,6 +46,7 @@ struct PlotUniforms {
   cameraLens: vec2<f32>,
   plotCenterZ: f32,
   probe: f32,
+  parameterFocusSeed: f32,
   view3d: u32,
   parameterBounds: vec2<f32>,
   parameterMode: u32,
@@ -111,6 +112,7 @@ struct Uniforms {
   cameraLens: vec2<f32>,
   plotCenterZ: f32,
   probe: f32,
+  parameterFocusSeed: f32,
   view3d: u32,
   parameterBounds: vec2<f32>,
   parameterMode: u32,
@@ -411,7 +413,7 @@ fn colorMap(value: f32, palette: u32) -> vec3<f32> {
 }
 
 fn axesUniforms(typeplot_shared_u: PlotUniforms) -> PlotUniforms {
-  return PlotUniforms(typeplot_shared_u.resolution, typeplot_shared_u.plotCenter, typeplot_shared_u.plotSpan, typeplot_shared_u.plotRotation, typeplot_shared_u.rotationBasis, typeplot_shared_u.plotPan, typeplot_shared_u.plotBlend, typeplot_shared_u.appearance, typeplot_shared_u.decorations, typeplot_shared_u.labelStyle, typeplot_shared_u.decorationOpacity, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.sceneOpacity, typeplot_shared_u.cameraLens, typeplot_shared_u.plotCenterZ, typeplot_shared_u.probe, typeplot_shared_u.view3d, typeplot_shared_u.parameterBounds, typeplot_shared_u.parameterMode, typeplot_shared_u.curveQuality, typeplot_shared_u.curvePattern, typeplot_shared_u.curveTiles, typeplot_shared_u.surfaceBounds, typeplot_shared_u.surfaceDomainMode, typeplot_shared_u.surfaceRange, typeplot_shared_u.surfaceDepth, typeplot_shared_u.surfaceRender, typeplot_shared_u.surfaceFlags);
+  return PlotUniforms(typeplot_shared_u.resolution, typeplot_shared_u.plotCenter, typeplot_shared_u.plotSpan, typeplot_shared_u.plotRotation, typeplot_shared_u.rotationBasis, typeplot_shared_u.plotPan, typeplot_shared_u.plotBlend, typeplot_shared_u.appearance, typeplot_shared_u.decorations, typeplot_shared_u.labelStyle, typeplot_shared_u.decorationOpacity, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.sceneOpacity, typeplot_shared_u.cameraLens, typeplot_shared_u.plotCenterZ, typeplot_shared_u.probe, typeplot_shared_u.parameterFocusSeed, typeplot_shared_u.view3d, typeplot_shared_u.parameterBounds, typeplot_shared_u.parameterMode, typeplot_shared_u.curveQuality, typeplot_shared_u.curvePattern, typeplot_shared_u.curveTiles, typeplot_shared_u.surfaceBounds, typeplot_shared_u.surfaceDomainMode, typeplot_shared_u.surfaceRange, typeplot_shared_u.surfaceDepth, typeplot_shared_u.surfaceRender, typeplot_shared_u.surfaceFlags);
 }
 
 fn axisLabel(pixel: vec2<f32>, at: vec2<f32>, code: i32, typeplot_shared_u_2: PlotViewport) -> vec3<f32> {
@@ -608,9 +610,8 @@ fn axisField(pixel: vec2<f32>, axis: vec3<f32>, ray: ViewRay, typeplot_shared_u_
 fn groundField(ray: ViewRay, typeplot_shared_u_16: PlotUniforms, xLevels: vec3<f32>, zLevels: vec3<f32>) -> f32 {
   let _licm0 = vec2<f32>(xLevels.x, zLevels.x);
   let _licm1 = vec2<f32>(xLevels.y, zLevels.y);
-  let _licm2 = vec2<f32>(2.0, 2.0);
-  let _licm3 = vec2<f32>(6.0, 6.0);
-  let _licm4 = typeplot_shared_u_16.appearance.y;
+  let _licm2 = clamp(typeplot_shared_u_16.labelStyle.x, 0.5, 2.0);
+  let _licm3 = typeplot_shared_u_16.appearance.y;
   let _cse0 = abs(ray.direction.y);
   let denominator = select(ray.direction.y, select(1e-8, -1e-8, (ray.direction.y < 0.0)), (_cse0 < 1e-8));
   let depth = ((-ray.origin.y) / denominator);
@@ -624,10 +625,12 @@ fn groundField(ray: ViewRay, typeplot_shared_u_16: PlotUniforms, xLevels: vec3<f
     let _gv1 = ((ground / spacing) + 0.5);
     let distance = (((abs((fract(_gv1) - 0.5)) * spacing) / gradient) * _cse1);
     let separation = ((spacing / gradient) * _cse1);
-    let fade = smoothstep(_licm2, _licm3, separation);
+    let _lc0 = (12.0 / _licm2);
+    let _lc1 = (28.0 / _licm2);
+    let fade = smoothstep(vec2<f32>(_lc0, _lc0), vec2<f32>(_lc1, _lc1), separation);
     let nearest = (floor(_gv1) * spacing);
     let weights = select(vec2<f32>(coarseTickOpacity(nearest.x, xLevels), coarseTickOpacity(nearest.y, zLevels)), vec2<f32>(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, zLevels)), _gv0);
-    field = max(field, max(((distanceCoverage(distance.x, _licm4) * fade.x) * weights.x), ((distanceCoverage(distance.y, _licm4) * fade.y) * weights.y)));
+    field = max(field, max(((distanceCoverage(distance.x, _licm3) * fade.x) * weights.x), ((distanceCoverage(distance.y, _licm3) * fade.y) * weights.y)));
   }
   return select(0.0, (field * typeplot_shared_u_16.decorationOpacity.x), ((((typeplot_shared_u_16.view3d != 2u) || (depth >= 0.101)) && (_cse0 >= 1e-8)) && ((typeplot_shared_u_16.decorations & 1u) != 0u)));
 }
@@ -1181,7 +1184,7 @@ fn plotSurface_heightField(uv: vec2<f32>, typeplot_shared_u_28: PlotUniforms, ca
 }
 
 fn Uniforms_as_PlotUniforms(value: Uniforms) -> PlotUniforms {
-  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
+  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.parameterFocusSeed, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
 }
 
 @fragment
@@ -1267,7 +1270,7 @@ fn queryLayerReference(@builtin(position) position: vec4<f32>) -> @location(0) v
 fn pick(@builtin(position) position: vec4<f32>) -> @location(0) vec4<u32> {
   return pickSurface_heightField(position, Uniforms_as_PlotUniforms(u));
 }
-`,bindings:[{name:"u",emitted:"u",space:"uniform",group:0,binding:0,type:"struct:Uniforms",resource:{resourceKind:"uniform-buffer",structName:"Uniforms",structEmitted:"Uniforms"},stages:["fragment"],rule:"std140",layout:{kind:"struct",size:592,fields:[{name:"resolution",offset:0,layout:{kind:"vector",size:2,type:"f32"}},{name:"plotCenter",offset:8,layout:{kind:"vector",size:2,type:"f32"}},{name:"plotSpan",offset:16,layout:{kind:"vector",size:2,type:"f32"}},{name:"plotRotation",offset:24,layout:{kind:"vector",size:2,type:"f32"}},{name:"rotationBasis",offset:32,layout:{kind:"vector",size:4,type:"f32"}},{name:"plotPan",offset:48,layout:{kind:"vector",size:2,type:"f32"}},{name:"plotBlend",offset:56,layout:{kind:"scalar",type:"f32"}},{name:"appearance",offset:64,layout:{kind:"vector",size:4,type:"f32"}},{name:"decorations",offset:80,layout:{kind:"scalar",type:"u32"}},{name:"labelStyle",offset:96,layout:{kind:"vector",size:4,type:"f32"}},{name:"decorationOpacity",offset:112,layout:{kind:"vector",size:3,type:"f32"}},{name:"model",offset:128,layout:{kind:"matrix",columns:4,rows:4,columnStride:16}},{name:"inverseModel",offset:192,layout:{kind:"matrix",columns:4,rows:4,columnStride:16}},{name:"axesModel",offset:256,layout:{kind:"matrix",columns:4,rows:4,columnStride:16}},{name:"inverseAxesModel",offset:320,layout:{kind:"matrix",columns:4,rows:4,columnStride:16}},{name:"sceneOpacity",offset:384,layout:{kind:"vector",size:2,type:"f32"}},{name:"cameraLens",offset:392,layout:{kind:"vector",size:2,type:"f32"}},{name:"plotCenterZ",offset:400,layout:{kind:"scalar",type:"f32"}},{name:"probe",offset:404,layout:{kind:"scalar",type:"f32"}},{name:"view3d",offset:408,layout:{kind:"scalar",type:"u32"}},{name:"parameterBounds",offset:416,layout:{kind:"vector",size:2,type:"f32"}},{name:"parameterMode",offset:424,layout:{kind:"scalar",type:"u32"}},{name:"curveQuality",offset:432,layout:{kind:"vector",size:2,type:"u32"}},{name:"curvePattern",offset:448,layout:{kind:"vector",size:4,type:"f32"}},{name:"curveTiles",offset:464,layout:{kind:"vector",size:4,type:"u32"}},{name:"surfaceBounds",offset:480,layout:{kind:"vector",size:4,type:"f32"}},{name:"surfaceDomainMode",offset:496,layout:{kind:"scalar",type:"u32"}},{name:"surfaceRange",offset:504,layout:{kind:"vector",size:2,type:"f32"}},{name:"surfaceDepth",offset:512,layout:{kind:"vector",size:2,type:"f32"}},{name:"surfaceRender",offset:528,layout:{kind:"vector",size:4,type:"f32"}},{name:"surfaceFlags",offset:544,layout:{kind:"scalar",type:"u32"}},{name:"gridXMin",offset:548,layout:{kind:"scalar",type:"f32"}},{name:"gridXMax",offset:552,layout:{kind:"scalar",type:"f32"}},{name:"gridZMin",offset:556,layout:{kind:"scalar",type:"f32"}},{name:"gridZMax",offset:560,layout:{kind:"scalar",type:"f32"}},{name:"gridRows",offset:564,layout:{kind:"scalar",type:"f32"}},{name:"gridColumns",offset:568,layout:{kind:"scalar",type:"f32"}},{name:"gridCount",offset:572,layout:{kind:"scalar",type:"f32"}},{name:"heightScale",offset:576,layout:{kind:"scalar",type:"f32"}},{name:"heightOffset",offset:580,layout:{kind:"scalar",type:"f32"}}]}},{name:"heights",emitted:"heights",space:"storage",group:0,binding:1,access:"read",type:"array<f32>",resource:{resourceKind:"storage-buffer",glslDataTexture:"r32f"},stages:["fragment"],rule:"std430",layout:{kind:"array",length:null,stride:4,element:{kind:"scalar",type:"f32"}},dataTexture:{format:"r32float",lanes:1}},{name:"spatialLabels",emitted:"spatialLabels",space:"uniform",group:0,binding:2,type:"texture_2d<f32>",resource:{resourceKind:"texture",textureDim:"2d",textureElem:"f32",sampleType:"unfilterable-float"},stages:["fragment"]},{name:"query",emitted:"query",space:"uniform",group:0,binding:3,type:"struct:PickUniforms",resource:{resourceKind:"uniform-buffer",structName:"PickUniforms",structEmitted:"PickUniforms"},stages:["fragment"],rule:"std140",layout:{kind:"struct",size:16,fields:[{name:"pixel",offset:0,layout:{kind:"vector",size:2,type:"f32"}},{name:"radius",offset:8,layout:{kind:"scalar",type:"f32"}}]}},{name:"sceneMaterial",emitted:"sceneMaterial",space:"uniform",group:0,binding:4,type:"struct:SceneMaterial",resource:{resourceKind:"uniform-buffer",structName:"SceneMaterial",structEmitted:"SceneMaterial"},stages:["fragment"],rule:"std140",layout:{kind:"struct",size:32,fields:[{name:"ink",offset:0,layout:{kind:"vector",size:4,type:"f32"}},{name:"bias",offset:16,layout:{kind:"scalar",type:"f32"}}]}},{name:"glyphAtlas",emitted:"glyphAtlas",space:"uniform",group:0,binding:5,type:"texture_2d<f32>",resource:{resourceKind:"texture",textureDim:"2d",textureElem:"f32",sampleType:"unfilterable-float"},stages:["fragment"]},{name:"font",emitted:"font",space:"uniform",group:0,binding:6,type:"struct:FontUniforms",resource:{resourceKind:"uniform-buffer",structName:"FontUniforms",structEmitted:"FontUniforms"},stages:["fragment"],rule:"std140",layout:{kind:"struct",size:16,fields:[{name:"pixelRatio",offset:0,layout:{kind:"scalar",type:"f32"}}]}}],entries:[{name:"fullscreen",emitted:"fullscreen",stage:"vertex",inputs:[{name:"i",emitted:"i",type:"u32",builtin:"vertex_index"}],outputs:[{name:"position",emitted:"position",type:"vec4<f32>",builtin:"position"},{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],bindings:[],line:{file:"__typeplot-entry.shade.ts",line:8}},{name:"draw",emitted:"draw",stage:"fragment",inputs:[{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<f32>",location:0}],bindings:[{name:"u",writes:!1},{name:"heights",writes:!1},{name:"spatialLabels",writes:!1},{name:"glyphAtlas",writes:!1},{name:"font",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:12}},{name:"drawReference",emitted:"drawReference",stage:"fragment",inputs:[{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<f32>",location:0}],bindings:[{name:"u",writes:!1},{name:"heights",writes:!1},{name:"spatialLabels",writes:!1},{name:"glyphAtlas",writes:!1},{name:"font",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:16}},{name:"buildSpatialLabels",emitted:"buildSpatialLabels",stage:"fragment",inputs:[{name:"position",emitted:"position",type:"vec4<f32>",builtin:"position"}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<f32>",location:0}],bindings:[{name:"u",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:19}},{name:"drawLayer",emitted:"drawLayer",stage:"fragment",inputs:[{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],outputs:[{name:"color",emitted:"color",type:"vec4<f32>",location:0},{name:"depth",emitted:"depth",type:"vec4<f32>",location:1}],bindings:[{name:"u",writes:!1},{name:"heights",writes:!1},{name:"sceneMaterial",writes:!1},{name:"font",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:24}},{name:"drawLayerReference",emitted:"drawLayerReference",stage:"fragment",inputs:[{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],outputs:[{name:"color",emitted:"color",type:"vec4<f32>",location:0},{name:"depth",emitted:"depth",type:"vec4<f32>",location:1}],bindings:[{name:"u",writes:!1},{name:"heights",writes:!1},{name:"sceneMaterial",writes:!1},{name:"font",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:27}},{name:"drawBackdrop",emitted:"drawBackdrop",stage:"fragment",inputs:[{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<f32>",location:0}],bindings:[{name:"u",writes:!1},{name:"spatialLabels",writes:!1},{name:"glyphAtlas",writes:!1},{name:"font",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:30}},{name:"drawBackdropReference",emitted:"drawBackdropReference",stage:"fragment",inputs:[{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<f32>",location:0}],bindings:[{name:"u",writes:!1},{name:"glyphAtlas",writes:!1},{name:"font",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:31}},{name:"drawLabels",emitted:"drawLabels",stage:"fragment",inputs:[{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<f32>",location:0}],bindings:[{name:"u",writes:!1},{name:"spatialLabels",writes:!1},{name:"glyphAtlas",writes:!1},{name:"font",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:32}},{name:"drawLabelsReference",emitted:"drawLabelsReference",stage:"fragment",inputs:[{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<f32>",location:0}],bindings:[{name:"u",writes:!1},{name:"glyphAtlas",writes:!1},{name:"font",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:33}},{name:"queryLayer",emitted:"queryLayer",stage:"fragment",inputs:[{name:"position",emitted:"position",type:"vec4<f32>",builtin:"position"}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<u32>",location:0}],bindings:[{name:"u",writes:!1},{name:"heights",writes:!1},{name:"query",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:34}},{name:"queryLayerReference",emitted:"queryLayerReference",stage:"fragment",inputs:[{name:"position",emitted:"position",type:"vec4<f32>",builtin:"position"}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<u32>",location:0}],bindings:[{name:"u",writes:!1},{name:"heights",writes:!1},{name:"query",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:37}},{name:"pick",emitted:"pick",stage:"fragment",inputs:[{name:"position",emitted:"position",type:"vec4<f32>",builtin:"position"}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<u32>",location:0}],bindings:[{name:"u",writes:!1},{name:"heights",writes:!1},{name:"query",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:42}}],structs:[{name:"FontUniforms",emitted:"FontUniforms",fields:[{name:"pixelRatio",emitted:"pixelRatio",type:"f32"}]},{name:"NumberFormat",emitted:"NumberFormat",fields:[{name:"value",emitted:"value",type:"f32"},{name:"negative",emitted:"negative",type:"bool"},{name:"scientific",emitted:"scientific",type:"bool"},{name:"decimals",emitted:"decimals",type:"i32"},{name:"digits",emitted:"digits",type:"i32"},{name:"exponent",emitted:"exponent",type:"i32"},{name:"length",emitted:"length",type:"i32"}]},{name:"PlotViewport",emitted:"PlotViewport",fields:[{name:"resolution",emitted:"resolution",type:"vec2<f32>"},{name:"plotCenter",emitted:"plotCenter",type:"vec2<f32>"},{name:"plotSpan",emitted:"plotSpan",type:"vec2<f32>"},{name:"plotRotation",emitted:"plotRotation",type:"vec2<f32>"},{name:"rotationBasis",emitted:"rotationBasis",type:"vec4<f32>"},{name:"plotPan",emitted:"plotPan",type:"vec2<f32>"},{name:"plotBlend",emitted:"plotBlend",type:"f32"},{name:"appearance",emitted:"appearance",type:"vec4<f32>"},{name:"decorations",emitted:"decorations",type:"u32"},{name:"labelStyle",emitted:"labelStyle",type:"vec4<f32>"},{name:"decorationOpacity",emitted:"decorationOpacity",type:"vec3<f32>"}]},{name:"PlotUniforms",emitted:"PlotUniforms",fields:[{name:"resolution",emitted:"resolution",type:"vec2<f32>"},{name:"plotCenter",emitted:"plotCenter",type:"vec2<f32>"},{name:"plotSpan",emitted:"plotSpan",type:"vec2<f32>"},{name:"plotRotation",emitted:"plotRotation",type:"vec2<f32>"},{name:"rotationBasis",emitted:"rotationBasis",type:"vec4<f32>"},{name:"plotPan",emitted:"plotPan",type:"vec2<f32>"},{name:"plotBlend",emitted:"plotBlend",type:"f32"},{name:"appearance",emitted:"appearance",type:"vec4<f32>"},{name:"decorations",emitted:"decorations",type:"u32"},{name:"labelStyle",emitted:"labelStyle",type:"vec4<f32>"},{name:"decorationOpacity",emitted:"decorationOpacity",type:"vec3<f32>"},{name:"model",emitted:"model",type:"mat4x4<f32>"},{name:"inverseModel",emitted:"inverseModel",type:"mat4x4<f32>"},{name:"axesModel",emitted:"axesModel",type:"mat4x4<f32>"},{name:"inverseAxesModel",emitted:"inverseAxesModel",type:"mat4x4<f32>"},{name:"sceneOpacity",emitted:"sceneOpacity",type:"vec2<f32>"},{name:"cameraLens",emitted:"cameraLens",type:"vec2<f32>"},{name:"plotCenterZ",emitted:"plotCenterZ",type:"f32"},{name:"probe",emitted:"probe",type:"f32"},{name:"view3d",emitted:"view3d",type:"u32"},{name:"parameterBounds",emitted:"parameterBounds",type:"vec2<f32>"},{name:"parameterMode",emitted:"parameterMode",type:"u32"},{name:"curveQuality",emitted:"curveQuality",type:"vec2<u32>"},{name:"curvePattern",emitted:"curvePattern",type:"vec4<f32>"},{name:"curveTiles",emitted:"curveTiles",type:"vec4<u32>"},{name:"surfaceBounds",emitted:"surfaceBounds",type:"vec4<f32>"},{name:"surfaceDomainMode",emitted:"surfaceDomainMode",type:"u32"},{name:"surfaceRange",emitted:"surfaceRange",type:"vec2<f32>"},{name:"surfaceDepth",emitted:"surfaceDepth",type:"vec2<f32>"},{name:"surfaceRender",emitted:"surfaceRender",type:"vec4<f32>"},{name:"surfaceFlags",emitted:"surfaceFlags",type:"u32"}]},{name:"PickUniforms",emitted:"PickUniforms",fields:[{name:"pixel",emitted:"pixel",type:"vec2<f32>"},{name:"radius",emitted:"radius",type:"f32"}]},{name:"ViewRay",emitted:"ViewRay",fields:[{name:"origin",emitted:"origin",type:"vec3<f32>"},{name:"direction",emitted:"direction",type:"vec3<f32>"}]},{name:"SpatialDecor",emitted:"SpatialDecor",fields:[{name:"color",emitted:"color",type:"vec3<f32>"},{name:"labels",emitted:"labels",type:"vec3<f32>"}]},{name:"SurfaceHit",emitted:"SurfaceHit",fields:[{name:"point",emitted:"point",type:"vec3<f32>"},{name:"depth",emitted:"depth",type:"f32"},{name:"valid",emitted:"valid",type:"bool"}]},{name:"SceneLayer",emitted:"SceneLayer",fields:[{name:"color",emitted:"color",type:"vec4<f32>"},{name:"depth",emitted:"depth",type:"vec4<f32>"}]},{name:"SceneMaterial",emitted:"SceneMaterial",fields:[{name:"ink",emitted:"ink",type:"vec4<f32>"},{name:"bias",emitted:"bias",type:"f32"}]},{name:"Uniforms",emitted:"Uniforms",fields:[{name:"resolution",emitted:"resolution",type:"vec2<f32>"},{name:"plotCenter",emitted:"plotCenter",type:"vec2<f32>"},{name:"plotSpan",emitted:"plotSpan",type:"vec2<f32>"},{name:"plotRotation",emitted:"plotRotation",type:"vec2<f32>"},{name:"rotationBasis",emitted:"rotationBasis",type:"vec4<f32>"},{name:"plotPan",emitted:"plotPan",type:"vec2<f32>"},{name:"plotBlend",emitted:"plotBlend",type:"f32"},{name:"appearance",emitted:"appearance",type:"vec4<f32>"},{name:"decorations",emitted:"decorations",type:"u32"},{name:"labelStyle",emitted:"labelStyle",type:"vec4<f32>"},{name:"decorationOpacity",emitted:"decorationOpacity",type:"vec3<f32>"},{name:"model",emitted:"model",type:"mat4x4<f32>"},{name:"inverseModel",emitted:"inverseModel",type:"mat4x4<f32>"},{name:"axesModel",emitted:"axesModel",type:"mat4x4<f32>"},{name:"inverseAxesModel",emitted:"inverseAxesModel",type:"mat4x4<f32>"},{name:"sceneOpacity",emitted:"sceneOpacity",type:"vec2<f32>"},{name:"cameraLens",emitted:"cameraLens",type:"vec2<f32>"},{name:"plotCenterZ",emitted:"plotCenterZ",type:"f32"},{name:"probe",emitted:"probe",type:"f32"},{name:"view3d",emitted:"view3d",type:"u32"},{name:"parameterBounds",emitted:"parameterBounds",type:"vec2<f32>"},{name:"parameterMode",emitted:"parameterMode",type:"u32"},{name:"curveQuality",emitted:"curveQuality",type:"vec2<u32>"},{name:"curvePattern",emitted:"curvePattern",type:"vec4<f32>"},{name:"curveTiles",emitted:"curveTiles",type:"vec4<u32>"},{name:"surfaceBounds",emitted:"surfaceBounds",type:"vec4<f32>"},{name:"surfaceDomainMode",emitted:"surfaceDomainMode",type:"u32"},{name:"surfaceRange",emitted:"surfaceRange",type:"vec2<f32>"},{name:"surfaceDepth",emitted:"surfaceDepth",type:"vec2<f32>"},{name:"surfaceRender",emitted:"surfaceRender",type:"vec4<f32>"},{name:"surfaceFlags",emitted:"surfaceFlags",type:"u32"},{name:"gridXMin",emitted:"gridXMin",type:"f32"},{name:"gridXMax",emitted:"gridXMax",type:"f32"},{name:"gridZMin",emitted:"gridZMin",type:"f32"},{name:"gridZMax",emitted:"gridZMax",type:"f32"},{name:"gridRows",emitted:"gridRows",type:"f32"},{name:"gridColumns",emitted:"gridColumns",type:"f32"},{name:"gridCount",emitted:"gridCount",type:"f32"},{name:"heightScale",emitted:"heightScale",type:"f32"},{name:"heightOffset",emitted:"heightOffset",type:"f32"}]},{name:"VertexOutput",emitted:"VertexOutput",fields:[{name:"position",emitted:"position",type:"vec4<f32>"},{name:"uv",emitted:"uv",type:"vec2<f32>"}]}],overrides:[],features:[],gl:{vertices:{fullscreen:{vertex:`#version 300 es
+`,bindings:[{name:"u",emitted:"u",space:"uniform",group:0,binding:0,type:"struct:Uniforms",resource:{resourceKind:"uniform-buffer",structName:"Uniforms",structEmitted:"Uniforms"},stages:["fragment"],rule:"std140",layout:{kind:"struct",size:592,fields:[{name:"resolution",offset:0,layout:{kind:"vector",size:2,type:"f32"}},{name:"plotCenter",offset:8,layout:{kind:"vector",size:2,type:"f32"}},{name:"plotSpan",offset:16,layout:{kind:"vector",size:2,type:"f32"}},{name:"plotRotation",offset:24,layout:{kind:"vector",size:2,type:"f32"}},{name:"rotationBasis",offset:32,layout:{kind:"vector",size:4,type:"f32"}},{name:"plotPan",offset:48,layout:{kind:"vector",size:2,type:"f32"}},{name:"plotBlend",offset:56,layout:{kind:"scalar",type:"f32"}},{name:"appearance",offset:64,layout:{kind:"vector",size:4,type:"f32"}},{name:"decorations",offset:80,layout:{kind:"scalar",type:"u32"}},{name:"labelStyle",offset:96,layout:{kind:"vector",size:4,type:"f32"}},{name:"decorationOpacity",offset:112,layout:{kind:"vector",size:3,type:"f32"}},{name:"model",offset:128,layout:{kind:"matrix",columns:4,rows:4,columnStride:16}},{name:"inverseModel",offset:192,layout:{kind:"matrix",columns:4,rows:4,columnStride:16}},{name:"axesModel",offset:256,layout:{kind:"matrix",columns:4,rows:4,columnStride:16}},{name:"inverseAxesModel",offset:320,layout:{kind:"matrix",columns:4,rows:4,columnStride:16}},{name:"sceneOpacity",offset:384,layout:{kind:"vector",size:2,type:"f32"}},{name:"cameraLens",offset:392,layout:{kind:"vector",size:2,type:"f32"}},{name:"plotCenterZ",offset:400,layout:{kind:"scalar",type:"f32"}},{name:"probe",offset:404,layout:{kind:"scalar",type:"f32"}},{name:"parameterFocusSeed",offset:408,layout:{kind:"scalar",type:"f32"}},{name:"view3d",offset:412,layout:{kind:"scalar",type:"u32"}},{name:"parameterBounds",offset:416,layout:{kind:"vector",size:2,type:"f32"}},{name:"parameterMode",offset:424,layout:{kind:"scalar",type:"u32"}},{name:"curveQuality",offset:432,layout:{kind:"vector",size:2,type:"u32"}},{name:"curvePattern",offset:448,layout:{kind:"vector",size:4,type:"f32"}},{name:"curveTiles",offset:464,layout:{kind:"vector",size:4,type:"u32"}},{name:"surfaceBounds",offset:480,layout:{kind:"vector",size:4,type:"f32"}},{name:"surfaceDomainMode",offset:496,layout:{kind:"scalar",type:"u32"}},{name:"surfaceRange",offset:504,layout:{kind:"vector",size:2,type:"f32"}},{name:"surfaceDepth",offset:512,layout:{kind:"vector",size:2,type:"f32"}},{name:"surfaceRender",offset:528,layout:{kind:"vector",size:4,type:"f32"}},{name:"surfaceFlags",offset:544,layout:{kind:"scalar",type:"u32"}},{name:"gridXMin",offset:548,layout:{kind:"scalar",type:"f32"}},{name:"gridXMax",offset:552,layout:{kind:"scalar",type:"f32"}},{name:"gridZMin",offset:556,layout:{kind:"scalar",type:"f32"}},{name:"gridZMax",offset:560,layout:{kind:"scalar",type:"f32"}},{name:"gridRows",offset:564,layout:{kind:"scalar",type:"f32"}},{name:"gridColumns",offset:568,layout:{kind:"scalar",type:"f32"}},{name:"gridCount",offset:572,layout:{kind:"scalar",type:"f32"}},{name:"heightScale",offset:576,layout:{kind:"scalar",type:"f32"}},{name:"heightOffset",offset:580,layout:{kind:"scalar",type:"f32"}}]}},{name:"heights",emitted:"heights",space:"storage",group:0,binding:1,access:"read",type:"array<f32>",resource:{resourceKind:"storage-buffer",glslDataTexture:"r32f"},stages:["fragment"],rule:"std430",layout:{kind:"array",length:null,stride:4,element:{kind:"scalar",type:"f32"}},dataTexture:{format:"r32float",lanes:1}},{name:"spatialLabels",emitted:"spatialLabels",space:"uniform",group:0,binding:2,type:"texture_2d<f32>",resource:{resourceKind:"texture",textureDim:"2d",textureElem:"f32",sampleType:"unfilterable-float"},stages:["fragment"]},{name:"query",emitted:"query",space:"uniform",group:0,binding:3,type:"struct:PickUniforms",resource:{resourceKind:"uniform-buffer",structName:"PickUniforms",structEmitted:"PickUniforms"},stages:["fragment"],rule:"std140",layout:{kind:"struct",size:16,fields:[{name:"pixel",offset:0,layout:{kind:"vector",size:2,type:"f32"}},{name:"radius",offset:8,layout:{kind:"scalar",type:"f32"}}]}},{name:"sceneMaterial",emitted:"sceneMaterial",space:"uniform",group:0,binding:4,type:"struct:SceneMaterial",resource:{resourceKind:"uniform-buffer",structName:"SceneMaterial",structEmitted:"SceneMaterial"},stages:["fragment"],rule:"std140",layout:{kind:"struct",size:32,fields:[{name:"ink",offset:0,layout:{kind:"vector",size:4,type:"f32"}},{name:"bias",offset:16,layout:{kind:"scalar",type:"f32"}}]}},{name:"glyphAtlas",emitted:"glyphAtlas",space:"uniform",group:0,binding:5,type:"texture_2d<f32>",resource:{resourceKind:"texture",textureDim:"2d",textureElem:"f32",sampleType:"unfilterable-float"},stages:["fragment"]},{name:"font",emitted:"font",space:"uniform",group:0,binding:6,type:"struct:FontUniforms",resource:{resourceKind:"uniform-buffer",structName:"FontUniforms",structEmitted:"FontUniforms"},stages:["fragment"],rule:"std140",layout:{kind:"struct",size:16,fields:[{name:"pixelRatio",offset:0,layout:{kind:"scalar",type:"f32"}}]}}],entries:[{name:"fullscreen",emitted:"fullscreen",stage:"vertex",inputs:[{name:"i",emitted:"i",type:"u32",builtin:"vertex_index"}],outputs:[{name:"position",emitted:"position",type:"vec4<f32>",builtin:"position"},{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],bindings:[],line:{file:"__typeplot-entry.shade.ts",line:8}},{name:"draw",emitted:"draw",stage:"fragment",inputs:[{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<f32>",location:0}],bindings:[{name:"u",writes:!1},{name:"heights",writes:!1},{name:"spatialLabels",writes:!1},{name:"glyphAtlas",writes:!1},{name:"font",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:12}},{name:"drawReference",emitted:"drawReference",stage:"fragment",inputs:[{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<f32>",location:0}],bindings:[{name:"u",writes:!1},{name:"heights",writes:!1},{name:"spatialLabels",writes:!1},{name:"glyphAtlas",writes:!1},{name:"font",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:16}},{name:"buildSpatialLabels",emitted:"buildSpatialLabels",stage:"fragment",inputs:[{name:"position",emitted:"position",type:"vec4<f32>",builtin:"position"}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<f32>",location:0}],bindings:[{name:"u",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:19}},{name:"drawLayer",emitted:"drawLayer",stage:"fragment",inputs:[{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],outputs:[{name:"color",emitted:"color",type:"vec4<f32>",location:0},{name:"depth",emitted:"depth",type:"vec4<f32>",location:1}],bindings:[{name:"u",writes:!1},{name:"heights",writes:!1},{name:"sceneMaterial",writes:!1},{name:"font",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:24}},{name:"drawLayerReference",emitted:"drawLayerReference",stage:"fragment",inputs:[{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],outputs:[{name:"color",emitted:"color",type:"vec4<f32>",location:0},{name:"depth",emitted:"depth",type:"vec4<f32>",location:1}],bindings:[{name:"u",writes:!1},{name:"heights",writes:!1},{name:"sceneMaterial",writes:!1},{name:"font",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:27}},{name:"drawBackdrop",emitted:"drawBackdrop",stage:"fragment",inputs:[{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<f32>",location:0}],bindings:[{name:"u",writes:!1},{name:"spatialLabels",writes:!1},{name:"glyphAtlas",writes:!1},{name:"font",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:30}},{name:"drawBackdropReference",emitted:"drawBackdropReference",stage:"fragment",inputs:[{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<f32>",location:0}],bindings:[{name:"u",writes:!1},{name:"glyphAtlas",writes:!1},{name:"font",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:31}},{name:"drawLabels",emitted:"drawLabels",stage:"fragment",inputs:[{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<f32>",location:0}],bindings:[{name:"u",writes:!1},{name:"spatialLabels",writes:!1},{name:"glyphAtlas",writes:!1},{name:"font",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:32}},{name:"drawLabelsReference",emitted:"drawLabelsReference",stage:"fragment",inputs:[{name:"uv",emitted:"uv",type:"vec2<f32>",location:0}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<f32>",location:0}],bindings:[{name:"u",writes:!1},{name:"glyphAtlas",writes:!1},{name:"font",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:33}},{name:"queryLayer",emitted:"queryLayer",stage:"fragment",inputs:[{name:"position",emitted:"position",type:"vec4<f32>",builtin:"position"}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<u32>",location:0}],bindings:[{name:"u",writes:!1},{name:"heights",writes:!1},{name:"query",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:34}},{name:"queryLayerReference",emitted:"queryLayerReference",stage:"fragment",inputs:[{name:"position",emitted:"position",type:"vec4<f32>",builtin:"position"}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<u32>",location:0}],bindings:[{name:"u",writes:!1},{name:"heights",writes:!1},{name:"query",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:37}},{name:"pick",emitted:"pick",stage:"fragment",inputs:[{name:"position",emitted:"position",type:"vec4<f32>",builtin:"position"}],outputs:[{name:"_ret",emitted:"_ret",type:"vec4<u32>",location:0}],bindings:[{name:"u",writes:!1},{name:"heights",writes:!1},{name:"query",writes:!1}],line:{file:"__typeplot-entry.shade.ts",line:42}}],structs:[{name:"FontUniforms",emitted:"FontUniforms",fields:[{name:"pixelRatio",emitted:"pixelRatio",type:"f32"}]},{name:"NumberFormat",emitted:"NumberFormat",fields:[{name:"value",emitted:"value",type:"f32"},{name:"negative",emitted:"negative",type:"bool"},{name:"scientific",emitted:"scientific",type:"bool"},{name:"decimals",emitted:"decimals",type:"i32"},{name:"digits",emitted:"digits",type:"i32"},{name:"exponent",emitted:"exponent",type:"i32"},{name:"length",emitted:"length",type:"i32"}]},{name:"PlotViewport",emitted:"PlotViewport",fields:[{name:"resolution",emitted:"resolution",type:"vec2<f32>"},{name:"plotCenter",emitted:"plotCenter",type:"vec2<f32>"},{name:"plotSpan",emitted:"plotSpan",type:"vec2<f32>"},{name:"plotRotation",emitted:"plotRotation",type:"vec2<f32>"},{name:"rotationBasis",emitted:"rotationBasis",type:"vec4<f32>"},{name:"plotPan",emitted:"plotPan",type:"vec2<f32>"},{name:"plotBlend",emitted:"plotBlend",type:"f32"},{name:"appearance",emitted:"appearance",type:"vec4<f32>"},{name:"decorations",emitted:"decorations",type:"u32"},{name:"labelStyle",emitted:"labelStyle",type:"vec4<f32>"},{name:"decorationOpacity",emitted:"decorationOpacity",type:"vec3<f32>"}]},{name:"PlotUniforms",emitted:"PlotUniforms",fields:[{name:"resolution",emitted:"resolution",type:"vec2<f32>"},{name:"plotCenter",emitted:"plotCenter",type:"vec2<f32>"},{name:"plotSpan",emitted:"plotSpan",type:"vec2<f32>"},{name:"plotRotation",emitted:"plotRotation",type:"vec2<f32>"},{name:"rotationBasis",emitted:"rotationBasis",type:"vec4<f32>"},{name:"plotPan",emitted:"plotPan",type:"vec2<f32>"},{name:"plotBlend",emitted:"plotBlend",type:"f32"},{name:"appearance",emitted:"appearance",type:"vec4<f32>"},{name:"decorations",emitted:"decorations",type:"u32"},{name:"labelStyle",emitted:"labelStyle",type:"vec4<f32>"},{name:"decorationOpacity",emitted:"decorationOpacity",type:"vec3<f32>"},{name:"model",emitted:"model",type:"mat4x4<f32>"},{name:"inverseModel",emitted:"inverseModel",type:"mat4x4<f32>"},{name:"axesModel",emitted:"axesModel",type:"mat4x4<f32>"},{name:"inverseAxesModel",emitted:"inverseAxesModel",type:"mat4x4<f32>"},{name:"sceneOpacity",emitted:"sceneOpacity",type:"vec2<f32>"},{name:"cameraLens",emitted:"cameraLens",type:"vec2<f32>"},{name:"plotCenterZ",emitted:"plotCenterZ",type:"f32"},{name:"probe",emitted:"probe",type:"f32"},{name:"parameterFocusSeed",emitted:"parameterFocusSeed",type:"f32"},{name:"view3d",emitted:"view3d",type:"u32"},{name:"parameterBounds",emitted:"parameterBounds",type:"vec2<f32>"},{name:"parameterMode",emitted:"parameterMode",type:"u32"},{name:"curveQuality",emitted:"curveQuality",type:"vec2<u32>"},{name:"curvePattern",emitted:"curvePattern",type:"vec4<f32>"},{name:"curveTiles",emitted:"curveTiles",type:"vec4<u32>"},{name:"surfaceBounds",emitted:"surfaceBounds",type:"vec4<f32>"},{name:"surfaceDomainMode",emitted:"surfaceDomainMode",type:"u32"},{name:"surfaceRange",emitted:"surfaceRange",type:"vec2<f32>"},{name:"surfaceDepth",emitted:"surfaceDepth",type:"vec2<f32>"},{name:"surfaceRender",emitted:"surfaceRender",type:"vec4<f32>"},{name:"surfaceFlags",emitted:"surfaceFlags",type:"u32"}]},{name:"PickUniforms",emitted:"PickUniforms",fields:[{name:"pixel",emitted:"pixel",type:"vec2<f32>"},{name:"radius",emitted:"radius",type:"f32"}]},{name:"ViewRay",emitted:"ViewRay",fields:[{name:"origin",emitted:"origin",type:"vec3<f32>"},{name:"direction",emitted:"direction",type:"vec3<f32>"}]},{name:"SpatialDecor",emitted:"SpatialDecor",fields:[{name:"color",emitted:"color",type:"vec3<f32>"},{name:"labels",emitted:"labels",type:"vec3<f32>"}]},{name:"SurfaceHit",emitted:"SurfaceHit",fields:[{name:"point",emitted:"point",type:"vec3<f32>"},{name:"depth",emitted:"depth",type:"f32"},{name:"valid",emitted:"valid",type:"bool"}]},{name:"SceneLayer",emitted:"SceneLayer",fields:[{name:"color",emitted:"color",type:"vec4<f32>"},{name:"depth",emitted:"depth",type:"vec4<f32>"}]},{name:"SceneMaterial",emitted:"SceneMaterial",fields:[{name:"ink",emitted:"ink",type:"vec4<f32>"},{name:"bias",emitted:"bias",type:"f32"}]},{name:"Uniforms",emitted:"Uniforms",fields:[{name:"resolution",emitted:"resolution",type:"vec2<f32>"},{name:"plotCenter",emitted:"plotCenter",type:"vec2<f32>"},{name:"plotSpan",emitted:"plotSpan",type:"vec2<f32>"},{name:"plotRotation",emitted:"plotRotation",type:"vec2<f32>"},{name:"rotationBasis",emitted:"rotationBasis",type:"vec4<f32>"},{name:"plotPan",emitted:"plotPan",type:"vec2<f32>"},{name:"plotBlend",emitted:"plotBlend",type:"f32"},{name:"appearance",emitted:"appearance",type:"vec4<f32>"},{name:"decorations",emitted:"decorations",type:"u32"},{name:"labelStyle",emitted:"labelStyle",type:"vec4<f32>"},{name:"decorationOpacity",emitted:"decorationOpacity",type:"vec3<f32>"},{name:"model",emitted:"model",type:"mat4x4<f32>"},{name:"inverseModel",emitted:"inverseModel",type:"mat4x4<f32>"},{name:"axesModel",emitted:"axesModel",type:"mat4x4<f32>"},{name:"inverseAxesModel",emitted:"inverseAxesModel",type:"mat4x4<f32>"},{name:"sceneOpacity",emitted:"sceneOpacity",type:"vec2<f32>"},{name:"cameraLens",emitted:"cameraLens",type:"vec2<f32>"},{name:"plotCenterZ",emitted:"plotCenterZ",type:"f32"},{name:"probe",emitted:"probe",type:"f32"},{name:"parameterFocusSeed",emitted:"parameterFocusSeed",type:"f32"},{name:"view3d",emitted:"view3d",type:"u32"},{name:"parameterBounds",emitted:"parameterBounds",type:"vec2<f32>"},{name:"parameterMode",emitted:"parameterMode",type:"u32"},{name:"curveQuality",emitted:"curveQuality",type:"vec2<u32>"},{name:"curvePattern",emitted:"curvePattern",type:"vec4<f32>"},{name:"curveTiles",emitted:"curveTiles",type:"vec4<u32>"},{name:"surfaceBounds",emitted:"surfaceBounds",type:"vec4<f32>"},{name:"surfaceDomainMode",emitted:"surfaceDomainMode",type:"u32"},{name:"surfaceRange",emitted:"surfaceRange",type:"vec2<f32>"},{name:"surfaceDepth",emitted:"surfaceDepth",type:"vec2<f32>"},{name:"surfaceRender",emitted:"surfaceRender",type:"vec4<f32>"},{name:"surfaceFlags",emitted:"surfaceFlags",type:"u32"},{name:"gridXMin",emitted:"gridXMin",type:"f32"},{name:"gridXMax",emitted:"gridXMax",type:"f32"},{name:"gridZMin",emitted:"gridZMin",type:"f32"},{name:"gridZMax",emitted:"gridZMax",type:"f32"},{name:"gridRows",emitted:"gridRows",type:"f32"},{name:"gridColumns",emitted:"gridColumns",type:"f32"},{name:"gridCount",emitted:"gridCount",type:"f32"},{name:"heightScale",emitted:"heightScale",type:"f32"},{name:"heightOffset",emitted:"heightOffset",type:"f32"}]},{name:"VertexOutput",emitted:"VertexOutput",fields:[{name:"position",emitted:"position",type:"vec4<f32>"},{name:"uv",emitted:"uv",type:"vec2<f32>"}]}],overrides:[],features:[],gl:{vertices:{fullscreen:{vertex:`#version 300 es
 precision highp float;
 precision highp int;
 
@@ -1328,6 +1331,7 @@ struct PlotUniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -1378,6 +1382,7 @@ struct Uniforms_value {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -1420,6 +1425,7 @@ layout(std140) uniform Uniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -1743,7 +1749,7 @@ vec3 colorMap(float value, uint palette) {
 }
 
 PlotUniforms axesUniforms(PlotUniforms typeplot_shared_u) {
-  return PlotUniforms(typeplot_shared_u.resolution, typeplot_shared_u.plotCenter, typeplot_shared_u.plotSpan, typeplot_shared_u.plotRotation, typeplot_shared_u.rotationBasis, typeplot_shared_u.plotPan, typeplot_shared_u.plotBlend, typeplot_shared_u.appearance, typeplot_shared_u.decorations, typeplot_shared_u.labelStyle, typeplot_shared_u.decorationOpacity, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.sceneOpacity, typeplot_shared_u.cameraLens, typeplot_shared_u.plotCenterZ, typeplot_shared_u.probe, typeplot_shared_u.view3d, typeplot_shared_u.parameterBounds, typeplot_shared_u.parameterMode, typeplot_shared_u.curveQuality, typeplot_shared_u.curvePattern, typeplot_shared_u.curveTiles, typeplot_shared_u.surfaceBounds, typeplot_shared_u.surfaceDomainMode, typeplot_shared_u.surfaceRange, typeplot_shared_u.surfaceDepth, typeplot_shared_u.surfaceRender, typeplot_shared_u.surfaceFlags);
+  return PlotUniforms(typeplot_shared_u.resolution, typeplot_shared_u.plotCenter, typeplot_shared_u.plotSpan, typeplot_shared_u.plotRotation, typeplot_shared_u.rotationBasis, typeplot_shared_u.plotPan, typeplot_shared_u.plotBlend, typeplot_shared_u.appearance, typeplot_shared_u.decorations, typeplot_shared_u.labelStyle, typeplot_shared_u.decorationOpacity, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.sceneOpacity, typeplot_shared_u.cameraLens, typeplot_shared_u.plotCenterZ, typeplot_shared_u.probe, typeplot_shared_u.parameterFocusSeed, typeplot_shared_u.view3d, typeplot_shared_u.parameterBounds, typeplot_shared_u.parameterMode, typeplot_shared_u.curveQuality, typeplot_shared_u.curvePattern, typeplot_shared_u.curveTiles, typeplot_shared_u.surfaceBounds, typeplot_shared_u.surfaceDomainMode, typeplot_shared_u.surfaceRange, typeplot_shared_u.surfaceDepth, typeplot_shared_u.surfaceRender, typeplot_shared_u.surfaceFlags);
 }
 
 vec3 axisLabel(vec2 pixel, vec2 at, int code, PlotViewport typeplot_shared_u_2) {
@@ -1940,9 +1946,8 @@ float axisField(vec2 pixel, vec3 axis, ViewRay ray, PlotUniforms typeplot_shared
 float groundField(ViewRay ray, PlotUniforms typeplot_shared_u_16, vec3 xLevels, vec3 zLevels) {
   vec2 _licm0 = vec2(xLevels.x, zLevels.x);
   vec2 _licm1 = vec2(xLevels.y, zLevels.y);
-  vec2 _licm2 = vec2(2.0, 2.0);
-  vec2 _licm3 = vec2(6.0, 6.0);
-  float _licm4 = typeplot_shared_u_16.appearance.y;
+  float _licm2 = clamp(typeplot_shared_u_16.labelStyle.x, 0.5, 2.0);
+  float _licm3 = typeplot_shared_u_16.appearance.y;
   float _cse0 = abs(ray.direction.y);
   float denominator = ((_cse0 < 1e-8) ? ((ray.direction.y < 0.0) ? -1e-8 : 1e-8) : ray.direction.y);
   float depth = ((-ray.origin.y) / denominator);
@@ -1956,10 +1961,12 @@ float groundField(ViewRay ray, PlotUniforms typeplot_shared_u_16, vec3 xLevels, 
     vec2 _gv1 = ((ground / spacing) + 0.5);
     vec2 distance = (((abs((fract(_gv1) - 0.5)) * spacing) / gradient) * _cse1);
     vec2 separation = ((spacing / gradient) * _cse1);
-    vec2 fade = smoothstep(_licm2, _licm3, separation);
+    float _lc0 = (12.0 / _licm2);
+    float _lc1 = (28.0 / _licm2);
+    vec2 fade = smoothstep(vec2(_lc0, _lc0), vec2(_lc1, _lc1), separation);
     vec2 nearest = (floor(_gv1) * spacing);
     vec2 weights = (_gv0 ? vec2(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, zLevels)) : vec2(coarseTickOpacity(nearest.x, xLevels), coarseTickOpacity(nearest.y, zLevels)));
-    field = max(field, max(((distanceCoverage(distance.x, _licm4) * fade.x) * weights.x), ((distanceCoverage(distance.y, _licm4) * fade.y) * weights.y)));
+    field = max(field, max(((distanceCoverage(distance.x, _licm3) * fade.x) * weights.x), ((distanceCoverage(distance.y, _licm3) * fade.y) * weights.y)));
   }
   return (((((typeplot_shared_u_16.view3d != 2u) || (depth >= 0.101)) && (_cse0 >= 1e-8)) && ((typeplot_shared_u_16.decorations & 1u) != 0u)) ? (field * typeplot_shared_u_16.decorationOpacity.x) : 0.0);
 }
@@ -2390,13 +2397,13 @@ vec4 plotSurface_heightField(vec2 uv, PlotUniforms typeplot_shared_u_28, bool ca
 }
 
 PlotUniforms Uniforms_as_PlotUniforms(Uniforms_value value) {
-  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
+  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.parameterFocusSeed, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
 }
 in vec2 uv;
 layout(location = 0) out vec4 _ret;
 
 void main() {
-  _ret = plotSurface_heightField(uv, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)), true);
+  _ret = plotSurface_heightField(uv, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.parameterFocusSeed, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)), true);
 }
 `,blocks:{u:"Uniforms",font:"FontUniforms"},samplers:{spatialLabels:null,glyphAtlas:null},data:["heights"]},drawReference:{fragment:`#version 300 es
 precision highp float;
@@ -2446,6 +2453,7 @@ struct PlotUniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -2496,6 +2504,7 @@ struct Uniforms_value {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -2538,6 +2547,7 @@ layout(std140) uniform Uniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -2861,7 +2871,7 @@ vec3 colorMap(float value, uint palette) {
 }
 
 PlotUniforms axesUniforms(PlotUniforms typeplot_shared_u) {
-  return PlotUniforms(typeplot_shared_u.resolution, typeplot_shared_u.plotCenter, typeplot_shared_u.plotSpan, typeplot_shared_u.plotRotation, typeplot_shared_u.rotationBasis, typeplot_shared_u.plotPan, typeplot_shared_u.plotBlend, typeplot_shared_u.appearance, typeplot_shared_u.decorations, typeplot_shared_u.labelStyle, typeplot_shared_u.decorationOpacity, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.sceneOpacity, typeplot_shared_u.cameraLens, typeplot_shared_u.plotCenterZ, typeplot_shared_u.probe, typeplot_shared_u.view3d, typeplot_shared_u.parameterBounds, typeplot_shared_u.parameterMode, typeplot_shared_u.curveQuality, typeplot_shared_u.curvePattern, typeplot_shared_u.curveTiles, typeplot_shared_u.surfaceBounds, typeplot_shared_u.surfaceDomainMode, typeplot_shared_u.surfaceRange, typeplot_shared_u.surfaceDepth, typeplot_shared_u.surfaceRender, typeplot_shared_u.surfaceFlags);
+  return PlotUniforms(typeplot_shared_u.resolution, typeplot_shared_u.plotCenter, typeplot_shared_u.plotSpan, typeplot_shared_u.plotRotation, typeplot_shared_u.rotationBasis, typeplot_shared_u.plotPan, typeplot_shared_u.plotBlend, typeplot_shared_u.appearance, typeplot_shared_u.decorations, typeplot_shared_u.labelStyle, typeplot_shared_u.decorationOpacity, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.sceneOpacity, typeplot_shared_u.cameraLens, typeplot_shared_u.plotCenterZ, typeplot_shared_u.probe, typeplot_shared_u.parameterFocusSeed, typeplot_shared_u.view3d, typeplot_shared_u.parameterBounds, typeplot_shared_u.parameterMode, typeplot_shared_u.curveQuality, typeplot_shared_u.curvePattern, typeplot_shared_u.curveTiles, typeplot_shared_u.surfaceBounds, typeplot_shared_u.surfaceDomainMode, typeplot_shared_u.surfaceRange, typeplot_shared_u.surfaceDepth, typeplot_shared_u.surfaceRender, typeplot_shared_u.surfaceFlags);
 }
 
 vec3 axisLabel(vec2 pixel, vec2 at, int code, PlotViewport typeplot_shared_u_2) {
@@ -3058,9 +3068,8 @@ float axisField(vec2 pixel, vec3 axis, ViewRay ray, PlotUniforms typeplot_shared
 float groundField(ViewRay ray, PlotUniforms typeplot_shared_u_16, vec3 xLevels, vec3 zLevels) {
   vec2 _licm0 = vec2(xLevels.x, zLevels.x);
   vec2 _licm1 = vec2(xLevels.y, zLevels.y);
-  vec2 _licm2 = vec2(2.0, 2.0);
-  vec2 _licm3 = vec2(6.0, 6.0);
-  float _licm4 = typeplot_shared_u_16.appearance.y;
+  float _licm2 = clamp(typeplot_shared_u_16.labelStyle.x, 0.5, 2.0);
+  float _licm3 = typeplot_shared_u_16.appearance.y;
   float _cse0 = abs(ray.direction.y);
   float denominator = ((_cse0 < 1e-8) ? ((ray.direction.y < 0.0) ? -1e-8 : 1e-8) : ray.direction.y);
   float depth = ((-ray.origin.y) / denominator);
@@ -3074,10 +3083,12 @@ float groundField(ViewRay ray, PlotUniforms typeplot_shared_u_16, vec3 xLevels, 
     vec2 _gv1 = ((ground / spacing) + 0.5);
     vec2 distance = (((abs((fract(_gv1) - 0.5)) * spacing) / gradient) * _cse1);
     vec2 separation = ((spacing / gradient) * _cse1);
-    vec2 fade = smoothstep(_licm2, _licm3, separation);
+    float _lc0 = (12.0 / _licm2);
+    float _lc1 = (28.0 / _licm2);
+    vec2 fade = smoothstep(vec2(_lc0, _lc0), vec2(_lc1, _lc1), separation);
     vec2 nearest = (floor(_gv1) * spacing);
     vec2 weights = (_gv0 ? vec2(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, zLevels)) : vec2(coarseTickOpacity(nearest.x, xLevels), coarseTickOpacity(nearest.y, zLevels)));
-    field = max(field, max(((distanceCoverage(distance.x, _licm4) * fade.x) * weights.x), ((distanceCoverage(distance.y, _licm4) * fade.y) * weights.y)));
+    field = max(field, max(((distanceCoverage(distance.x, _licm3) * fade.x) * weights.x), ((distanceCoverage(distance.y, _licm3) * fade.y) * weights.y)));
   }
   return (((((typeplot_shared_u_16.view3d != 2u) || (depth >= 0.101)) && (_cse0 >= 1e-8)) && ((typeplot_shared_u_16.decorations & 1u) != 0u)) ? (field * typeplot_shared_u_16.decorationOpacity.x) : 0.0);
 }
@@ -3508,13 +3519,13 @@ vec4 plotSurface_heightField(vec2 uv, PlotUniforms typeplot_shared_u_28, bool ca
 }
 
 PlotUniforms Uniforms_as_PlotUniforms(Uniforms_value value) {
-  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
+  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.parameterFocusSeed, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
 }
 in vec2 uv;
 layout(location = 0) out vec4 _ret;
 
 void main() {
-  _ret = plotSurface_heightField(uv, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)), false);
+  _ret = plotSurface_heightField(uv, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.parameterFocusSeed, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)), false);
 }
 `,blocks:{u:"Uniforms",font:"FontUniforms"},samplers:{spatialLabels:null,glyphAtlas:null},data:["heights"]},buildSpatialLabels:{fragment:`#version 300 es
 precision highp float;
@@ -3564,6 +3575,7 @@ struct PlotUniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -3598,6 +3610,7 @@ struct Uniforms_value {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -3640,6 +3653,7 @@ layout(std140) uniform Uniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -3729,7 +3743,7 @@ float coarseTickOpacity(float value, vec3 levels) {
 }
 
 PlotUniforms axesUniforms(PlotUniforms typeplot_shared_u) {
-  return PlotUniforms(typeplot_shared_u.resolution, typeplot_shared_u.plotCenter, typeplot_shared_u.plotSpan, typeplot_shared_u.plotRotation, typeplot_shared_u.rotationBasis, typeplot_shared_u.plotPan, typeplot_shared_u.plotBlend, typeplot_shared_u.appearance, typeplot_shared_u.decorations, typeplot_shared_u.labelStyle, typeplot_shared_u.decorationOpacity, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.sceneOpacity, typeplot_shared_u.cameraLens, typeplot_shared_u.plotCenterZ, typeplot_shared_u.probe, typeplot_shared_u.view3d, typeplot_shared_u.parameterBounds, typeplot_shared_u.parameterMode, typeplot_shared_u.curveQuality, typeplot_shared_u.curvePattern, typeplot_shared_u.curveTiles, typeplot_shared_u.surfaceBounds, typeplot_shared_u.surfaceDomainMode, typeplot_shared_u.surfaceRange, typeplot_shared_u.surfaceDepth, typeplot_shared_u.surfaceRender, typeplot_shared_u.surfaceFlags);
+  return PlotUniforms(typeplot_shared_u.resolution, typeplot_shared_u.plotCenter, typeplot_shared_u.plotSpan, typeplot_shared_u.plotRotation, typeplot_shared_u.rotationBasis, typeplot_shared_u.plotPan, typeplot_shared_u.plotBlend, typeplot_shared_u.appearance, typeplot_shared_u.decorations, typeplot_shared_u.labelStyle, typeplot_shared_u.decorationOpacity, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.sceneOpacity, typeplot_shared_u.cameraLens, typeplot_shared_u.plotCenterZ, typeplot_shared_u.probe, typeplot_shared_u.parameterFocusSeed, typeplot_shared_u.view3d, typeplot_shared_u.parameterBounds, typeplot_shared_u.parameterMode, typeplot_shared_u.curveQuality, typeplot_shared_u.curvePattern, typeplot_shared_u.curveTiles, typeplot_shared_u.surfaceBounds, typeplot_shared_u.surfaceDomainMode, typeplot_shared_u.surfaceRange, typeplot_shared_u.surfaceDepth, typeplot_shared_u.surfaceRender, typeplot_shared_u.surfaceFlags);
 }
 
 vec2 plotSize(vec2 resolution) {
@@ -3886,13 +3900,13 @@ vec4 prepareSpatialLabels(vec4 position, PlotUniforms typeplot_shared_u_21) {
 }
 
 PlotUniforms Uniforms_as_PlotUniforms(Uniforms_value value) {
-  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
+  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.parameterFocusSeed, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
 }
 layout(location = 0) out vec4 _ret;
 
 void main() {
   vec4 position = gl_FragCoord;
-  _ret = prepareSpatialLabels(position, axesUniforms(Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset))));
+  _ret = prepareSpatialLabels(position, axesUniforms(Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.parameterFocusSeed, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset))));
 }
 `,blocks:{u:"Uniforms"},samplers:{}},drawLayer:{fragment:`#version 300 es
 precision highp float;
@@ -3942,6 +3956,7 @@ struct PlotUniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -3992,6 +4007,7 @@ struct Uniforms_value {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -4034,6 +4050,7 @@ layout(std140) uniform Uniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -4425,7 +4442,7 @@ vec4 surfaceMaterial_heightField(SurfaceHit hit, PlotUniforms typeplot_shared_u_
 }
 
 PlotUniforms Uniforms_as_PlotUniforms(Uniforms_value value) {
-  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
+  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.parameterFocusSeed, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
 }
 
 SceneLayer sceneSurface_heightField(vec2 uv, PlotUniforms typeplot_shared_u_30) {
@@ -4441,7 +4458,7 @@ layout(location = 0) out vec4 color;
 layout(location = 1) out vec4 depth;
 
 void main() {
-  SceneLayer _out = sceneSurface_heightField(uv, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)));
+  SceneLayer _out = sceneSurface_heightField(uv, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.parameterFocusSeed, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)));
   color = _out.color;
   depth = _out.depth;
 }
@@ -4493,6 +4510,7 @@ struct PlotUniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -4543,6 +4561,7 @@ struct Uniforms_value {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -4585,6 +4604,7 @@ layout(std140) uniform Uniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -4976,7 +4996,7 @@ vec4 surfaceMaterial_heightField(SurfaceHit hit, PlotUniforms typeplot_shared_u_
 }
 
 PlotUniforms Uniforms_as_PlotUniforms(Uniforms_value value) {
-  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
+  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.parameterFocusSeed, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
 }
 
 SceneLayer sceneSurface_heightField(vec2 uv, PlotUniforms typeplot_shared_u_30) {
@@ -4992,7 +5012,7 @@ layout(location = 0) out vec4 color;
 layout(location = 1) out vec4 depth;
 
 void main() {
-  SceneLayer _out = sceneSurface_heightField(uv, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)));
+  SceneLayer _out = sceneSurface_heightField(uv, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.parameterFocusSeed, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)));
   color = _out.color;
   depth = _out.depth;
 }
@@ -5044,6 +5064,7 @@ struct PlotUniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -5088,6 +5109,7 @@ struct Uniforms_value {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -5130,6 +5152,7 @@ layout(std140) uniform Uniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -5359,7 +5382,7 @@ float coarseTickOpacity(float value, vec3 levels) {
 }
 
 PlotUniforms axesUniforms(PlotUniforms typeplot_shared_u) {
-  return PlotUniforms(typeplot_shared_u.resolution, typeplot_shared_u.plotCenter, typeplot_shared_u.plotSpan, typeplot_shared_u.plotRotation, typeplot_shared_u.rotationBasis, typeplot_shared_u.plotPan, typeplot_shared_u.plotBlend, typeplot_shared_u.appearance, typeplot_shared_u.decorations, typeplot_shared_u.labelStyle, typeplot_shared_u.decorationOpacity, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.sceneOpacity, typeplot_shared_u.cameraLens, typeplot_shared_u.plotCenterZ, typeplot_shared_u.probe, typeplot_shared_u.view3d, typeplot_shared_u.parameterBounds, typeplot_shared_u.parameterMode, typeplot_shared_u.curveQuality, typeplot_shared_u.curvePattern, typeplot_shared_u.curveTiles, typeplot_shared_u.surfaceBounds, typeplot_shared_u.surfaceDomainMode, typeplot_shared_u.surfaceRange, typeplot_shared_u.surfaceDepth, typeplot_shared_u.surfaceRender, typeplot_shared_u.surfaceFlags);
+  return PlotUniforms(typeplot_shared_u.resolution, typeplot_shared_u.plotCenter, typeplot_shared_u.plotSpan, typeplot_shared_u.plotRotation, typeplot_shared_u.rotationBasis, typeplot_shared_u.plotPan, typeplot_shared_u.plotBlend, typeplot_shared_u.appearance, typeplot_shared_u.decorations, typeplot_shared_u.labelStyle, typeplot_shared_u.decorationOpacity, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.sceneOpacity, typeplot_shared_u.cameraLens, typeplot_shared_u.plotCenterZ, typeplot_shared_u.probe, typeplot_shared_u.parameterFocusSeed, typeplot_shared_u.view3d, typeplot_shared_u.parameterBounds, typeplot_shared_u.parameterMode, typeplot_shared_u.curveQuality, typeplot_shared_u.curvePattern, typeplot_shared_u.curveTiles, typeplot_shared_u.surfaceBounds, typeplot_shared_u.surfaceDomainMode, typeplot_shared_u.surfaceRange, typeplot_shared_u.surfaceDepth, typeplot_shared_u.surfaceRender, typeplot_shared_u.surfaceFlags);
 }
 
 vec3 axisLabel(vec2 pixel, vec2 at, int code, PlotViewport typeplot_shared_u_2) {
@@ -5464,9 +5487,8 @@ float axisField(vec2 pixel, vec3 axis, ViewRay ray, PlotUniforms typeplot_shared
 float groundField(ViewRay ray, PlotUniforms typeplot_shared_u_16, vec3 xLevels, vec3 zLevels) {
   vec2 _licm0 = vec2(xLevels.x, zLevels.x);
   vec2 _licm1 = vec2(xLevels.y, zLevels.y);
-  vec2 _licm2 = vec2(2.0, 2.0);
-  vec2 _licm3 = vec2(6.0, 6.0);
-  float _licm4 = typeplot_shared_u_16.appearance.y;
+  float _licm2 = clamp(typeplot_shared_u_16.labelStyle.x, 0.5, 2.0);
+  float _licm3 = typeplot_shared_u_16.appearance.y;
   float _cse0 = abs(ray.direction.y);
   float denominator = ((_cse0 < 1e-8) ? ((ray.direction.y < 0.0) ? -1e-8 : 1e-8) : ray.direction.y);
   float depth = ((-ray.origin.y) / denominator);
@@ -5480,10 +5502,12 @@ float groundField(ViewRay ray, PlotUniforms typeplot_shared_u_16, vec3 xLevels, 
     vec2 _gv1 = ((ground / spacing) + 0.5);
     vec2 distance = (((abs((fract(_gv1) - 0.5)) * spacing) / gradient) * _cse1);
     vec2 separation = ((spacing / gradient) * _cse1);
-    vec2 fade = smoothstep(_licm2, _licm3, separation);
+    float _lc0 = (12.0 / _licm2);
+    float _lc1 = (28.0 / _licm2);
+    vec2 fade = smoothstep(vec2(_lc0, _lc0), vec2(_lc1, _lc1), separation);
     vec2 nearest = (floor(_gv1) * spacing);
     vec2 weights = (_gv0 ? vec2(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, zLevels)) : vec2(coarseTickOpacity(nearest.x, xLevels), coarseTickOpacity(nearest.y, zLevels)));
-    field = max(field, max(((distanceCoverage(distance.x, _licm4) * fade.x) * weights.x), ((distanceCoverage(distance.y, _licm4) * fade.y) * weights.y)));
+    field = max(field, max(((distanceCoverage(distance.x, _licm3) * fade.x) * weights.x), ((distanceCoverage(distance.y, _licm3) * fade.y) * weights.y)));
   }
   return (((((typeplot_shared_u_16.view3d != 2u) || (depth >= 0.101)) && (_cse0 >= 1e-8)) && ((typeplot_shared_u_16.decorations & 1u) != 0u)) ? (field * typeplot_shared_u_16.decorationOpacity.x) : 0.0);
 }
@@ -5579,13 +5603,13 @@ vec4 sceneBackdrop(vec2 uv, PlotUniforms typeplot_shared_u_31) {
 }
 
 PlotUniforms Uniforms_as_PlotUniforms(Uniforms_value value) {
-  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
+  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.parameterFocusSeed, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
 }
 in vec2 uv;
 layout(location = 0) out vec4 _ret;
 
 void main() {
-  _ret = sceneBackdrop(uv, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)));
+  _ret = sceneBackdrop(uv, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.parameterFocusSeed, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)));
 }
 `,blocks:{u:"Uniforms",font:"FontUniforms"},samplers:{spatialLabels:null,glyphAtlas:null}},drawBackdropReference:{fragment:`#version 300 es
 precision highp float;
@@ -5635,6 +5659,7 @@ struct PlotUniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -5679,6 +5704,7 @@ struct Uniforms_value {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -5721,6 +5747,7 @@ layout(std140) uniform Uniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -5958,7 +5985,7 @@ float coarseTickOpacity(float value, vec3 levels) {
 }
 
 PlotUniforms axesUniforms(PlotUniforms typeplot_shared_u) {
-  return PlotUniforms(typeplot_shared_u.resolution, typeplot_shared_u.plotCenter, typeplot_shared_u.plotSpan, typeplot_shared_u.plotRotation, typeplot_shared_u.rotationBasis, typeplot_shared_u.plotPan, typeplot_shared_u.plotBlend, typeplot_shared_u.appearance, typeplot_shared_u.decorations, typeplot_shared_u.labelStyle, typeplot_shared_u.decorationOpacity, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.sceneOpacity, typeplot_shared_u.cameraLens, typeplot_shared_u.plotCenterZ, typeplot_shared_u.probe, typeplot_shared_u.view3d, typeplot_shared_u.parameterBounds, typeplot_shared_u.parameterMode, typeplot_shared_u.curveQuality, typeplot_shared_u.curvePattern, typeplot_shared_u.curveTiles, typeplot_shared_u.surfaceBounds, typeplot_shared_u.surfaceDomainMode, typeplot_shared_u.surfaceRange, typeplot_shared_u.surfaceDepth, typeplot_shared_u.surfaceRender, typeplot_shared_u.surfaceFlags);
+  return PlotUniforms(typeplot_shared_u.resolution, typeplot_shared_u.plotCenter, typeplot_shared_u.plotSpan, typeplot_shared_u.plotRotation, typeplot_shared_u.rotationBasis, typeplot_shared_u.plotPan, typeplot_shared_u.plotBlend, typeplot_shared_u.appearance, typeplot_shared_u.decorations, typeplot_shared_u.labelStyle, typeplot_shared_u.decorationOpacity, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.sceneOpacity, typeplot_shared_u.cameraLens, typeplot_shared_u.plotCenterZ, typeplot_shared_u.probe, typeplot_shared_u.parameterFocusSeed, typeplot_shared_u.view3d, typeplot_shared_u.parameterBounds, typeplot_shared_u.parameterMode, typeplot_shared_u.curveQuality, typeplot_shared_u.curvePattern, typeplot_shared_u.curveTiles, typeplot_shared_u.surfaceBounds, typeplot_shared_u.surfaceDomainMode, typeplot_shared_u.surfaceRange, typeplot_shared_u.surfaceDepth, typeplot_shared_u.surfaceRender, typeplot_shared_u.surfaceFlags);
 }
 
 vec3 axisLabel(vec2 pixel, vec2 at, int code, PlotViewport typeplot_shared_u_2) {
@@ -6080,9 +6107,8 @@ float axisField(vec2 pixel, vec3 axis, ViewRay ray, PlotUniforms typeplot_shared
 float groundField(ViewRay ray, PlotUniforms typeplot_shared_u_16, vec3 xLevels, vec3 zLevels) {
   vec2 _licm0 = vec2(xLevels.x, zLevels.x);
   vec2 _licm1 = vec2(xLevels.y, zLevels.y);
-  vec2 _licm2 = vec2(2.0, 2.0);
-  vec2 _licm3 = vec2(6.0, 6.0);
-  float _licm4 = typeplot_shared_u_16.appearance.y;
+  float _licm2 = clamp(typeplot_shared_u_16.labelStyle.x, 0.5, 2.0);
+  float _licm3 = typeplot_shared_u_16.appearance.y;
   float _cse0 = abs(ray.direction.y);
   float denominator = ((_cse0 < 1e-8) ? ((ray.direction.y < 0.0) ? -1e-8 : 1e-8) : ray.direction.y);
   float depth = ((-ray.origin.y) / denominator);
@@ -6096,10 +6122,12 @@ float groundField(ViewRay ray, PlotUniforms typeplot_shared_u_16, vec3 xLevels, 
     vec2 _gv1 = ((ground / spacing) + 0.5);
     vec2 distance = (((abs((fract(_gv1) - 0.5)) * spacing) / gradient) * _cse1);
     vec2 separation = ((spacing / gradient) * _cse1);
-    vec2 fade = smoothstep(_licm2, _licm3, separation);
+    float _lc0 = (12.0 / _licm2);
+    float _lc1 = (28.0 / _licm2);
+    vec2 fade = smoothstep(vec2(_lc0, _lc0), vec2(_lc1, _lc1), separation);
     vec2 nearest = (floor(_gv1) * spacing);
     vec2 weights = (_gv0 ? vec2(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, zLevels)) : vec2(coarseTickOpacity(nearest.x, xLevels), coarseTickOpacity(nearest.y, zLevels)));
-    field = max(field, max(((distanceCoverage(distance.x, _licm4) * fade.x) * weights.x), ((distanceCoverage(distance.y, _licm4) * fade.y) * weights.y)));
+    field = max(field, max(((distanceCoverage(distance.x, _licm3) * fade.x) * weights.x), ((distanceCoverage(distance.y, _licm3) * fade.y) * weights.y)));
   }
   return (((((typeplot_shared_u_16.view3d != 2u) || (depth >= 0.101)) && (_cse0 >= 1e-8)) && ((typeplot_shared_u_16.decorations & 1u) != 0u)) ? (field * typeplot_shared_u_16.decorationOpacity.x) : 0.0);
 }
@@ -6243,13 +6271,13 @@ vec4 sceneBackdropReference(vec2 uv, PlotUniforms typeplot_shared_u_32) {
 }
 
 PlotUniforms Uniforms_as_PlotUniforms(Uniforms_value value) {
-  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
+  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.parameterFocusSeed, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
 }
 in vec2 uv;
 layout(location = 0) out vec4 _ret;
 
 void main() {
-  _ret = sceneBackdropReference(uv, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)));
+  _ret = sceneBackdropReference(uv, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.parameterFocusSeed, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)));
 }
 `,blocks:{u:"Uniforms",font:"FontUniforms"},samplers:{glyphAtlas:null}},drawLabels:{fragment:`#version 300 es
 precision highp float;
@@ -6299,6 +6327,7 @@ struct PlotUniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -6343,6 +6372,7 @@ struct Uniforms_value {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -6385,6 +6415,7 @@ layout(std140) uniform Uniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -6651,7 +6682,7 @@ vec3 colorMap(float value, uint palette) {
 }
 
 PlotUniforms axesUniforms(PlotUniforms typeplot_shared_u) {
-  return PlotUniforms(typeplot_shared_u.resolution, typeplot_shared_u.plotCenter, typeplot_shared_u.plotSpan, typeplot_shared_u.plotRotation, typeplot_shared_u.rotationBasis, typeplot_shared_u.plotPan, typeplot_shared_u.plotBlend, typeplot_shared_u.appearance, typeplot_shared_u.decorations, typeplot_shared_u.labelStyle, typeplot_shared_u.decorationOpacity, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.sceneOpacity, typeplot_shared_u.cameraLens, typeplot_shared_u.plotCenterZ, typeplot_shared_u.probe, typeplot_shared_u.view3d, typeplot_shared_u.parameterBounds, typeplot_shared_u.parameterMode, typeplot_shared_u.curveQuality, typeplot_shared_u.curvePattern, typeplot_shared_u.curveTiles, typeplot_shared_u.surfaceBounds, typeplot_shared_u.surfaceDomainMode, typeplot_shared_u.surfaceRange, typeplot_shared_u.surfaceDepth, typeplot_shared_u.surfaceRender, typeplot_shared_u.surfaceFlags);
+  return PlotUniforms(typeplot_shared_u.resolution, typeplot_shared_u.plotCenter, typeplot_shared_u.plotSpan, typeplot_shared_u.plotRotation, typeplot_shared_u.rotationBasis, typeplot_shared_u.plotPan, typeplot_shared_u.plotBlend, typeplot_shared_u.appearance, typeplot_shared_u.decorations, typeplot_shared_u.labelStyle, typeplot_shared_u.decorationOpacity, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.sceneOpacity, typeplot_shared_u.cameraLens, typeplot_shared_u.plotCenterZ, typeplot_shared_u.probe, typeplot_shared_u.parameterFocusSeed, typeplot_shared_u.view3d, typeplot_shared_u.parameterBounds, typeplot_shared_u.parameterMode, typeplot_shared_u.curveQuality, typeplot_shared_u.curvePattern, typeplot_shared_u.curveTiles, typeplot_shared_u.surfaceBounds, typeplot_shared_u.surfaceDomainMode, typeplot_shared_u.surfaceRange, typeplot_shared_u.surfaceDepth, typeplot_shared_u.surfaceRender, typeplot_shared_u.surfaceFlags);
 }
 
 vec3 axisLabel(vec2 pixel, vec2 at, int code, PlotViewport typeplot_shared_u_2) {
@@ -6772,9 +6803,8 @@ float axisField(vec2 pixel, vec3 axis, ViewRay ray, PlotUniforms typeplot_shared
 float groundField(ViewRay ray, PlotUniforms typeplot_shared_u_16, vec3 xLevels, vec3 zLevels) {
   vec2 _licm0 = vec2(xLevels.x, zLevels.x);
   vec2 _licm1 = vec2(xLevels.y, zLevels.y);
-  vec2 _licm2 = vec2(2.0, 2.0);
-  vec2 _licm3 = vec2(6.0, 6.0);
-  float _licm4 = typeplot_shared_u_16.appearance.y;
+  float _licm2 = clamp(typeplot_shared_u_16.labelStyle.x, 0.5, 2.0);
+  float _licm3 = typeplot_shared_u_16.appearance.y;
   float _cse0 = abs(ray.direction.y);
   float denominator = ((_cse0 < 1e-8) ? ((ray.direction.y < 0.0) ? -1e-8 : 1e-8) : ray.direction.y);
   float depth = ((-ray.origin.y) / denominator);
@@ -6788,10 +6818,12 @@ float groundField(ViewRay ray, PlotUniforms typeplot_shared_u_16, vec3 xLevels, 
     vec2 _gv1 = ((ground / spacing) + 0.5);
     vec2 distance = (((abs((fract(_gv1) - 0.5)) * spacing) / gradient) * _cse1);
     vec2 separation = ((spacing / gradient) * _cse1);
-    vec2 fade = smoothstep(_licm2, _licm3, separation);
+    float _lc0 = (12.0 / _licm2);
+    float _lc1 = (28.0 / _licm2);
+    vec2 fade = smoothstep(vec2(_lc0, _lc0), vec2(_lc1, _lc1), separation);
     vec2 nearest = (floor(_gv1) * spacing);
     vec2 weights = (_gv0 ? vec2(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, zLevels)) : vec2(coarseTickOpacity(nearest.x, xLevels), coarseTickOpacity(nearest.y, zLevels)));
-    field = max(field, max(((distanceCoverage(distance.x, _licm4) * fade.x) * weights.x), ((distanceCoverage(distance.y, _licm4) * fade.y) * weights.y)));
+    field = max(field, max(((distanceCoverage(distance.x, _licm3) * fade.x) * weights.x), ((distanceCoverage(distance.y, _licm3) * fade.y) * weights.y)));
   }
   return (((((typeplot_shared_u_16.view3d != 2u) || (depth >= 0.101)) && (_cse0 >= 1e-8)) && ((typeplot_shared_u_16.decorations & 1u) != 0u)) ? (field * typeplot_shared_u_16.decorationOpacity.x) : 0.0);
 }
@@ -6931,13 +6963,13 @@ vec4 sceneLabels(vec2 uv, PlotUniforms typeplot_shared_u_34, bool surface) {
 }
 
 PlotUniforms Uniforms_as_PlotUniforms(Uniforms_value value) {
-  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
+  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.parameterFocusSeed, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
 }
 in vec2 uv;
 layout(location = 0) out vec4 _ret;
 
 void main() {
-  _ret = sceneLabels(uv, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)), true);
+  _ret = sceneLabels(uv, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.parameterFocusSeed, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)), true);
 }
 `,blocks:{u:"Uniforms",font:"FontUniforms"},samplers:{spatialLabels:null,glyphAtlas:null}},drawLabelsReference:{fragment:`#version 300 es
 precision highp float;
@@ -6987,6 +7019,7 @@ struct PlotUniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -7031,6 +7064,7 @@ struct Uniforms_value {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -7073,6 +7107,7 @@ layout(std140) uniform Uniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -7347,7 +7382,7 @@ vec3 colorMap(float value, uint palette) {
 }
 
 PlotUniforms axesUniforms(PlotUniforms typeplot_shared_u) {
-  return PlotUniforms(typeplot_shared_u.resolution, typeplot_shared_u.plotCenter, typeplot_shared_u.plotSpan, typeplot_shared_u.plotRotation, typeplot_shared_u.rotationBasis, typeplot_shared_u.plotPan, typeplot_shared_u.plotBlend, typeplot_shared_u.appearance, typeplot_shared_u.decorations, typeplot_shared_u.labelStyle, typeplot_shared_u.decorationOpacity, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.sceneOpacity, typeplot_shared_u.cameraLens, typeplot_shared_u.plotCenterZ, typeplot_shared_u.probe, typeplot_shared_u.view3d, typeplot_shared_u.parameterBounds, typeplot_shared_u.parameterMode, typeplot_shared_u.curveQuality, typeplot_shared_u.curvePattern, typeplot_shared_u.curveTiles, typeplot_shared_u.surfaceBounds, typeplot_shared_u.surfaceDomainMode, typeplot_shared_u.surfaceRange, typeplot_shared_u.surfaceDepth, typeplot_shared_u.surfaceRender, typeplot_shared_u.surfaceFlags);
+  return PlotUniforms(typeplot_shared_u.resolution, typeplot_shared_u.plotCenter, typeplot_shared_u.plotSpan, typeplot_shared_u.plotRotation, typeplot_shared_u.rotationBasis, typeplot_shared_u.plotPan, typeplot_shared_u.plotBlend, typeplot_shared_u.appearance, typeplot_shared_u.decorations, typeplot_shared_u.labelStyle, typeplot_shared_u.decorationOpacity, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.axesModel, typeplot_shared_u.inverseAxesModel, typeplot_shared_u.sceneOpacity, typeplot_shared_u.cameraLens, typeplot_shared_u.plotCenterZ, typeplot_shared_u.probe, typeplot_shared_u.parameterFocusSeed, typeplot_shared_u.view3d, typeplot_shared_u.parameterBounds, typeplot_shared_u.parameterMode, typeplot_shared_u.curveQuality, typeplot_shared_u.curvePattern, typeplot_shared_u.curveTiles, typeplot_shared_u.surfaceBounds, typeplot_shared_u.surfaceDomainMode, typeplot_shared_u.surfaceRange, typeplot_shared_u.surfaceDepth, typeplot_shared_u.surfaceRender, typeplot_shared_u.surfaceFlags);
 }
 
 vec3 axisLabel(vec2 pixel, vec2 at, int code, PlotViewport typeplot_shared_u_2) {
@@ -7485,9 +7520,8 @@ float axisField(vec2 pixel, vec3 axis, ViewRay ray, PlotUniforms typeplot_shared
 float groundField(ViewRay ray, PlotUniforms typeplot_shared_u_16, vec3 xLevels, vec3 zLevels) {
   vec2 _licm0 = vec2(xLevels.x, zLevels.x);
   vec2 _licm1 = vec2(xLevels.y, zLevels.y);
-  vec2 _licm2 = vec2(2.0, 2.0);
-  vec2 _licm3 = vec2(6.0, 6.0);
-  float _licm4 = typeplot_shared_u_16.appearance.y;
+  float _licm2 = clamp(typeplot_shared_u_16.labelStyle.x, 0.5, 2.0);
+  float _licm3 = typeplot_shared_u_16.appearance.y;
   float _cse0 = abs(ray.direction.y);
   float denominator = ((_cse0 < 1e-8) ? ((ray.direction.y < 0.0) ? -1e-8 : 1e-8) : ray.direction.y);
   float depth = ((-ray.origin.y) / denominator);
@@ -7501,10 +7535,12 @@ float groundField(ViewRay ray, PlotUniforms typeplot_shared_u_16, vec3 xLevels, 
     vec2 _gv1 = ((ground / spacing) + 0.5);
     vec2 distance = (((abs((fract(_gv1) - 0.5)) * spacing) / gradient) * _cse1);
     vec2 separation = ((spacing / gradient) * _cse1);
-    vec2 fade = smoothstep(_licm2, _licm3, separation);
+    float _lc0 = (12.0 / _licm2);
+    float _lc1 = (28.0 / _licm2);
+    vec2 fade = smoothstep(vec2(_lc0, _lc0), vec2(_lc1, _lc1), separation);
     vec2 nearest = (floor(_gv1) * spacing);
     vec2 weights = (_gv0 ? vec2(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, zLevels)) : vec2(coarseTickOpacity(nearest.x, xLevels), coarseTickOpacity(nearest.y, zLevels)));
-    field = max(field, max(((distanceCoverage(distance.x, _licm4) * fade.x) * weights.x), ((distanceCoverage(distance.y, _licm4) * fade.y) * weights.y)));
+    field = max(field, max(((distanceCoverage(distance.x, _licm3) * fade.x) * weights.x), ((distanceCoverage(distance.y, _licm3) * fade.y) * weights.y)));
   }
   return (((((typeplot_shared_u_16.view3d != 2u) || (depth >= 0.101)) && (_cse0 >= 1e-8)) && ((typeplot_shared_u_16.decorations & 1u) != 0u)) ? (field * typeplot_shared_u_16.decorationOpacity.x) : 0.0);
 }
@@ -7692,13 +7728,13 @@ vec4 sceneLabelsReference(vec2 uv, PlotUniforms typeplot_shared_u_35, bool surfa
 }
 
 PlotUniforms Uniforms_as_PlotUniforms(Uniforms_value value) {
-  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
+  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.parameterFocusSeed, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
 }
 in vec2 uv;
 layout(location = 0) out vec4 _ret;
 
 void main() {
-  _ret = sceneLabelsReference(uv, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)), true);
+  _ret = sceneLabelsReference(uv, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.parameterFocusSeed, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)), true);
 }
 `,blocks:{u:"Uniforms",font:"FontUniforms"},samplers:{glyphAtlas:null}},queryLayer:{fragment:`#version 300 es
 precision highp float;
@@ -7724,6 +7760,7 @@ struct PlotUniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -7769,6 +7806,7 @@ struct Uniforms_value {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -7811,6 +7849,7 @@ layout(std140) uniform Uniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -8008,7 +8047,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
 }
 
 PlotUniforms Uniforms_as_PlotUniforms(Uniforms_value value) {
-  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
+  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.parameterFocusSeed, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
 }
 
 uvec4 pickSurface_heightField(vec4 position, PlotUniforms typeplot_shared_u_29) {
@@ -8029,7 +8068,7 @@ layout(location = 0) out uvec4 _ret;
 
 void main() {
   vec4 position = gl_FragCoord;
-  _ret = pickSurface_heightField(position, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)));
+  _ret = pickSurface_heightField(position, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.parameterFocusSeed, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)));
 }
 `,blocks:{u:"Uniforms",query:"PickUniforms"},samplers:{},data:["heights"]},queryLayerReference:{fragment:`#version 300 es
 precision highp float;
@@ -8055,6 +8094,7 @@ struct PlotUniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -8100,6 +8140,7 @@ struct Uniforms_value {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -8142,6 +8183,7 @@ layout(std140) uniform Uniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -8339,7 +8381,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
 }
 
 PlotUniforms Uniforms_as_PlotUniforms(Uniforms_value value) {
-  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
+  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.parameterFocusSeed, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
 }
 
 uvec4 pickSurface_heightField(vec4 position, PlotUniforms typeplot_shared_u_29) {
@@ -8360,7 +8402,7 @@ layout(location = 0) out uvec4 _ret;
 
 void main() {
   vec4 position = gl_FragCoord;
-  _ret = pickSurface_heightField(position, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)));
+  _ret = pickSurface_heightField(position, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.parameterFocusSeed, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)));
 }
 `,blocks:{u:"Uniforms",query:"PickUniforms"},samplers:{},data:["heights"]},pick:{fragment:`#version 300 es
 precision highp float;
@@ -8386,6 +8428,7 @@ struct PlotUniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -8431,6 +8474,7 @@ struct Uniforms_value {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -8473,6 +8517,7 @@ layout(std140) uniform Uniforms {
   vec2 cameraLens;
   float plotCenterZ;
   float probe;
+  float parameterFocusSeed;
   uint view3d;
   vec2 parameterBounds;
   uint parameterMode;
@@ -8670,7 +8715,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
 }
 
 PlotUniforms Uniforms_as_PlotUniforms(Uniforms_value value) {
-  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
+  return PlotUniforms(value.resolution, value.plotCenter, value.plotSpan, value.plotRotation, value.rotationBasis, value.plotPan, value.plotBlend, value.appearance, value.decorations, value.labelStyle, value.decorationOpacity, value.model, value.inverseModel, value.axesModel, value.inverseAxesModel, value.sceneOpacity, value.cameraLens, value.plotCenterZ, value.probe, value.parameterFocusSeed, value.view3d, value.parameterBounds, value.parameterMode, value.curveQuality, value.curvePattern, value.curveTiles, value.surfaceBounds, value.surfaceDomainMode, value.surfaceRange, value.surfaceDepth, value.surfaceRender, value.surfaceFlags);
 }
 
 uvec4 pickSurface_heightField(vec4 position, PlotUniforms typeplot_shared_u_29) {
@@ -8691,6 +8736,6 @@ layout(location = 0) out uvec4 _ret;
 
 void main() {
   vec4 position = gl_FragCoord;
-  _ret = pickSurface_heightField(position, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)));
+  _ret = pickSurface_heightField(position, Uniforms_as_PlotUniforms(Uniforms_value(u.resolution, u.plotCenter, u.plotSpan, u.plotRotation, u.rotationBasis, u.plotPan, u.plotBlend, u.appearance, u.decorations, u.labelStyle, u.decorationOpacity, u.model, u.inverseModel, u.axesModel, u.inverseAxesModel, u.sceneOpacity, u.cameraLens, u.plotCenterZ, u.probe, u.parameterFocusSeed, u.view3d, u.parameterBounds, u.parameterMode, u.curveQuality, u.curvePattern, u.curveTiles, u.surfaceBounds, u.surfaceDomainMode, u.surfaceRange, u.surfaceDepth, u.surfaceRender, u.surfaceFlags, u.gridXMin, u.gridXMax, u.gridZMin, u.gridZMax, u.gridRows, u.gridColumns, u.gridCount, u.heightScale, u.heightOffset)));
 }
 `,blocks:{u:"Uniforms",query:"PickUniforms"},samplers:{},data:["heights"]}}}},i={gridXMin:0,gridXMax:1,gridZMin:0,gridZMax:1,gridRows:2,gridColumns:2,gridCount:4,heightScale:1,heightOffset:0},l="projective",r="transform-v1",s="layers-v1",c="surface-v1",p="point-v1",u={version:t,kind:a,manifest:o,parameters:i,camera:l,scene:r,composition:s,acceleration:c,picking:p};export{c as acceleration,l as camera,s as composition,u as default,a as kind,o as manifest,i as parameters,p as picking,r as scene,t as version};

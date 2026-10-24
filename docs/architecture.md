@@ -134,7 +134,7 @@ semantics, asynchronous startup and complete-frame readiness.
 inputs and optional GPU curve caches. The host supplies one camera snapshot to all fields.
 `SceneComposer` borrows the existing Runtime/RenderSession and the primary Program; matching
 callback programs share TypeShade's pipeline cache. Additional shader bindings contain no
-separate glyph atlas or input controller. Composition loads only when the first object is added.
+separate glyph atlas or input controller. Composition loads when an additional object is prepared or an extended coordinate frame is required.
 
 Each field renders straight RGBA8 color and packed f32 camera distance into an atlas tile.
 The named TypeShade compositor sorts covered hits at each pixel and blends front to back;
@@ -157,3 +157,16 @@ handles. Scene retirement drains all object work before disposing the borrowed D
 The eight-megapixel display atlas, sixteen-megapixel export atlas, device dimensions and sixteen
 object slots bound allocation. No additional canvas, Runtime, camera or GPU command encoder is
 created per node.
+
+## Relative coordinates and preparation
+
+`render/relative.ts` computes camera-relative affine translations and optional parameter windows
+from absolute host state. `render/origin.ts` owns a named TypeShade preparation pass and one
+integer texel for an extended parameter origin. `render/coordinates.ts` loads a separate f64
+coordinate program only beyond the f32 pixel budget. The main SDF/camera frame remains local
+f32; picking and export retain their original world/parameter origins. See [precision](precision.md).
+
+Known scene objects can be prepared before the first frame through `PlotOptions.objects`.
+Initialization suppresses invalidation until the scene is complete, and a standalone primary
+pipeline stays lazy until needed. Initial 3D mode is immediate. Unchanged observer notifications
+and identical configuration setters do not enqueue duplicate full frames.

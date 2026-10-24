@@ -46,6 +46,68 @@ export interface SceneObjectOptions {
   readonly surface?: Omit<SurfaceOptions, "colorBar">;
   readonly surfaceDomain?: SurfaceDomain;
 }
+/** Additional callbacks prepared before the plot's first complete frame. */
+export interface SceneObjectSpec extends SceneObjectOptions {
+  readonly program: PlotProgram;
+}
+/** @internal Snapshot mutable insertion values before asynchronous preparation. */
+export function captureSceneObjectOptions(
+  options: SceneObjectOptions,
+): SceneObjectOptions {
+  return {
+    ...options,
+    ...(options.parameters ? { parameters: { ...options.parameters } } : {}),
+    ...(options.style ? { style: { ...options.style } } : {}),
+    ...(options.quality ? { quality: { ...options.quality } } : {}),
+    ...(options.domain
+      ? { domain: [...options.domain] as [number, number] }
+      : {}),
+    ...(options.surface
+      ? {
+          surface: {
+            ...options.surface,
+            ...(options.surface.valueRange
+              ? {
+                  valueRange: [...options.surface.valueRange] as [
+                    number,
+                    number,
+                  ],
+                }
+              : {}),
+            ...(options.surface.depthRange
+              ? {
+                  depthRange: [...options.surface.depthRange] as [
+                    number,
+                    number,
+                  ],
+                }
+              : {}),
+          },
+        }
+      : {}),
+    ...(options.surfaceDomain
+      ? {
+          surfaceDomain: {
+            x: [...options.surfaceDomain.x] as [number, number],
+            z: [...options.surfaceDomain.z] as [number, number],
+          },
+        }
+      : {}),
+    ...(options.data
+      ? {
+          data: Object.fromEntries(
+            Object.entries(options.data).map(([name, value]) => {
+              if (!(value instanceof Float32Array) || !value.length)
+                throw new TypeError(
+                  `data.${name} must be a nonempty Float32Array.`,
+                );
+              return [name, value.slice()];
+            }),
+          ),
+        }
+      : {}),
+  };
+}
 export interface SceneObjectTransition extends SceneTransition {
   readonly parameters?: Readonly<Record<string, number>>;
 }
@@ -479,59 +541,7 @@ export class PlotScene {
       throw new TypeError(
         "Scene object IDs must be nonempty and unique; 'primary' names the original callback.",
       );
-    const captured: SceneObjectOptions = {
-      ...options,
-      ...(options.parameters ? { parameters: { ...options.parameters } } : {}),
-      ...(options.style ? { style: { ...options.style } } : {}),
-      ...(options.quality ? { quality: { ...options.quality } } : {}),
-      ...(options.domain
-        ? { domain: [...options.domain] as [number, number] }
-        : {}),
-      ...(options.surface
-        ? {
-            surface: {
-              ...options.surface,
-              ...(options.surface.valueRange
-                ? {
-                    valueRange: [...options.surface.valueRange] as [
-                      number,
-                      number,
-                    ],
-                  }
-                : {}),
-              ...(options.surface.depthRange
-                ? {
-                    depthRange: [...options.surface.depthRange] as [
-                      number,
-                      number,
-                    ],
-                  }
-                : {}),
-            },
-          }
-        : {}),
-      ...(options.surfaceDomain
-        ? {
-            surfaceDomain: {
-              x: [...options.surfaceDomain.x] as [number, number],
-              z: [...options.surfaceDomain.z] as [number, number],
-            },
-          }
-        : {}),
-      ...(options.data
-        ? {
-            data: Object.fromEntries(
-              Object.entries(options.data).map(([name, value]) => {
-                if (!(value instanceof Float32Array) || !value.length)
-                  throw new TypeError(
-                    `data.${name} must be a nonempty Float32Array.`,
-                  );
-                return [name, value.slice()];
-              }),
-            ),
-          }
-        : {}),
-    };
+    const captured = captureSceneObjectOptions(options);
     const node = new SceneObject(this, id, program.kind),
       initial = state(node);
     initial.transform = matrix(options.transform ?? identityMatrix());

@@ -447,10 +447,16 @@ accumulates matrix or opacity deltas. One timeline coalesces the resulting unifo
 complete frames. All grid, curve and surface work stays in named TypeShade shaders, with resident
 observations reused. Picking returns the content's original mathematical coordinates.
 
+For large spatial coordinates, TypePlot uses [relative-to-center coordinates](docs/precision.md).
+The helix example prepares its global phase once in TypeShade f64 and renders its local SDF in f32.
+
 ## Multiple mathematical objects
 
 Programs compiled with the current compiler support additional callbacks through `plot.scene.add()`.
 The plot must be in 3D. Objects share its Runtime, camera, glyph atlas and render scheduler.
+Pass known objects as `createPlot(canvas, program, { objects: [{ program: curveProgram, id: "curve" }] })`
+to prepare the full scene before its first frame. `scene.add()` remains available for later insertion.
+The standalone primary pipeline is prepared lazily if all additional objects are removed.
 
 ```ts
 const curve = await plot.scene.add(trajectoryProgram, {

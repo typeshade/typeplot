@@ -3,7 +3,13 @@ import { compilePlot } from "../dist/compiler.js";
 await mkdir("examples/generated", { recursive: true });
 for (const [name, options] of [
   ["curve", { parameters: { exponent: 2 } }],
-  ["helix", { kind: "parametric" }],
+  [
+    "helix",
+    {
+      kind: "parametric",
+      parameterOrigin: { axis: "z", scale: 0.4, prepare: "prepare" },
+    },
+  ],
   ["sine", { parameters: { frequency: 1 } }],
   [
     "surface-curve",

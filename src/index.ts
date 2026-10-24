@@ -7,6 +7,7 @@ export type {
   SceneTransition,
   SceneObjectTransition,
   SceneObjectOptions,
+  SceneObjectSpec,
   SceneObjectStyle,
   ScenePick,
 } from "./scene.js";

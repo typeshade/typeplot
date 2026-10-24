@@ -27,6 +27,12 @@ export interface SceneObjectOptions {
     readonly surface?: Omit<SurfaceOptions, "colorBar">;
     readonly surfaceDomain?: SurfaceDomain;
 }
+/** Additional callbacks prepared before the plot's first complete frame. */
+export interface SceneObjectSpec extends SceneObjectOptions {
+    readonly program: PlotProgram;
+}
+/** @internal Snapshot mutable insertion values before asynchronous preparation. */
+export declare function captureSceneObjectOptions(options: SceneObjectOptions): SceneObjectOptions;
 export interface SceneObjectTransition extends SceneTransition {
     readonly parameters?: Readonly<Record<string, number>>;
 }

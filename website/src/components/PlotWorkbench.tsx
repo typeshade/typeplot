@@ -246,7 +246,7 @@ export default function PlotWorkbench({
           : "Helix: x = 2 cos(t), y = sin(t), z = 0.4t.";
       target.appendChild(canvas);
       const initialize = async () => {
-        const [runtime, shader] = await Promise.all([
+        const [runtime, shader, sceneCurve] = await Promise.all([
           import("../vendor/typeplot/index.js"),
           preset === "sampledSurface"
             ? undefined
@@ -257,6 +257,7 @@ export default function PlotWorkbench({
                 : preset === "surface" || isMulti
                   ? import("../vendor/typeplot/surface.js")
                   : import("../vendor/typeplot/helix.js"),
+          isMulti ? import("../vendor/typeplot/surface-curve.js") : undefined,
         ]);
         if (disposed) return;
         const { createPlot, createSurface } = runtime;
@@ -284,6 +285,19 @@ export default function PlotWorkbench({
                 },
               )
             : createPlot(canvas, shader!.default as PlotProgram, {
+                style,
+                objects: sceneCurve
+                  ? [
+                      {
+                        program: sceneCurve.default,
+                        id: "trajectory",
+                        domain: [-3, 3],
+                        quality: { samples: 64 },
+                        parameters: { phase: 0, lift: 0.04 },
+                        style: { color: "#ff7f0e", curveWidth: 3 },
+                      },
+                    ]
+                  : undefined,
                 bounds:
                   preset === "power"
                     ? { x: [0, 1], y: [0, 1] }
@@ -347,25 +361,6 @@ export default function PlotWorkbench({
             }),
             "top-right",
           );
-          if (isMulti) {
-            const { default: curveProgram } =
-              await import("../vendor/typeplot/surface-curve.js");
-            if (disposed) {
-              result.destroy();
-              return;
-            }
-            await result.scene.add(curveProgram, {
-              id: "trajectory",
-              domain: [-3, 3],
-              quality: { samples: 64 },
-              parameters: { phase: 0, lift: 0.04 },
-              style: { color: "#ff7f0e", curveWidth: 3 },
-            });
-            if (disposed) {
-              result.destroy();
-              return;
-            }
-          }
           const current = desired.current;
           result.setStyle(current.style);
           result.setMode(preset === "helix" || current.threeD ? "3d" : "2d");

@@ -30,6 +30,11 @@ export declare class SceneComposer {
     private revision;
     private disposing?;
     private readonly maxDimension;
+    private coordinates?;
+    private coordinatePreparation?;
+    private coordinatesEnabled;
+    get usesLayers(): boolean;
+    setCoordinates(enabled: boolean): Promise<void>;
     constructor(owner: RenderSession, scene: PlotScene, source: PlotProgram, sourceProgram: LoadedProgram, format: string, doc: Document, invalidateHost: () => void, idle: () => Promise<void>, accelerate: boolean, primaryCache: boolean, labelsCached: boolean);
     isActive(node: SceneObject): boolean;
     get hasObjects(): boolean;

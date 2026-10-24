@@ -21,7 +21,7 @@ type View = {
 /** Supplies plot uniforms and requests a redraw only while the view changes. */
 export declare function createPlotInteraction(canvas: HTMLCanvasElement, initialBounds: PlotBounds, onChange: () => void, enabled?: boolean, viewport?: () => Pick<DOMRect, "left" | "top" | "width" | "height">, options?: PlotInteractionOptions): {
     value(field: string): readonly number[] | null;
-    setMode(enabled: boolean): void;
+    setMode(enabled: boolean, immediate?: boolean): void;
     reset: () => void;
     camera(): {
         center: Pair;

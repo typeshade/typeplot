@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { compile, packModule } from "typeshade";
-for (const name of ["data", "scene-composite"]) {
+for (const name of ["data", "scene-composite", "coordinates"]) {
   const fileName = path.resolve(`shaders/${name}.shade.ts`);
   const result = compile(readFileSync(fileName, "utf8"), {
     fileName,

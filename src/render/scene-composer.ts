@@ -1,3 +1,5 @@
+import { logicalPoint } from "./relative.js";
+import type { CoordinatesRenderer, CoordinatePacket } from "./coordinates.js";
 import type { Frame, Pack, RenderPipeline, Texture } from "typeshade/runtime";
 import compositeManifest from "../../.build/scene-composite-program.json";
 import {
@@ -61,6 +63,33 @@ export class SceneComposer {
   private revision = 0;
   private disposing?: Promise<void>;
   private readonly maxDimension: number;
+  private coordinates?: CoordinatesRenderer;
+  private coordinatePreparation?: Promise<CoordinatesRenderer>;
+  private coordinatesEnabled = false;
+  get usesLayers(): boolean {
+    return this.hasObjects || this.coordinatesEnabled;
+  }
+  async setCoordinates(enabled: boolean): Promise<void> {
+    this.alive();
+    if (enabled && !this.coordinates) {
+      this.coordinatePreparation ??= this.owner.run(async () => {
+        const { CoordinatesRenderer } = await import("./coordinates.js");
+        this.alive();
+        const renderer = new CoordinatesRenderer(
+          this.owner,
+          this.format,
+          this.source.kind === "surface",
+          this.maxDimension,
+        );
+        this.coordinates = renderer;
+        await renderer.initialize();
+        this.alive();
+        return renderer;
+      });
+      await this.coordinatePreparation;
+    }
+    this.coordinatesEnabled = enabled;
+  }
   constructor(
     private readonly owner: RenderSession,
     private readonly scene: PlotScene,
@@ -197,7 +226,7 @@ export class SceneComposer {
     this.invalidate();
     if (!field) return;
     await field.dispose(this.idle());
-    if (!this.hasObjects && this.display) {
+    if (!this.usesLayers && this.display) {
       this.retire(this.display);
       this.display = undefined;
     }
@@ -231,7 +260,7 @@ export class SceneComposer {
       .scale;
   }
   checkExportSize(width: number, height: number): void {
-    if (!this.hasObjects) return;
+    if (!this.usesLayers) return;
     if (
       this.arrangement(width, height, this.active.size + 1, 16_777_216).scale <
       1 - 1e-9
@@ -324,6 +353,7 @@ export class SceneComposer {
       ...[...this.active].map((node) => this.fields.get(node)!),
     ].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     const packets: ScenePacket[] = [];
+    let coordinates: CoordinatePacket | undefined;
     try {
       for (let index = 0; index < fields.length; index++) {
         const field = fields[index],
@@ -346,7 +376,11 @@ export class SceneComposer {
         }
       }
       const u = base.u;
+      if (this.coordinatesEnabled)
+        coordinates = this.coordinates!.prepare(frame, base, ratio, transient);
       const backdropKey = JSON.stringify([
+        this.coordinatesEnabled,
+        u.axesOrigin,
         u.resolution,
         u.axesModel,
         u.inverseAxesModel,
@@ -366,12 +400,15 @@ export class SceneComposer {
         ratio,
       ]);
       if (bundle.backdropKey !== backdropKey) {
-        this.baseDraw(
-          frame,
-          this.backdropPipeline,
-          base.bindings,
-          bundle.backdrop,
-        );
+        if (coordinates)
+          this.coordinates!.background(frame, coordinates, bundle.backdrop);
+        else
+          this.baseDraw(
+            frame,
+            this.backdropPipeline,
+            base.bindings,
+            bundle.backdrop,
+          );
         bundle.backdropKey = backdropKey;
       }
       bundle.uniforms = {
@@ -392,23 +429,37 @@ export class SceneComposer {
           { count: 3 },
         ),
       );
-      this.baseDraw(frame, this.labelsPipeline, base.bindings, target, "load");
+      if (coordinates) this.coordinates!.foreground(frame, coordinates, target);
+      else
+        this.baseDraw(
+          frame,
+          this.labelsPipeline,
+          base.bindings,
+          target,
+          "load",
+        );
       bundle.packets = packets;
     } catch (error) {
+      coordinates?.finish(false);
       bundle.keys = [];
       bundle.backdropKey = "";
-      for (const packet of packets)
+      for (const packet of packets) {
         if (packet.cache && !packet.external) packet.cache.key = "";
+        if (packet.origin) packet.origin.cache.key = "";
+      }
       for (const packet of packets) packet.field.releasePacket(packet);
       if (transient) this.retire(bundle);
       throw error;
     }
     return (success = true) => {
+      coordinates?.finish(success);
       if (!success) {
         bundle.keys = [];
         bundle.backdropKey = "";
-        for (const packet of packets)
+        for (const packet of packets) {
           if (packet.cache && !packet.external) packet.cache.key = "";
+          if (packet.origin) packet.origin.cache.key = "";
+        }
       }
       if (transient) {
         for (const packet of packets) packet.field.releasePacket(packet);
@@ -466,17 +517,25 @@ export class SceneComposer {
       if (!point || this.closed || version !== this.revision) return null;
       const m = packet.u.model as number[],
         p = point.point;
+      const center = (packet.u.worldCenter ?? [0, 0, 0]) as number[];
       const worldPoint = [
-        m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12],
-        m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13],
-        m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14],
+        center[0] + m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12],
+        center[1] + m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13],
+        center[2] + m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14],
       ] as const;
       return {
         kind: packet.field.program.kind,
-        point: p,
+        point: logicalPoint(
+          p,
+          packet.field.program.parameterOrigin,
+          (packet.u.parameterBase as number) ?? 0,
+        ),
         ...(point.parameter === undefined
           ? {}
-          : { parameter: point.parameter }),
+          : {
+              parameter:
+                point.parameter + ((packet.u.parameterBase as number) ?? 0),
+            }),
         distance: values[3],
         objectId: packet.field.id,
         object: packet.field.node,
@@ -510,6 +569,7 @@ export class SceneComposer {
       this.primary.dispose(),
       ...[...this.fields.values()].map((field) => field.dispose()),
     ]).then(() => {
+      this.coordinates?.dispose();
       if (this.display) this.retire(this.display);
       this.display = undefined;
       this.fields.clear();

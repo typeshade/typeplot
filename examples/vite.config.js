@@ -7,7 +7,11 @@ export default defineConfig({
   plugins: [
     typeplot({
       configure: (file) =>
-        file.endsWith("curve.shade.ts") ? { parameters: { exponent: 2 } } : {},
+        file.endsWith("curve.shade.ts")
+          ? { parameters: { exponent: 2 } }
+          : file.endsWith("helix.shade.ts")
+            ? { parameterOrigin: { axis: "z", scale: 0.4, prepare: "prepare" } }
+            : {},
     }),
   ],
   build: {

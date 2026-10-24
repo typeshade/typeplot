@@ -1,3 +1,4 @@
+import { type OriginPacket } from "./origin.js";
 import type { Frame, Runtime, Texture } from "typeshade/runtime";
 import type { PlotProgram, PlotQuality, SurfaceDomain, SurfaceOptions } from "../types.js";
 import type { PlotScene, SceneNode, SceneObjectHandle, SceneObjectOptions, SceneObjectStyle } from "../scene.js";
@@ -23,6 +24,7 @@ export interface ScenePacket {
     readonly geometry: string;
     readonly cache?: CurveCache;
     readonly external: boolean;
+    readonly origin?: OriginPacket;
 }
 /** Per-callback resources. The shared TypeShade Runtime owns pipelines and submissions. */
 export declare class SceneField implements SceneObjectHandle {
@@ -60,6 +62,7 @@ export declare class SceneField implements SceneObjectHandle {
     private retirement?;
     readonly accelerated: boolean;
     constructor(id: string, node: SceneNode, program: PlotProgram, loaded: LoadedProgram, owner: RenderSession, scene: PlotScene, doc: Document, invalidate: () => void, options: SceneObjectOptions, primary: boolean, accelerate: boolean);
+    private originResources?;
     private alive;
     initialize(externalCache?: boolean): Promise<void>;
     private createCache;

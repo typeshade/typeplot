@@ -26,6 +26,7 @@ export class PlotUniforms extends PlotViewport {
   cameraLens: vec2;
   plotCenterZ: f32;
   probe: f32;
+  parameterFocusSeed: f32;
   view3d: u32;
   parameterBounds: vec2;
   parameterMode: u32;
@@ -42,7 +43,7 @@ export class PlotUniforms extends PlotViewport {
 
 /** Coordinate-frame fields use their own matrix while the callback remains in content space. */
 export function axesUniforms(u: PlotUniforms): PlotUniforms {
-  return { resolution: u.resolution, plotCenter: u.plotCenter, plotSpan: u.plotSpan, plotRotation: u.plotRotation, rotationBasis: u.rotationBasis, plotPan: u.plotPan, plotBlend: u.plotBlend, appearance: u.appearance, decorations: u.decorations, labelStyle: u.labelStyle, decorationOpacity: u.decorationOpacity, model: u.axesModel, inverseModel: u.inverseAxesModel, axesModel: u.axesModel, inverseAxesModel: u.inverseAxesModel, sceneOpacity: u.sceneOpacity, cameraLens: u.cameraLens, plotCenterZ: u.plotCenterZ, probe: u.probe, view3d: u.view3d, parameterBounds: u.parameterBounds, parameterMode: u.parameterMode, curveQuality: u.curveQuality, curvePattern: u.curvePattern, curveTiles: u.curveTiles, surfaceBounds: u.surfaceBounds, surfaceDomainMode: u.surfaceDomainMode, surfaceRange: u.surfaceRange, surfaceDepth: u.surfaceDepth, surfaceRender: u.surfaceRender, surfaceFlags: u.surfaceFlags };
+  return { resolution: u.resolution, plotCenter: u.plotCenter, plotSpan: u.plotSpan, plotRotation: u.plotRotation, rotationBasis: u.rotationBasis, plotPan: u.plotPan, plotBlend: u.plotBlend, appearance: u.appearance, decorations: u.decorations, labelStyle: u.labelStyle, decorationOpacity: u.decorationOpacity, model: u.axesModel, inverseModel: u.inverseAxesModel, axesModel: u.axesModel, inverseAxesModel: u.inverseAxesModel, sceneOpacity: u.sceneOpacity, cameraLens: u.cameraLens, plotCenterZ: u.plotCenterZ, probe: u.probe, parameterFocusSeed: u.parameterFocusSeed, view3d: u.view3d, parameterBounds: u.parameterBounds, parameterMode: u.parameterMode, curveQuality: u.curveQuality, curvePattern: u.curvePattern, curveTiles: u.curveTiles, surfaceBounds: u.surfaceBounds, surfaceDomainMode: u.surfaceDomainMode, surfaceRange: u.surfaceRange, surfaceDepth: u.surfaceDepth, surfaceRender: u.surfaceRender, surfaceFlags: u.surfaceFlags };
 }
 
 declare const curveIntervals: texture_2d<f32>;
@@ -56,18 +57,18 @@ export class PickUniforms { pixel: vec2; radius: f32; }
 declare const query: uniform<PickUniforms>;
 
 /** Axis names use the same compact plate as single-character numeric labels. */
-function axisLabel(pixel: vec2, at: vec2, code: i32, u: PlotViewport): vec3 {
+export function axisLabel(pixel: vec2, at: vec2, code: i32, u: PlotViewport): vec3 {
   if (any(abs(pixel - at) > vec2(u.appearance.w * 1.5 + 4 + pixelWidth()))) return vec3(0);
   const local = vec2(pixel.x - at.x, at.y - pixel.y + u.appearance.w * 0.75);
   return vec3(glyphLayers(local + vec2(u.appearance.w * 0.42, 0), code, u.appearance.w, u.labelStyle.y), numberPlate(local, 0, 1, 0.5, u.appearance.w) * u.labelStyle.z);
 }
 
 /** CSS-pixel layout keeps line widths and text stable across sizes and display density. */
-function plotSize(resolution: vec2): vec2 {
+export function plotSize(resolution: vec2): vec2 {
   return max(resolution, vec2(1));
 }
 
-function distanceCoverage(distance: f32, width: f32): f32 {
+export function distanceCoverage(distance: f32, width: f32): f32 {
   if (width <= 0) return 0;
   const aa = pixelWidth() * 0.5;
   return 1 - smoothstep(max(0, width * 0.5 - aa), width * 0.5 + aa, distance);
@@ -274,10 +275,10 @@ function cameraPoint(p: vec3, u: PlotUniforms): vec3 {
   return basisVector((u.model * vec4(p, 1)).xyz - vec3(u.plotCenter, u.plotCenterZ), u);
 }
 
-function cameraVector(p: vec3, u: PlotUniforms): vec3 { return basisVector((u.model * vec4(p, 0)).xyz, u); }
+export function cameraVector(p: vec3, u: PlotUniforms): vec3 { return basisVector((u.model * vec4(p, 0)).xyz, u); }
 function sceneCenter(u: PlotUniforms): vec3 { return (u.inverseModel * vec4(u.plotCenter, u.plotCenterZ, 1)).xyz; }
 
-function inverseCamera(p: vec3, u: PlotUniforms): vec3 {
+export function inverseCamera(p: vec3, u: PlotUniforms): vec3 {
   const basis = u.rotationBasis;
   const y = p.y * basis.w + p.z * basis.z;
   const depth = -p.y * basis.z + p.z * basis.w;
@@ -286,7 +287,7 @@ function inverseCamera(p: vec3, u: PlotUniforms): vec3 {
 }
 
 /** Project without division so implicit line fields also work at vanishing points. */
-function homogeneous(p: vec3, u: PlotUniforms, direction: bool): vec3 {
+export function homogeneous(p: vec3, u: PlotUniforms, direction: bool): vec3 {
   const size = plotSize(u.resolution);
   const camera = direction ? cameraVector(p, u) : cameraPoint(p, u);
   const w = u.view3d == u32(2) ? (direction ? -camera.z : u.cameraLens.y - camera.z) : (direction ? 0 : u.cameraLens.y);
@@ -294,7 +295,7 @@ function homogeneous(p: vec3, u: PlotUniforms, direction: bool): vec3 {
   return vec3((vec2(camera.x / (size.x / size.y), camera.y) * focal + (vec2(0.5) + u.plotPan) * w) * size, w);
 }
 
-function project(p: vec3, u: PlotUniforms): vec2 {
+export function project(p: vec3, u: PlotUniforms): vec2 {
   const h = homogeneous(p, u, false);
   return h.xy / max(h.z, 0.101);
 }
@@ -302,9 +303,9 @@ function project(p: vec3, u: PlotUniforms): vec2 {
 function cameraDistance(p: vec3, u: PlotUniforms): f32 { return u.cameraLens.y - cameraPoint(p, u).z; }
 function inFront(p: vec3, u: PlotUniforms): bool { return u.view3d != u32(2) || cameraDistance(p, u) >= 0.101; }
 
-class ViewRay { origin: vec3; direction: vec3; }
+export class ViewRay { origin: vec3; direction: vec3; }
 
-function viewRay(uv: vec2, u: PlotUniforms): ViewRay {
+export function viewRay(uv: vec2, u: PlotUniforms): ViewRay {
   const screen = uv - vec2(0.5) - u.plotPan;
   const size = plotSize(u.resolution);
   const cameraXY = vec2(screen.x * (size.x / size.y), screen.y) * u.cameraLens.x;
@@ -339,7 +340,8 @@ function groundField(ray: ViewRay, u: PlotUniforms, xLevels: vec3, zLevels: vec3
     const spacing = level == 0 ? vec2(xLevels.x, zLevels.x) : vec2(xLevels.y, zLevels.y);
     const distance = abs(fract(ground / spacing + 0.5) - 0.5) * spacing / gradient * pixelWidth();
     const separation = spacing / gradient * pixelWidth();
-    const fade = smoothstep(vec2(2), vec2(6), separation);
+    const density = clamp(u.labelStyle.x,0.5,2);
+    const fade = smoothstep(vec2(12/density),vec2(28/density),separation);
     const nearest = floor(ground / spacing + 0.5) * spacing;
     const weights = level == 0 ? vec2(tickOpacity(nearest.x, xLevels), tickOpacity(nearest.y, zLevels)) : vec2(coarseTickOpacity(nearest.x, xLevels), coarseTickOpacity(nearest.y, zLevels));
     field = max(field, max(distanceCoverage(distance.x, u.appearance.y) * fade.x * weights.x, distanceCoverage(distance.y, u.appearance.y) * fade.y * weights.y));
@@ -677,25 +679,50 @@ function parameterAt(q: f32, scale: f32, center: f32, u: PlotUniforms): f32 {
 /** Local world-space focus controls where the compactified search spends detail.
  * This seed is numerical; an arbitrary callback has no guaranteed global inverse. */
 function parameterFocus(trajectory: SpaceCurve, u: PlotUniforms): vec2 {
-  const size = plotSize(u.resolution);
-  const screen = -u.plotPan * vec2(size.x / size.y, 1) * (u.cameraLens.y * u.cameraLens.x);
-  const focus = inverseCamera(vec3(screen, 0), u) + sceneCenter(u);
-  const span = vec3(u.plotSpan, max(u.plotSpan.x, u.plotSpan.y));
-  let center = u.probe;
-  let speed = 1;
-  for (let i = 0; i < 4; i++) {
-    const h = max(abs(center) * 1e-5, 0.001);
-    const at = trajectory(center);
-    const tangent = (trajectory(center + h) - trajectory(center - h)) / (2 * h);
-    const normalized = cameraVector(tangent, u);
-    const norm = dot(normalized, normalized);
-    if (all(abs(at) < vec3(1e18)) && norm > 1e-16 && norm < 1e30) {
-      speed = sqrt(norm);
-      const correction = dot(cameraVector(focus - at, u), normalized) / norm;
-      center += clamp(correction, -32 / speed, 32 / speed);
+  const pixel = plotSize(u.resolution) * 0.5;
+  let center = u.parameterFocusSeed;
+  const initial = trajectory(center);
+  let error = all(abs(initial) < vec3(1e18)) && inFront(initial,u) ? dot(project(initial,u)-pixel,project(initial,u)-pixel) : 1e30;
+  // Search long-baseline trends before a local tangent. Periodic transverse
+  // motion must not trap the visible window near the original parameter zero.
+  for (let level = 0; level < 8; level++) {
+    const radius = pow(4,f32(level));
+    const a = trajectory(u.parameterFocusSeed-radius), b = trajectory(u.parameterFocusSeed+radius);
+    if (all(abs(a) < vec3(1e18)) && all(abs(b) < vec3(1e18))) {
+      const middle = (a+b)*0.5, direction = (b-a)/(2*radius);
+      const originH = homogeneous(middle,u,false), directionH = homogeneous(direction,u,true);
+      const slope = directionH.xy - pixel*directionH.z;
+      const norm = dot(slope,slope);
+      if (norm > 1e-20) {
+        const candidate = u.parameterFocusSeed + dot(pixel*originH.z-originH.xy,slope)/norm;
+        const point = trajectory(candidate);
+        if (abs(candidate) < 1e18 && all(abs(point) < vec3(1e18)) && inFront(point,u)) {
+          const delta = project(point,u)-pixel, nextError = dot(delta,delta);
+          if (nextError < error) {center=candidate;error=nextError;}
+        }
+      }
     }
   }
-  return vec2(center, clamp(2 / max(speed, 1e-10), 0.00001, 1e10));
+  let speed = 1;
+  for (let i = 0; i < 4; i++) {
+    const h = max(abs(center)*1e-5,0.001);
+    const at = trajectory(center), left = trajectory(center-h), right = trajectory(center+h);
+    const normalized = cameraVector((right-left)/(2*h),u);
+    speed = max(length(normalized),1e-10);
+    const tangent = (project(right,u)-project(left,u))/(2*h);
+    const correction = clamp(dot(pixel-project(at,u),tangent)/max(dot(tangent,tangent),1e-20),-32/speed,32/speed);
+    let candidate = center+correction;
+    for (let backtrack=0;backtrack<4;backtrack++) {
+      const point = trajectory(candidate), delta=project(point,u)-pixel;
+      const nextError=dot(delta,delta);
+      if(all(abs(point)<vec3(1e18))&&inFront(point,u)&&nextError<=error){center=candidate;error=nextError;break;}
+      candidate=(candidate+center)*0.5;
+    }
+  }
+  let scale = clamp(2/speed,0.00001,1e10);
+  if(u.parameterMode == u32(1)) scale=max(scale,abs(center-u.parameterBounds.y));
+  if(u.parameterMode == u32(2)) scale=max(scale,abs(center-u.parameterBounds.x));
+  return vec2(center,scale);
 }
 
 /** Inspect every projected interval that can cover this fragment. Ranking a
@@ -1070,7 +1097,7 @@ function surfaceHit(field: HeightField, uv: vec2, u: PlotUniforms): SurfaceHit {
   return {point: vec3(0), depth: 0, valid: false};
 }
 
-function surfaceColorBar(color: vec3, uv: vec2, u: PlotUniforms): vec3 {
+export function surfaceColorBar(color: vec3, uv: vec2, u: PlotUniforms): vec3 {
   if ((u.surfaceFlags & u32(8)) == u32(0)) return color;
   const size = plotSize(u.resolution), pixel = uv * size;
   const height = min(160, size.y * 0.36);

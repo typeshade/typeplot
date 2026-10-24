@@ -118,3 +118,26 @@ hover listeners adds none, and the first pick creates the third. Cancellation du
 first pick completes without validation errors. Desktop/mobile preset changes, animation,
 touch input and PNG exports remain functional. These measurements retain the software
 renderer limitations above and make no physical-device FPS claim.
+
+## Composed-scene startup and precision
+
+`PlotOptions.objects` prepares known callbacks before submitting the first complete frame.
+It skips the standalone primary pipeline until needed after removal. Initial spatial mode is
+applied immediately; a startup-only 2D/3D transition must not queue another full GPU frame.
+The first ResizeObserver notification is ignored when CSS size is unchanged, and identical
+style, quality, domain, projection and parameter setters do not invalidate rendering.
+The Playground starts its two scene-program imports together and uses the initial object list.
+
+Large-coordinate grids load an independent [RTC coordinate renderer](precision.md). Its extended
+arithmetic and numeric glyph program are absent from the default page and ordinary composed
+scenes. A declared parameter origin uses a one-texel GPU preparation pass and small local SDF
+coordinates; it does not run extended trigonometry for every stroke fragment.
+
+A controlled follow-up compared runtime source `6625501fc81de08b7c22b1a36f972aa1538ab117`
+with `perf/playground-startup`. Three fresh mobile contexts per build used the same gzip server,
+390 × 844 / DPR 2, 4 Mbps / 80 ms, 2× CPU slowdown and Chromium/SwiftShader WebGL2.
+The before and after runs were sequential, with no other GPU review running concurrently.
+Median initial control readiness was 2,879 ms before and 2,794 ms after. Selecting the composed
+surface/curve scene took 7,283 ms before and 4,290 ms after (41% less). The baseline submitted
+three scene frames; the optimized startup submitted one. These are software-renderer
+measurements, not physical-phone timing or FPS claims.

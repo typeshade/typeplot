@@ -1,3 +1,5 @@
+import { CurveOrigin, type OriginPacket } from "./origin.js";
+import { relativeFrame } from "./relative.js";
 import type {
   Frame,
   Pack,
@@ -46,6 +48,7 @@ export interface ScenePacket {
   readonly geometry: string;
   readonly cache?: CurveCache;
   readonly external: boolean;
+  readonly origin?: OriginPacket;
 }
 const finite = (value: number, name: string) => {
   if (!Number.isFinite(value) || Math.abs(value) > 3.402823466e38)
@@ -243,12 +246,21 @@ export class SceneField implements SceneObjectHandle {
       automaticDepth: this.automaticDepth,
     };
   }
+  private originResources?: CurveOrigin;
   private alive(): void {
     if (this.closed) throw new Error("This scene object has been removed.");
   }
   initialize(externalCache = false): Promise<void> {
     return this.work.run(async () => {
+      if (!this.primary && this.program.parameterOrigin)
+        this.originResources = new CurveOrigin(
+          this.owner,
+          this.loaded,
+          this.manifest,
+          Object.keys(this.values),
+        );
       const jobs: Promise<unknown>[] = [
+        this.originResources?.initialize() ?? Promise.resolve(),
         this.owner
           .run(() =>
             this.loaded.render({
@@ -340,6 +352,11 @@ export class SceneField implements SceneObjectHandle {
           : (this.displayCache ??= this.createCache())
       : undefined;
     const external = !!(this.primary && base.cache);
+    const local = relativeFrame(
+      inherited.transform,
+      camera,
+      this.program.parameterOrigin,
+    );
     const resolution = camera.resolution as number[],
       lens = camera.cameraLens as number[];
     const tileSize = Math.max(4, Math.ceil(16 / ratio));
@@ -357,8 +374,17 @@ export class SceneField implements SceneObjectHandle {
       u = {
         ...camera,
         ...this.values,
-        model: inherited.transform,
-        inverseModel: inherited.inverse,
+        model: local.model,
+        inverseModel: local.inverse,
+        parameterBase: local.base,
+        probe: this.program.parameterOrigin
+          ? (camera.probe as number) +
+            (camera.parameterBase as number) -
+            local.base
+          : camera.probe,
+        parameterFocusSeed: this.program.parameterOrigin
+          ? 0
+          : camera.parameterFocusSeed,
         sceneOpacity: [0, inherited.opacity],
         appearance: [
           0,
@@ -370,11 +396,12 @@ export class SceneField implements SceneObjectHandle {
         curvePattern: [
           this.appearance.lineStyle === "-" ? 0 : 1,
           this.appearance.dashPeriod,
-          this.appearance.dashOffset,
+          this.appearance.dashOffset +
+            (local.base % this.appearance.dashPeriod),
           this.appearance.lineStyle === ":" ? 0.12 : 0.55,
         ],
         parameterBounds: this.curveDomain.map((v) =>
-          Number.isFinite(v) ? v : 0,
+          Number.isFinite(v) ? v - local.base : 0,
         ),
         parameterMode:
           (Number.isFinite(this.curveDomain[0]) ? 0 : 1) |
@@ -393,6 +420,7 @@ export class SceneField implements SceneObjectHandle {
           this.bounds,
         ),
       };
+    const origin = this.originResources?.packet(u, transient, this.generation);
     const parameterValues = Object.keys(this.program.parameters).map(
       (name) => u[name],
     );
@@ -407,6 +435,7 @@ export class SceneField implements SceneObjectHandle {
       u.cameraLens,
       u.plotCenterZ,
       u.model,
+      u.parameterBase,
       u.parameterBounds,
       u.parameterMode,
       u.curveQuality,
@@ -424,6 +453,7 @@ export class SceneField implements SceneObjectHandle {
       u,
       font: { pixelRatio: ratio },
       sceneMaterial: material,
+      ...(origin ? { parameterOrigin: origin.cache.texture } : {}),
       ...(cache
         ? { curveIntervals: cache.intervals, curveCandidates: cache.candidates }
         : {}),
@@ -448,6 +478,7 @@ export class SceneField implements SceneObjectHandle {
       key,
       cache,
       external,
+      origin,
       geometry,
     };
   }
@@ -472,6 +503,8 @@ export class SceneField implements SceneObjectHandle {
     );
   }
   prepare(frame: Frame, packet: ScenePacket): void {
+    if (packet.origin)
+      this.originResources!.record(frame, packet.origin, packet.bindings);
     const cache = packet.cache;
     if (!cache || packet.external) return;
     const tiles = packet.u.curveTiles as number[];
@@ -650,6 +683,7 @@ export class SceneField implements SceneObjectHandle {
     this.retired.clear();
   }
   releasePacket(packet: ScenePacket): void {
+    if (packet.origin) this.originResources!.finish(packet.origin);
     if (
       packet.cache &&
       !packet.external &&
@@ -666,6 +700,7 @@ export class SceneField implements SceneObjectHandle {
   dispose(after: Promise<unknown> = Promise.resolve()): Promise<void> {
     if (!this.retirement) {
       this.retirement = Promise.allSettled([this.close(), after]).then(() => {
+        this.originResources?.dispose();
         this.displayCache?.intervals.destroy();
         this.displayCache?.candidates.destroy();
         for (const handle of Object.values(this.inputs))

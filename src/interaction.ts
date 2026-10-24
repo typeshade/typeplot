@@ -572,11 +572,11 @@ export function createPlotInteraction(
           return null;
       }
     },
-    setMode(enabled: boolean) {
+    setMode(enabled: boolean, immediate = false) {
       if (destroyed || threeD === enabled) return;
       threeD = enabled;
       target.blend[0] = enabled ? 1 : 0;
-      change();
+      change(immediate);
     },
     reset,
     camera() {

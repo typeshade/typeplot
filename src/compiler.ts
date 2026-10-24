@@ -16,6 +16,13 @@ export interface CompilePlotOptions {
   /** Extra f32 arguments to the callback, in declaration order. */
   readonly parameters?: Readonly<Record<string, number>>;
   readonly discontinuous?: boolean;
+  /** Parametric callback takes (localParameter, preparedOrigin, ...parameters).
+   * The named prepare function takes (f64 origin, ...parameters) and returns vec4. */
+  readonly parameterOrigin?: {
+    readonly axis: "x" | "y" | "z";
+    readonly scale: number;
+    readonly prepare: string;
+  };
 }
 export interface PlotDiagnostic {
   readonly fileName?: string;
@@ -41,6 +48,10 @@ const identifier = /^[A-Za-z_$][\w$]*$/;
 const reserved = new Set([
   "resolution",
   "plotCenter",
+  "axesOrigin",
+  "worldCenter",
+  "parameterBase",
+  "parameterFocusSeed",
   "plotSpan",
   "plotRotation",
   "rotationBasis",
@@ -83,6 +94,18 @@ export function compilePlot(
     throw new TypeError("entry must be a TypeScript identifier.");
   if (!["scalar", "parametric", "surface"].includes(kind))
     throw new TypeError("kind must be scalar, parametric or surface.");
+  const origin = options.parameterOrigin;
+  if (
+    origin &&
+    (kind !== "parametric" ||
+      !["x", "y", "z"].includes(origin.axis) ||
+      !Number.isFinite(origin.scale) ||
+      origin.scale === 0 ||
+      !identifier.test(origin.prepare))
+  )
+    throw new TypeError(
+      "parameterOrigin requires a parametric callback, an axis, a finite nonzero scale and a named prepare function.",
+    );
   const parameters = Object.fromEntries(
     Object.entries(options.parameters ?? {}),
   );
@@ -110,7 +133,11 @@ export function compilePlot(
       ? `function sample(t: f32): f32 { return callback(${args}); }\nfunction trajectory(t: f32): vec3 { return vec3(t, sample(t), 0.); }`
       : kind === "surface"
         ? `function heightField(x: f32, z: f32): f32 { return callback(${["x", "z", ...names.map((n) => `u.${n}`)].join(", ")}); }`
-        : `function trajectory(t: f32): vec3 { return callback(${args}); }`;
+        : origin
+          ? `declare const parameterOrigin: texture_2d<u32>;
+function trajectory(t:f32):vec3{return callback(t,bitcast<vec4>(textureLoad(parameterOrigin,vec2i(0),0))${names.length ? ", " + names.map((n) => "u." + n).join(", ") : ""});}
+@fragment export function buildParameterOrigin():vec4u{return bitcast<vec4u>(prepareOrigin(u.parameterBase${names.length ? ", " + names.map((n) => "u." + n).join(", ") : ""}));}`
+          : `function trajectory(t: f32): vec3 { return callback(${args}); }`;
   const jumps = options.discontinuous === true;
   const fragment =
     kind === "scalar"
@@ -171,9 +198,9 @@ ${
 }
 `;
   const wrapper = `"use typeshade";
-import { ${entry} as callback } from ${JSON.stringify("./" + path.basename(userFile))};
+import { ${entry} as callback${origin ? ", " + origin.prepare + " as prepareOrigin" : ""} } from ${JSON.stringify("./" + path.basename(userFile))};
 import { PlotUniforms, SceneLayer, sceneCurve, sceneCurveReference, sceneSurface, sceneBackdrop, sceneBackdropReference, sceneLabels, sceneLabelsReference, querySceneCurve, querySceneCurveReference, axesUniforms, plot2D, plot3D, plotScalar3D, plot3DAccelerated, prepareCurveIntervals, prepareCurveCandidates, prepareSpatialLabels, plotSurface, pickSurface, pickTrajectory } from "./__typeplot-shared.shade.ts";
-class Uniforms extends PlotUniforms { ${names.map((n) => `${n}: f32;`).join(" ")} }
+class Uniforms extends PlotUniforms { ${origin ? "parameterBase:f64;" : ""} ${names.map((n) => `${n}: f32;`).join(" ")} }
 declare const u: uniform<Uniforms>;
 ${callback}
 class VertexOutput { @builtin("position") position: vec4; @location(0) uv: vec2; }
@@ -257,6 +284,9 @@ ${sceneEntries}
     camera: "projective",
     scene: "transform-v1",
     composition: "layers-v1",
+    ...(origin
+      ? { parameterOrigin: { axis: origin.axis, scale: origin.scale } }
+      : {}),
     ...(kind === "parametric"
       ? { acceleration: "tiles-v1" as const }
       : kind === "surface"

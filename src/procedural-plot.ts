@@ -1,6 +1,12 @@
+import { CurveOrigin, type OriginPacket } from "./render/origin.js";
+import { relativeFrame, logicalPoint } from "./render/relative.js";
 import type { SceneComposer } from "./render/scene-composer.js";
 import type { ScenePick } from "./scene.js";
-import { PlotScene } from "./scene.js";
+import {
+  PlotScene,
+  captureSceneObjectOptions,
+  MAX_SCENE_OBJECTS,
+} from "./scene.js";
 import { FrameScheduler } from "./render/queue.js";
 import { RenderSession } from "./render/session.js";
 import {
@@ -56,6 +62,10 @@ const MAX_F32 = 3.4028234663852886e38;
 const RESERVED = new Set([
   "resolution",
   "plotCenter",
+  "axesOrigin",
+  "worldCenter",
+  "parameterBase",
+  "parameterFocusSeed",
   "plotSpan",
   "plotRotation",
   "rotationBasis",
@@ -135,10 +145,31 @@ export async function createPlot(
     throw new Error(
       "This canvas already has a TypePlot instance. Destroy it before mounting another.",
     );
+  if (options.objects !== undefined && !Array.isArray(options.objects))
+    throw new TypeError("Initial scene objects must be an array.");
+  const initialObjects = (options.objects ?? []).map(
+    ({ program: objectProgram, ...settings }) => ({
+      program: objectProgram,
+      options: captureSceneObjectOptions(settings),
+    }),
+  );
+  if (initialObjects.length >= MAX_SCENE_OBJECTS)
+    throw new RangeError(
+      "A scene supports at most sixteen objects including its primary callback.",
+    );
+  if (
+    initialObjects.length &&
+    (program.composition !== "layers-v1" || options.mode === "2d")
+  )
+    throw new TypeError(
+      "Initial scene objects need a current compiled program and 3d mode.",
+    );
   const backend = options.backend ?? "auto";
   if (!["auto", "webgpu", "webgl2"].includes(backend))
     throw new TypeError("Unknown plot backend.");
-  let mode = options.mode ?? (program.kind === "scalar" ? "2d" : "3d");
+  let mode =
+    options.mode ??
+    (initialObjects.length || program.kind !== "scalar" ? "3d" : "2d");
   const checkMode = (value: string): void => {
     if (value !== "2d" && value !== "3d")
       throw new TypeError("Plot mode must be 2d or 3d.");
@@ -505,6 +536,7 @@ export async function createPlot(
   let intervals: Texture | undefined;
   let candidates: Texture | undefined;
   let labels: Texture | undefined;
+  let originResources: CurveOrigin | undefined;
   const inputs: Record<string, Resident<Float32Array>> = Object.create(null);
   let inputGeneration = 0;
   let context: GPUCanvasContext | WebGL2RenderingContext | undefined;
@@ -530,6 +562,7 @@ export async function createPlot(
       }
     } else console.error("[typeplot]", value);
   };
+  let initializing = true;
   let drawFrame: (() => Promise<void>) | undefined;
   const frames = new FrameScheduler(
     win,
@@ -540,7 +573,7 @@ export async function createPlot(
   const requestDraw = (): void => {
     composition?.invalidate();
     picker?.invalidate();
-    frames.request();
+    if (!initializing) frames.request();
   };
 
   function restoreCanvas(): void {
@@ -577,6 +610,7 @@ export async function createPlot(
       (context as GPUCanvasContext | undefined)?.unconfigure();
     const releaseResources = async () => {
       await composition?.dispose();
+      originResources?.dispose();
       intervals?.destroy();
       candidates?.destroy();
       labels?.destroy();
@@ -657,6 +691,13 @@ export async function createPlot(
           "EXT_color_buffer_float",
         ));
     const curveCache = accelerated && program.kind === "parametric";
+    if (program.parameterOrigin)
+      originResources = new CurveOrigin(
+        owner,
+        loaded,
+        manifest,
+        Object.keys(parameters),
+      );
     const glyphWork = glyphSource
       ? owner.run(() =>
           loadGlyphAtlas(
@@ -670,13 +711,9 @@ export async function createPlot(
           }),
         )
       : Promise.resolve();
-    await Promise.resolve();
-    // WebGPU compiles these independent pipelines concurrently. All resources
-    // settle before cleanup, including when a sibling pipeline fails.
-    const prepared = await Promise.allSettled([
-      glyphWork,
-      dataArrays.size ? owner.prepareData() : Promise.resolve(),
-      owner.run(() =>
+    let primaryPreparation: Promise<RenderPipeline> | undefined;
+    const preparePrimary = () =>
+      (primaryPreparation ??= owner.run(() =>
         loaded.render({
           targets: [format],
           ...(hasCache || program.picking === "point-v1"
@@ -686,7 +723,14 @@ export async function createPlot(
               }
             : {}),
         }),
-      ),
+      ));
+    await Promise.resolve();
+    // WebGPU compiles these independent pipelines concurrently. All resources
+    // settle before cleanup, including when a sibling pipeline fails.
+    const prepared = await Promise.allSettled([
+      glyphWork,
+      dataArrays.size ? owner.prepareData() : Promise.resolve(),
+      initialObjects.length ? Promise.resolve(undefined) : preparePrimary(),
       curveCache
         ? owner.run(() =>
             loaded.render({
@@ -714,6 +758,7 @@ export async function createPlot(
             }),
           )
         : Promise.resolve(undefined),
+      originResources?.initialize() ?? Promise.resolve(),
     ]);
     function result<T>(value: PromiseSettledResult<T>): T {
       if (value.status === "rejected") throw value.reason;
@@ -721,10 +766,11 @@ export async function createPlot(
     }
     result(prepared[0]);
     result(prepared[1]);
-    const pipeline = result(prepared[2]);
+    let pipeline = result(prepared[2]);
     const intervalPipeline = result(prepared[3]);
     const labelPipeline = result(prepared[4]);
     const candidatePipeline = result(prepared[5]);
+    result(prepared[6]);
     for (const [name, values] of dataArrays) inputs[name] = owner.array(values);
     const preparePicking = (): Promise<RenderPipeline> => {
       if (pickPipeline) return Promise.resolve(pickPipeline);
@@ -774,6 +820,40 @@ export async function createPlot(
         >[0],
         true,
       );
+    const prepareComposition = (): Promise<SceneComposer> => {
+      return (compositionPreparation ??= owner.run(async () => {
+        const { SceneComposer } = await import("./render/scene-composer.js");
+        alive();
+        const renderer = new SceneComposer(
+          owner,
+          scene,
+          program,
+          loaded,
+          format,
+          canvas.ownerDocument,
+          requestDraw,
+          () => frames.current(),
+          options.acceleration !== false &&
+            (runtime.tier === "webgpu" ||
+              !!(target as WebGL2RenderingContext).getExtension(
+                "EXT_color_buffer_float",
+              )),
+          curveCache,
+          accelerated,
+        );
+        composition = renderer;
+        try {
+          await renderer.initialize();
+          alive();
+          return renderer;
+        } catch (error) {
+          await renderer.dispose();
+          composition = undefined;
+          compositionPreparation = undefined;
+          throw error;
+        }
+      }));
+    };
     let lastUniforms: object | undefined;
     let lastRatio = 1;
     const currentFrame = async () => {
@@ -862,9 +942,19 @@ export async function createPlot(
       const yaw = Math.fround(rotation[0]),
         pitch = Math.fround(rotation[1]);
       const sceneState = scene.snapshot();
-      const { transform: model, inverse: inverseModel } = sceneState.content;
+      const { transform: fullModel, inverse: fullInverse } = sceneState.content;
+      const eye = [
+        ...controller!.value("plotCenter")!,
+        controller!.value("plotCenterZ")![0],
+      ];
+      const im = sceneState.axes.inverse;
+      const axesOrigin = [0, 1, 2].map(
+        (i) =>
+          im[i] * eye[0] + im[4 + i] * eye[1] + im[8 + i] * eye[2] + im[12 + i],
+      );
       const u = {
         ...parameters,
+        axesOrigin,
         ...(supportsScene
           ? {
               axesModel: sceneState.axes.transform,
@@ -875,7 +965,9 @@ export async function createPlot(
               ],
             }
           : {}),
-        ...(supportsTransform ? { model, inverseModel } : {}),
+        ...(supportsTransform
+          ? { model: fullModel, inverseModel: fullInverse }
+          : {}),
         ...(supportsTransform
           ? { cameraLens: [Math.tan(Math.fround(lens[0]) * 0.5), lens[1]] }
           : {}),
@@ -972,11 +1064,59 @@ export async function createPlot(
         plotPan: [...controller!.value("plotPan")!],
         plotBlend: controller!.value("plotBlend")![0],
         probe,
+        parameterFocusSeed: probe,
+        worldCenter: eye,
+        parameterBase: 0,
         view3d: mode === "3d" ? (projection === "perspective" ? 2 : 1) : 0,
       };
+      const local = relativeFrame(fullModel, u, program.parameterOrigin);
+      if (
+        mode === "3d" &&
+        supportsTransform &&
+        (program.kind !== "scalar" || u.plotBlend >= 1)
+      ) {
+        u.model = local.model;
+        u.inverseModel = local.inverse;
+        const axes = relativeFrame(sceneState.axes.transform, u, undefined);
+        u.axesModel = axes.model;
+        u.inverseAxesModel = axes.inverse;
+        u.plotCenter = [0, 0];
+        u.plotCenterZ = 0;
+      }
+      u.parameterBase = local.base;
+      if (program.parameterOrigin) {
+        u.parameterBounds = u.parameterBounds!.map(
+          (value) => value - local.base,
+        );
+        u.probe = probe - local.base;
+        u.parameterFocusSeed = 0;
+        u.curvePattern = [
+          u.curvePattern![0],
+          u.curvePattern![1],
+          u.curvePattern![2] + (local.base % u.curvePattern![1]),
+          u.curvePattern![3],
+        ];
+      }
+      const wideCoordinates =
+        mode === "3d" &&
+        program.composition === "layers-v1" &&
+        Math.max(...axesOrigin.map(Math.abs)) >
+          (Math.min(...u.plotSpan) * 1048576) / Math.max(...u.resolution);
+      if (wideCoordinates)
+        await (await prepareComposition()).setCoordinates(true);
+      else if (composition) await composition.setCoordinates(false);
+      if (!composition?.usesLayers && !pipeline)
+        pipeline = await preparePrimary();
+      alive();
       lastUniforms = u;
       lastRatio = pixelRatio;
       const frame = runtime.frame();
+      const originPacket = originResources?.packet(u, false, inputGeneration);
+      const originBindings = originPacket
+        ? { parameterOrigin: originPacket.cache.texture }
+        : {};
+      if (originPacket)
+        originResources!.record(frame, originPacket, { u, ...inputs });
       const geometryKey = curveCache
         ? JSON.stringify([
             u.resolution,
@@ -996,13 +1136,15 @@ export async function createPlot(
             style.dashOffset,
             pixelRatio,
             parameters,
-            model,
+            u.model,
+            u.parameterBase,
             inputGeneration,
           ])
         : "";
       const labelsKey = accelerated
         ? JSON.stringify([
             u.resolution,
+            u.axesOrigin,
             u.plotCenter,
             u.plotSpan,
             u.plotRotation,
@@ -1013,7 +1155,7 @@ export async function createPlot(
             style.labelSize,
             style.tickDensity,
             pixelRatio,
-            supportsScene ? sceneState.axes.transform : model,
+            supportsScene ? sceneState.axes.transform : u.model,
           ])
         : "";
       if (accelerated && preparedLabelsKey !== labelsKey) {
@@ -1026,7 +1168,7 @@ export async function createPlot(
           if (style.curveWidth === 0) pass.setScissorRect(0, 5, 1, 1);
           pass.draw(
             intervalPipeline!,
-            { u, font: { pixelRatio }, ...inputs } as never,
+            { u, font: { pixelRatio }, ...inputs, ...originBindings } as never,
             {
               count: 3,
             },
@@ -1044,6 +1186,7 @@ export async function createPlot(
       const primaryBindings = {
         u,
         ...inputs,
+        ...originBindings,
         ...(accelerated
           ? {
               spatialLabels: labels,
@@ -1065,7 +1208,7 @@ export async function createPlot(
           : {}),
       };
       let finish: ((success?: boolean) => void) | undefined;
-      if (composition?.hasObjects)
+      if (composition?.usesLayers)
         finish = composition.record(
           frame,
           {
@@ -1089,7 +1232,7 @@ export async function createPlot(
         );
       else
         frame.pass({ color: [target] }, (pass) =>
-          pass.draw(pipeline, primaryBindings as never, { count: 3 }),
+          pass.draw(pipeline!, primaryBindings as never, { count: 3 }),
         );
       let presented = false;
       try {
@@ -1097,17 +1240,26 @@ export async function createPlot(
         presented = true;
       } finally {
         finish?.(presented);
+        if (originPacket) originResources!.finish(originPacket, presented);
       }
       preparedKey = geometryKey;
       preparedLabelsKey = labelsKey;
     };
-    controller.setMode(mode === "3d");
+    controller.setMode(mode === "3d", true);
     if (typeof win.ResizeObserver === "function") {
-      observer = new win.ResizeObserver(requestDraw);
+      observer = new win.ResizeObserver(() => {
+        const box = canvas.getBoundingClientRect();
+        const resolution = (
+          lastUniforms as { resolution?: number[] } | undefined
+        )?.resolution;
+        // The initial observer notification can arrive while the first GPU
+        // frame is in flight. It must not queue the same expensive frame again.
+        if (resolution?.[0] !== box.width || resolution?.[1] !== box.height)
+          requestDraw();
+      });
       observer.observe(canvas);
     }
     win.addEventListener("resize", requestDraw);
-    await redraw();
     const plot: Plot = {
       get scene() {
         alive();
@@ -1161,6 +1313,7 @@ export async function createPlot(
       setMode(value) {
         alive();
         checkMode(value);
+        if (mode === value) return;
         mode = value;
         controller!.setMode(value === "3d");
         requestDraw();
@@ -1168,6 +1321,12 @@ export async function createPlot(
       setStyle(value) {
         alive();
         checkStyle(value);
+        if (
+          Object.entries(value).every(
+            ([key, next]) => style[key as keyof PlotStyle] === next,
+          )
+        )
+          return;
         Object.assign(style, value);
         decorationKeys.forEach((key, i) =>
           decorationFades[i]!.set(
@@ -1182,7 +1341,9 @@ export async function createPlot(
       setDomain(value) {
         alive();
         checkFields();
-        domain = checkedDomain(value);
+        const next = checkedDomain(value);
+        if (next[0] === domain[0] && next[1] === domain[1]) return;
+        domain = next;
         requestDraw();
       },
       domain() {
@@ -1197,12 +1358,20 @@ export async function createPlot(
       setQuality(value) {
         alive();
         checkQuality(value);
+        if (
+          Object.entries(value).every(
+            ([key, next]) => quality[key as keyof PlotQuality] === next,
+          )
+        )
+          return;
         Object.assign(quality, value);
         requestDraw();
       },
       setProbe(value) {
         alive();
-        probe = finite(value, "probe");
+        const next = finite(value, "probe");
+        if (next === probe) return;
+        probe = next;
         requestDraw();
       },
       setProjection(value) {
@@ -1212,12 +1381,19 @@ export async function createPlot(
           throw new TypeError(
             "2D plots use orthographic projection. Switch to 3d first.",
           );
+        if (projection === value) return;
         projection = value;
         requestDraw();
       },
       setParameters(values) {
         alive();
         validateParameters(values);
+        if (
+          Object.entries(values).every(
+            ([key, next]) => parameters[key] === next,
+          )
+        )
+          return;
         Object.assign(parameters, values);
         requestDraw();
       },
@@ -1279,7 +1455,13 @@ export async function createPlot(
         alive();
         if (program.kind !== "surface")
           throw new TypeError("Surface settings require a surface program.");
-        surface = surfaceOptions(value, surface);
+        const next = surfaceOptions(value, surface);
+        if (
+          JSON.stringify(next) === JSON.stringify(surface) &&
+          (value.depthRange === undefined || !automaticDepth)
+        )
+          return;
+        surface = next;
         if (value.depthRange !== undefined) automaticDepth = false;
         requestDraw();
       },
@@ -1287,7 +1469,9 @@ export async function createPlot(
         alive();
         if (program.kind !== "surface")
           throw new TypeError("Surface domains require a surface program.");
-        surfaceBounds = surfaceDomain(value);
+        const next = surfaceDomain(value);
+        if (JSON.stringify(next) === JSON.stringify(surfaceBounds)) return;
+        surfaceBounds = next;
         requestDraw();
       },
       transition(to, settings = {}) {
@@ -1403,8 +1587,8 @@ export async function createPlot(
             position[1] > box.height
           )
             return null;
-          if (composition?.hasObjects) {
-            await currentFrame();
+          await currentFrame();
+          if (composition?.usesLayers) {
             return composition.pick(position, radius);
           }
           if (supportsScene && scene.snapshot().content.opacity === 0)
@@ -1414,6 +1598,7 @@ export async function createPlot(
             preparePicking(),
           ]);
           alive();
+          const queryUniforms = lastUniforms;
           const output = runtime.texture({
             size: [2, 1],
             format: "rgba32uint",
@@ -1424,8 +1609,15 @@ export async function createPlot(
               pass.draw(
                 picking,
                 {
-                  u: lastUniforms,
+                  u: queryUniforms,
                   ...inputs,
+                  ...(originResources
+                    ? {
+                        parameterOrigin: originResources.packet(
+                          lastUniforms as never,
+                        ).cache.texture,
+                      }
+                    : {}),
                   query: {
                     pixel: [position[0], box.height - position[1]],
                     radius,
@@ -1437,13 +1629,25 @@ export async function createPlot(
             await frame.submit();
             const bytes = await output.read();
             alive();
+            if (queryUniforms !== lastUniforms) return null;
             const bits = new Uint32Array(bytes.buffer, bytes.byteOffset, 8);
             if (!bits[3]) return null;
             const values = new Float32Array(bytes.buffer, bytes.byteOffset, 8);
             return {
               kind: program.kind,
-              point: [values[0], values[1], values[2]],
-              ...(program.kind === "surface" ? {} : { parameter: values[4] }),
+              point: logicalPoint(
+                [values[0], values[1], values[2]],
+                program.parameterOrigin,
+                (lastUniforms as { parameterBase: number }).parameterBase ?? 0,
+              ),
+              ...(program.kind === "surface"
+                ? {}
+                : {
+                    parameter:
+                      values[4] +
+                      ((lastUniforms as { parameterBase: number })
+                        .parameterBase ?? 0),
+                  }),
               distance: values[5],
             };
           } finally {
@@ -1502,7 +1706,10 @@ export async function createPlot(
             );
           const textures: Texture[] = [];
           let finishScene: (() => void) | undefined;
+          let exportOrigin: OriginPacket | undefined;
           composition?.checkExportSize(width, height);
+          if (!composition?.usesLayers && !pipeline)
+            pipeline = await preparePrimary();
           const make = (w: number, h: number, format: string) => {
             const texture = runtime.texture({ size: [w, h], format });
             textures.push(texture);
@@ -1544,6 +1751,12 @@ export async function createPlot(
             };
             const resources = { ...inputs };
             const frame = runtime.frame();
+            exportOrigin = originResources?.packet(u, true);
+            const originBindings = exportOrigin
+              ? { parameterOrigin: exportOrigin.cache.texture }
+              : {};
+            if (exportOrigin)
+              originResources!.record(frame, exportOrigin, { u, ...resources });
             if (accelerated)
               frame.pass({ color: [labels!] }, (pass) =>
                 pass.draw(labelPipeline!, { u } as never, { count: 3 }),
@@ -1552,7 +1765,12 @@ export async function createPlot(
               frame.pass({ color: [intervals!] }, (pass) =>
                 pass.draw(
                   intervalPipeline!,
-                  { u, font: { pixelRatio: ratio }, ...resources } as never,
+                  {
+                    u,
+                    font: { pixelRatio: ratio },
+                    ...resources,
+                    ...originBindings,
+                  } as never,
                   { count: 3 },
                 ),
               );
@@ -1567,6 +1785,7 @@ export async function createPlot(
             const primaryBindings = {
               u,
               ...resources,
+              ...originBindings,
               ...(accelerated
                 ? {
                     spatialLabels: labels,
@@ -1582,7 +1801,7 @@ export async function createPlot(
                 ? { glyphAtlas: glyphs, font: { pixelRatio: ratio } }
                 : {}),
             };
-            if (composition?.hasObjects)
+            if (composition?.usesLayers)
               finishScene = composition.record(
                 frame,
                 {
@@ -1607,7 +1826,7 @@ export async function createPlot(
               );
             else
               frame.pass({ color: [output] }, (pass) =>
-                pass.draw(pipeline, primaryBindings as never, { count: 3 }),
+                pass.draw(pipeline!, primaryBindings as never, { count: 3 }),
               );
             await frame.submit();
             const bytes = await output.read();
@@ -1621,6 +1840,7 @@ export async function createPlot(
             return encodePng(bytes, width, height);
           } finally {
             finishScene?.();
+            if (exportOrigin) originResources!.finish(exportOrigin);
             for (const texture of textures) texture.destroy();
           }
         });
@@ -1700,41 +1920,7 @@ export async function createPlot(
         controls?.update();
         return owner
           .run(async () => {
-            if (!compositionPreparation)
-              compositionPreparation = owner.run(async () => {
-                const { SceneComposer } =
-                  await import("./render/scene-composer.js");
-                alive();
-                const renderer = new SceneComposer(
-                  owner,
-                  scene,
-                  program,
-                  loaded,
-                  format,
-                  canvas.ownerDocument,
-                  requestDraw,
-                  () => frames.current(),
-                  options.acceleration !== false &&
-                    (runtime.tier === "webgpu" ||
-                      !!(target as WebGL2RenderingContext).getExtension(
-                        "EXT_color_buffer_float",
-                      )),
-                  curveCache,
-                  accelerated,
-                );
-                composition = renderer;
-                try {
-                  await renderer.initialize();
-                  alive();
-                  return renderer;
-                } catch (error) {
-                  await renderer.dispose();
-                  composition = undefined;
-                  compositionPreparation = undefined;
-                  throw error;
-                }
-              });
-            const renderer = await compositionPreparation;
+            const renderer = await prepareComposition();
             alive();
             const handle = await renderer.attach(
               node,
@@ -1779,6 +1965,15 @@ export async function createPlot(
         };
       },
     });
+    const additions = await Promise.allSettled(
+      initialObjects.map((entry) => scene.add(entry.program, entry.options)),
+    );
+    const failedAddition = additions.find(
+      (result) => result.status === "rejected",
+    );
+    if (failedAddition?.status === "rejected") throw failedAddition.reason;
+    initializing = false;
+    await redraw();
     return plot;
   } catch (error) {
     destroy();

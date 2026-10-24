@@ -1,6 +1,6 @@
 import type { PlotControl, ControlPosition } from "./controls.js";
 import type { AnimationClip, AnimationOptions, Timeline, TimelineOptions, TweenOptions } from "./animation.js";
-import type { SceneNode, PlotScene } from "./scene.js";
+import type { SceneNode, PlotScene, SceneObjectSpec } from "./scene.js";
 import type { Matrix4 } from "./transform.js";
 export type PlotKind = "scalar" | "parametric" | "surface";
 export type PlotProjection = "perspective" | "orthographic";
@@ -20,6 +20,11 @@ export interface PlotProgram {
     readonly scene?: "transform-v1";
     /** Color/depth layer entries for multiple callbacks in one scene. */
     readonly composition?: "layers-v1";
+    /** Local parameter windows with a GPU-prepared extended-precision origin. */
+    readonly parameterOrigin?: {
+        readonly axis: "x" | "y" | "z";
+        readonly scale: number;
+    };
     /** GPU-resident interval/tile search cache in newly compiled spatial programs. */
     readonly acceleration?: "tiles-v1" | "surface-v1";
     /** One-query GPU picking entry points, available after recompilation. */
@@ -116,6 +121,8 @@ export interface PlotStyle {
     readonly axisLabels?: boolean;
 }
 export interface PlotOptions {
+    /** Additional spatial callbacks, prepared together before the first frame. */
+    readonly objects?: readonly SceneObjectSpec[];
     /** Resident read-only f32 arrays declared by the named TypeShade callback. */
     readonly data?: Readonly<Record<string, Float32Array>>;
     readonly camera?: PlotCameraUpdate;

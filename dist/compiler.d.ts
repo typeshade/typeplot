@@ -9,6 +9,13 @@ export interface CompilePlotOptions {
     /** Extra f32 arguments to the callback, in declaration order. */
     readonly parameters?: Readonly<Record<string, number>>;
     readonly discontinuous?: boolean;
+    /** Parametric callback takes (localParameter, preparedOrigin, ...parameters).
+     * The named prepare function takes (f64 origin, ...parameters) and returns vec4. */
+    readonly parameterOrigin?: {
+        readonly axis: "x" | "y" | "z";
+        readonly scale: number;
+        readonly prepare: string;
+    };
 }
 export interface PlotDiagnostic {
     readonly fileName?: string;

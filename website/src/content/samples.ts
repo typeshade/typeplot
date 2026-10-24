@@ -37,11 +37,20 @@ const plot = await createPlot(canvas, curve, {
   parameters: { exponent: 2 },
 });
 // Call plot.destroy() when the view unmounts.`;
-export const helixCode = `// helix.shade.ts
+export const helixCode = `// helix.shade.ts — local SDF coordinates, GPU-prepared global phase.
 "use typeshade";
-export function sample(t: f32): vec3 {
-  return vec3(cos(t) * 2, sin(t), t * 0.4);
+export function prepare(origin: f64): vec4 {
+  return vec4(f32(cos(origin)), f32(sin(origin)), 0, 0);
 }
+export function sample(t: f32, origin: vec4): vec3 {
+  const c = cos(t), s = sin(t);
+  return vec3((c * origin.x - s * origin.y) * 2,
+    s * origin.x + c * origin.y, t * 0.4);
+}
+
+// vite.config.ts — configure only this callback.
+// typeplot({ configure: file => file.endsWith("helix.shade.ts")
+//   ? { parameterOrigin: { axis: "z", scale: 0.4, prepare: "prepare" } } : {} })
 
 // main.ts
 import { createPlot } from "typeplot";
@@ -80,11 +89,11 @@ const plot = await createPlot(canvas, surface, {
   bounds: { x: [-3, 3], y: [-2, 2] },
   surfaceDomain: { x: [-4, 4], z: [-4, 4] },
   surface: { colorMap: "viridis", valueRange: [-1.25, 1.25] },
+  objects: [{program: trajectory, id: "trajectory", domain: [-3, 3],
+    parameters: { phase: 0, lift: 0.04 },
+    style: { color: "#ff7f0e", curveWidth: 3 }}],
 });
-const curve = await plot.scene.add(trajectory, {
-  id: "trajectory", domain: [-3, 3], parameters: { phase: 0, lift: 0.04 },
-  style: { color: "#ff7f0e", curveWidth: 3 },
-});
+const curve = plot.scene.objects.find(object => object.id === "trajectory")!;
 const group = plot.scene.group(plot.scene.content, curve);
 const motion = plot.timeline();
 motion.add(parallel(
