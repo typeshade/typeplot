@@ -7,6 +7,7 @@ import type {
 export const DEFAULT_SURFACE: Required<SurfaceOptions> = {
   colorMap: "viridis",
   valueRange: [-1, 1],
+  heightRange: [-Infinity, Infinity],
   colorBar: true,
   shading: true,
   wireframe: false,
@@ -50,6 +51,24 @@ export function surfaceOptions(
   }
   if (result.depthRange[0] < 0.101 || result.depthRange[1] > 1e6)
     throw new RangeError("depthRange must stay within [0.101, 1e6].");
+  const heights = result.heightRange;
+  if (
+    !Array.isArray(heights) ||
+    heights.length !== 2 ||
+    heights.some(
+      (v) =>
+        typeof v !== "number" ||
+        Number.isNaN(v) ||
+        (Number.isFinite(v) && Math.abs(v) >= 1e18),
+    ) ||
+    heights[0] > heights[1] ||
+    heights[0] === Infinity ||
+    heights[1] === -Infinity
+  )
+    throw new RangeError(
+      "heightRange needs ordered real bounds; infinities are supported.",
+    );
+  result.heightRange = [heights[0], heights[1]];
   if (
     !Number.isFinite(result.opacity) ||
     result.opacity < 0 ||
@@ -97,6 +116,9 @@ export function surfaceUniforms(
       (Number.isFinite(domain.z[0]) ? 4 : 0) |
       (Number.isFinite(domain.z[1]) ? 8 : 0),
     surfaceRange: style.valueRange,
+    surfaceHeight: style.heightRange.map((v, i) =>
+      Number.isFinite(v) ? v : i === 0 ? -1e18 : 1e18,
+    ),
     surfaceDepth: style.depthRange,
     surfaceRender: [
       COLOR_MAPS.indexOf(style.colorMap),
@@ -109,7 +131,9 @@ export function surfaceUniforms(
       (style.wireframe ? 2 : 0) |
       (style.contours ? 4 : 0) |
       (style.colorBar ? 8 : 0) |
-      (style.filled ? 16 : 0),
+      (style.filled ? 16 : 0) |
+      (Number.isFinite(style.heightRange[0]) ? 32 : 0) |
+      (Number.isFinite(style.heightRange[1]) ? 64 : 0),
   };
 }
 export function cameraUpdate(

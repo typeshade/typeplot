@@ -78,6 +78,7 @@ const reserved = new Set([
   "surfaceBounds",
   "surfaceDomainMode",
   "surfaceRange",
+  "surfaceHeight",
   "surfaceDepth",
   "surfaceRender",
   "surfaceFlags",
@@ -151,11 +152,14 @@ function trajectory(t:f32):vec3{return callback(t,bitcast<vec4>(textureLoad(para
 @fragment export function drawReference(@location(0) uv: vec2): vec4 {
   return plot3D(trajectory, uv, u, ${jumps});
 }
-@fragment export function buildCurveIntervals(@builtin("position") position: vec4): vec4 {
-  return prepareCurveIntervals(trajectory, position, u, ${jumps});
+@fragment export function buildCurveIntervals(@builtin("position") position: vec4): vec4u {
+  return bitcast<vec4u>(prepareCurveIntervals(trajectory, position, u, ${jumps}));
 }
-@fragment export function buildSpatialLabels(@builtin("position") position: vec4): vec4 {
-  return prepareSpatialLabels(position, axesUniforms(u));
+@fragment export function buildCurveSeeds(@builtin("position") position: vec4): vec4u { return bitcast<vec4u>(prepareCurveSeeds(trajectory, position, u)); }
+@fragment export function buildCurveGroups(@builtin("position") position: vec4): vec4u { return prepareCurveGroups(position, u); }
+@fragment export function pickAdaptive(@builtin("position") position: vec4): vec4u { return querySceneCurve(trajectory, position, u); }
+@fragment export function buildSpatialLabels(@builtin("position") position: vec4): vec4u {
+  return bitcast<vec4u>(prepareSpatialLabels(position, axesUniforms(u)));
 }
 @fragment export function buildCurveCandidates(@builtin("position") position: vec4): vec4u {
   return prepareCurveCandidates(position, u);
@@ -166,8 +170,8 @@ function trajectory(t:f32):vec3{return callback(t,bitcast<vec4>(textureLoad(para
 @fragment export function drawReference(@location(0) uv: vec2): vec4 {
   return plotSurface(heightField, uv, u, false);
 }
-@fragment export function buildSpatialLabels(@builtin("position") position: vec4): vec4 {
-  return prepareSpatialLabels(position, axesUniforms(u));
+@fragment export function buildSpatialLabels(@builtin("position") position: vec4): vec4u {
+  return bitcast<vec4u>(prepareSpatialLabels(position, axesUniforms(u)));
 }
 `
         : "";
@@ -191,7 +195,9 @@ function trajectory(t:f32):vec3{return callback(t,bitcast<vec4>(textureLoad(para
 ${
   kind === "scalar"
     ? `
-@fragment export function buildCurveIntervals(@builtin("position") position: vec4): vec4 { return prepareCurveIntervals(trajectory, position, u, ${jumps}); }
+@fragment export function buildCurveIntervals(@builtin("position") position: vec4): vec4u { return bitcast<vec4u>(prepareCurveIntervals(trajectory, position, u, ${jumps})); }
+@fragment export function buildCurveSeeds(@builtin("position") position: vec4): vec4u { return bitcast<vec4u>(prepareCurveSeeds(trajectory, position, u)); }
+@fragment export function buildCurveGroups(@builtin("position") position: vec4): vec4u { return prepareCurveGroups(position, u); }
 @fragment export function buildCurveCandidates(@builtin("position") position: vec4): vec4u { return prepareCurveCandidates(position, u); }
 `
     : ""
@@ -199,7 +205,7 @@ ${
 `;
   const wrapper = `"use typeshade";
 import { ${entry} as callback${origin ? ", " + origin.prepare + " as prepareOrigin" : ""} } from ${JSON.stringify("./" + path.basename(userFile))};
-import { PlotUniforms, SceneLayer, sceneCurve, sceneCurveReference, sceneSurface, sceneBackdrop, sceneBackdropReference, sceneLabels, sceneLabelsReference, querySceneCurve, querySceneCurveReference, axesUniforms, plot2D, plot3D, plotScalar3D, plot3DAccelerated, prepareCurveIntervals, prepareCurveCandidates, prepareSpatialLabels, plotSurface, pickSurface, pickTrajectory } from "./__typeplot-shared.shade.ts";
+import { PlotUniforms, SceneLayer, sceneCurve, sceneCurveReference, sceneSurface, sceneBackdrop, sceneBackdropReference, sceneLabels, sceneLabelsReference, querySceneCurve, querySceneCurveReference, axesUniforms, plot2D, plot3D, plotScalar3D, plot3DAccelerated, prepareCurveSeeds, prepareCurveGroups, prepareCurveIntervals, prepareCurveCandidates, prepareSpatialLabels, plotSurface, pickSurface, pickTrajectory } from "./__typeplot-shared.shade.ts";
 class Uniforms extends PlotUniforms { ${origin ? "parameterBase:f64;" : ""} ${names.map((n) => `${n}: f32;`).join(" ")} }
 declare const u: uniform<Uniforms>;
 ${callback}
@@ -284,6 +290,8 @@ ${sceneEntries}
     camera: "projective",
     scene: "transform-v1",
     composition: "layers-v1",
+    cacheFormat: "uint-v1",
+    ...(kind !== "surface" ? { curveSearch: "adaptive-v1" as const } : {}),
     ...(origin
       ? { parameterOrigin: { axis: origin.axis, scale: origin.scale } }
       : {}),

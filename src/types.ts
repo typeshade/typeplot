@@ -33,6 +33,10 @@ export interface PlotProgram {
   };
   /** GPU-resident interval/tile search cache in newly compiled spatial programs. */
   readonly acceleration?: "tiles-v1" | "surface-v1";
+  /** Image-driven GPU seed allocation with independent visibility exploration. */
+  readonly curveSearch?: "adaptive-v1";
+  /** Bit-preserving search and label caches; no float color attachment extension is needed. */
+  readonly cacheFormat?: "uint-v1";
   /** One-query GPU picking entry points, available after recompilation. */
   readonly picking?: "point-v1";
 }
@@ -55,6 +59,8 @@ export interface SurfaceOptions {
   readonly colorMap?: ColorMap;
   /** Color normalization only; it never clips surface geometry. */
   readonly valueRange?: readonly [number, number];
+  /** Optional conservative physical height bounds for ray culling; independent of color normalization. */
+  readonly heightRange?: readonly [number, number];
   readonly colorBar?: boolean;
   readonly shading?: boolean;
   readonly wireframe?: boolean;
@@ -97,9 +103,9 @@ export interface PickEvent<T> {
 }
 /** Numerical search controls for arbitrary spatial callbacks, evaluated on the GPU. */
 export interface PlotQuality {
-  /** Parameter search intervals, 16–512. Default 128. */
+  /** Initial search budget hint, 16–512. Adaptive programs enforce image-driven coverage. */
   readonly samples?: number;
-  /** Closest-point iterations, 1–8. Default 5. */
+  /** Legacy closest-point budget, 1–8. Adaptive programs refine to screen-space convergence. */
   readonly refinements?: number;
 }
 /** CSS-pixel widths and shader decorations, independent of zoom and display density. */
