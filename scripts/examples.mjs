@@ -5,6 +5,10 @@ for (const [name, options] of [
   ["curve", { parameters: { exponent: 2 } }],
   ["helix", { kind: "parametric" }],
   ["sine", { parameters: { frequency: 1 } }],
+  [
+    "surface-curve",
+    { kind: "parametric", parameters: { phase: 0, lift: 0.04 } },
+  ],
   ["surface", { kind: "surface", parameters: { phase: 0, amplitude: 1 } }],
 ]) {
   const fileName = `examples/${name}.shade.ts`;

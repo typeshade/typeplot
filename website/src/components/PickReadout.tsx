@@ -23,7 +23,7 @@ export default function PickReadout({
     const gpu = (event: PickEvent<PlotPick>) =>
       update(
         event.result
-          ? `x ${event.result.point[0].toFixed(3)} · y ${event.result.point[1].toFixed(3)} · z ${event.result.point[2].toFixed(3)}`
+          ? `${event.result.objectId ? `${event.result.objectId} · ` : ""}x ${event.result.point[0].toFixed(3)} · y ${event.result.point[1].toFixed(3)} · z ${event.result.point[2].toFixed(3)}`
           : "",
       );
     const data = (event: PickEvent<DataPick>) =>

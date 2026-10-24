@@ -158,7 +158,7 @@ export class ViewControl implements PlotControl {
       const button = doc.createElement("button");
       button.type = "button";
       button.textContent = mode.toUpperCase();
-      button.disabled = mode === "2d" && plot.kind === "parametric";
+      button.disabled = !plot.supportsMode(mode);
       button.style.cssText =
         "border:0;border-radius:3px;padding:5px 7px;background:transparent;color:inherit;cursor:pointer;font:inherit";
       button.onclick = () => {
@@ -207,7 +207,9 @@ export class ViewControl implements PlotControl {
   }
   onUpdate(plot: Plot): void {
     this.buttons.forEach((button, index) => {
-      const active = plot.getMode() === (index === 0 ? "2d" : "3d");
+      const mode = index === 0 ? "2d" : "3d";
+      const active = plot.getMode() === mode;
+      button.disabled = !plot.supportsMode(mode);
       button.setAttribute("aria-pressed", String(active));
       button.style.background = active ? "#e6f4ff" : "transparent";
       button.style.color = active ? "#1677ff" : "inherit";

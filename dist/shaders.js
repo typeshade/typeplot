@@ -786,7 +786,7 @@ export function plotScalar3D(sample: ScalarCurve, trajectory: SpaceCurve, uv: ve
 }
 
 /** Refine a candidate against the actual projected callback, never a chord SDF. */
-function refineTrajectory(trajectory: SpaceCurve, pixel: vec2, candidate: vec4, u: PlotUniforms, jumps: bool): f32 {
+function refineTrajectoryHit(trajectory: SpaceCurve, pixel: vec2, candidate: vec4, u: PlotUniforms, jumps: bool): vec2 {
   let t = candidate.y;
   const low = candidate.z, high = candidate.w;
   const epsilon = max(max((high - low) * 0.001, abs(t) * 1e-6), 1e-7);
@@ -801,7 +801,7 @@ function refineTrajectory(trajectory: SpaceCurve, pixel: vec2, candidate: vec4, 
     let world = trajectory(next);
     let projected = project(world, u);
     const error = dot(at - pixel, at - pixel);
-    if (!jumps && all(abs(atWorld) < vec3(1e18)) && inFront(atWorld, u) && error <= pow(max(0, u.appearance.z * 0.5 - pixelWidth() * 0.5), 2)) return sqrt(error);
+    if (!jumps && all(abs(atWorld) < vec3(1e18)) && inFront(atWorld, u) && error <= pow(max(0, u.appearance.z * 0.5 - pixelWidth() * 0.5), 2)) return vec2(sqrt(error), t);
     if (!(all(abs(world) < vec3(1e18)) && inFront(world, u) && dot(projected - pixel, projected - pixel) <= error)) {
       next = (t + next) * 0.5;
       world = trajectory(next);
@@ -816,7 +816,11 @@ function refineTrajectory(trajectory: SpaceCurve, pixel: vec2, candidate: vec4, 
   const world = trajectory(t);
   const middle = trajectory((low + high) * 0.5);
   const continuous = !jumps || length(middle - (trajectory(low) + trajectory(high)) * 0.5) <= max(1e-6, length(trajectory(high) - trajectory(low)) * 0.2);
-  return all(abs(world) < vec3(1e18)) && continuous && inFront(world, u) ? length(pixel - project(world, u)) : 1e20;
+  return vec2(all(abs(world) < vec3(1e18)) && continuous && inFront(world, u) ? length(pixel - project(world, u)) : 1e20, t);
+}
+
+function refineTrajectory(trajectory: SpaceCurve, pixel: vec2, candidate: vec4, u: PlotUniforms, jumps: bool): f32 {
+  return refineTrajectoryHit(trajectory, pixel, candidate, u, jumps).x;
 }
 
 /** Projected chord distance is a search bound only; it never supplies coverage. */
@@ -827,11 +831,11 @@ function intervalChordDistance(pixel: vec2, a: vec2, b: vec2): f32 {
 }
 
 /** Query one actual callback interval, keeping its boundary points in the result. */
-function intervalDistance(trajectory: SpaceCurve, pixel: vec2, low: f32, high: f32, u: PlotUniforms, jumps: bool): f32 {
+function intervalHit(trajectory: SpaceCurve, pixel: vec2, low: f32, high: f32, u: PlotUniforms, jumps: bool): vec2 {
   let start = low, end = high;
   let a = trajectory(start), b = trajectory(end);
   const frontA = inFront(a, u), frontB = inFront(b, u);
-  if (!(all(abs(a) < vec3(1e18)) && all(abs(b) < vec3(1e18))) || (!frontA && !frontB)) return 1e20;
+  if (!(all(abs(a) < vec3(1e18)) && all(abs(b) < vec3(1e18))) || (!frontA && !frontB)) return vec2(1e20, low);
   if (frontA != frontB) {
     // Clip the parameter against actual callback evaluations, rather than a
     // world-space chord which can put the seed behind the near plane.
@@ -855,12 +859,19 @@ function intervalDistance(trajectory: SpaceCurve, pixel: vec2, low: f32, high: f
   const fraction = screenFraction * ha.z / max(mix(hb.z, ha.z, screenFraction), 1e-20);
   const seed = mix(start, end, fraction);
   const candidate = vec4(0, seed, start, end);
-  const refined = refineTrajectory(trajectory, pixel, candidate, u, jumps);
+  let refined = refineTrajectoryHit(trajectory, pixel, candidate, u, jumps);
   // Shared interval endpoints make changing the search partition continuous.
   // Apply the same jump rejection as refinement to avoid inventing connections.
   const middle = trajectory((start + end) * 0.5);
   const continuous = !jumps || length(middle - (a + b) * 0.5) <= max(1e-6, length(b - a) * 0.2);
-  return continuous ? min(refined, min(length(pixel - pa), length(pixel - pb))) : 1e20;
+  const first = length(pixel - pa), last = length(pixel - pb);
+  if (first < refined.x) refined = vec2(first, start);
+  if (last < refined.x) refined = vec2(last, end);
+  return continuous ? refined : vec2(1e20, start);
+}
+
+function intervalDistance(trajectory: SpaceCurve, pixel: vec2, low: f32, high: f32, u: PlotUniforms, jumps: bool): f32 {
+  return intervalHit(trajectory, pixel, low, high, u, jumps).x;
 }
 
 /** Compactify unbounded parameter space instead of clipping to a finite domain.
@@ -1292,12 +1303,7 @@ function surfaceColorBar(color: vec3, uv: vec2, u: PlotUniforms): vec3 {
   return labelColor(result, labels);
 }
 
-/** Both flat scalar fields and spatial height fields share color normalization. */
-export function plotSurface(field: HeightField, uv: vec2, u: PlotUniforms, cached: bool): vec4 {
-  const flat = u.plotCenter + (uv - vec2(0.5)) * u.plotSpan;
-  let hit: SurfaceHit = {point: vec3(flat.x, field(flat.x, flat.y), flat.y), depth: 0, valid: false};
-  if (u.view3d != u32(0)) hit = surfaceHit(field, uv, u);
-  else hit.valid = abs(hit.point.y) < 1e18 && surfaceInside(flat, u);
+function surfaceMaterial(field: HeightField, hit: SurfaceHit, u: PlotUniforms): vec4 {
   // Derivatives execute uniformly, including miss pixels. They filter contour and
   // wire fields at physical-pixel scale instead of tessellating their geometry.
   const footprint = max(vec2(length(vec2(dpdx(hit.point.x), dpdy(hit.point.x))), length(vec2(dpdx(hit.point.z), dpdy(hit.point.z)))), vec2(1e-20));
@@ -1310,12 +1316,7 @@ export function plotSurface(field: HeightField, uv: vec2, u: PlotUniforms, cache
   const wire = max(distanceCoverage(wireDistance.x, u.appearance.z) * smoothstep(2, 6, separation.x), distanceCoverage(wireDistance.y, u.appearance.z) * smoothstep(2, 6, separation.y));
   const contourDistance = abs(fract(hit.point.y / u.surfaceRender.z + 0.5) - 0.5) * u.surfaceRender.z / valueRate * pixelWidth();
   const contours = distanceCoverage(contourDistance, u.appearance.z) * smoothstep(2, 6, u.surfaceRender.z / valueRate * pixelWidth());
-  let color = vec3(0.965, 0.973, 0.985), labels = vec3(0);
-  let decor = vec4(0);
-  if (u.view3d != u32(0)) {
-    const background = cached ? cachedSpatialBackground(uv, axesUniforms(u)) : spatialBackground(uv, axesUniforms(u));
-    color = background.color; labels = background.labels;
-  } else decor = axes2D(uv, u, 122) * u.sceneOpacity.x;
+  let result = vec4(0);
   if (hit.valid) {
     const t = (hit.point.y - u.surfaceRange.x) / (u.surfaceRange.y - u.surfaceRange.x);
     let ink = colorMap(t, u32(u.surfaceRender.x));
@@ -1339,8 +1340,25 @@ export function plotSurface(field: HeightField, uv: vec2, u: PlotUniforms, cache
     const lines = max((u.surfaceFlags & u32(2)) != u32(0) ? wire : 0, (u.surfaceFlags & u32(4)) != u32(0) ? contours : 0);
     const filled = (u.surfaceFlags & u32(16)) != u32(0);
     if (filled) ink = mix(ink, vec3(0.12, 0.16, 0.22), lines * 0.65);
-    color = mix(color, ink, u.surfaceRender.y * u.sceneOpacity.y * (filled ? 1 : lines));
+    result = vec4(ink, u.surfaceRender.y * (filled ? 1 : lines));
   }
+  return result;
+}
+
+/** Both flat scalar fields and spatial height fields share color normalization. */
+export function plotSurface(field: HeightField, uv: vec2, u: PlotUniforms, cached: bool): vec4 {
+  const flat = u.plotCenter + (uv - vec2(0.5)) * u.plotSpan;
+  let hit: SurfaceHit = {point: vec3(flat.x, field(flat.x, flat.y), flat.y), depth: 0, valid: false};
+  if (u.view3d != u32(0)) hit = surfaceHit(field, uv, u);
+  else hit.valid = abs(hit.point.y) < 1e18 && surfaceInside(flat, u);
+  const material = surfaceMaterial(field, hit, u);
+  let color = vec3(0.965, 0.973, 0.985), labels = vec3(0);
+  let decor = vec4(0);
+  if (u.view3d != u32(0)) {
+    const background = cached ? cachedSpatialBackground(uv, axesUniforms(u)) : spatialBackground(uv, axesUniforms(u));
+    color = background.color; labels = background.labels;
+  } else decor = axes2D(uv, u, 122) * u.sceneOpacity.x;
+  color = mix(color, material.xyz, material.w * u.sceneOpacity.y);
   if (u.view3d == u32(0)) {color = mix(color, vec3(0.39, 0.43, 0.49), decor.x); labels = decor.yzw;}
   const decorated = labelColor(color, labels);
   return vec4(mix(decorated, surfaceColorBar(decorated, uv, u), u.sceneOpacity.y), 1);
@@ -1433,5 +1451,159 @@ export function pickTrajectory(trajectory: SpaceCurve, position: vec4, u: PlotUn
   if(best>query.radius+u.appearance.z*0.5||u.appearance.z<=0)return vec4u(0);
   const point=trajectory(parameter);
   return position.x<1?vec4u(bitcast<vec3u>(point),1):vec4u(bitcast<u32>(parameter),bitcast<u32>(best),0,1);
+}
+
+/** Straight color and exact f32 camera distance for one mathematical object. */
+export class SceneLayer {
+  @location(0) color: vec4;
+  @location(1) depth: vec4;
+}
+class SceneMaterial { ink: vec4; bias: f32; }
+declare const sceneMaterial: uniform<SceneMaterial>;
+
+function packedDepth(depth: f32): vec4 {
+  const bits = bitcast<u32>(depth);
+  return vec4(f32(bits & u32(255)), f32((bits >> u32(8)) & u32(255)), f32((bits >> u32(16)) & u32(255)), f32(bits >> u32(24))) / 255;
+}
+function sceneLayer(color: vec4, depth: f32): SceneLayer {
+  return { color, depth: packedDepth(depth + sceneMaterial.bias) };
+}
+
+/** Union SDF coverage before resolving depth. Adjacent interval endpoint caps must
+ * not replace a continuous stroke's opaque center with partial AA coverage.
+ * Equally covered branches resolve front to back, including at curve folds. */
+function chooseSceneHit(trajectory: SpaceCurve, hit: vec2, current: vec4, u: PlotUniforms): vec4 {
+  const coverage = distanceCoverage(hit.x, u.appearance.z);
+  if (coverage <= 0) return current;
+  const depth = cameraDistance(trajectory(hit.y), u);
+  if (!(depth >= 0.101 && depth < 1e30)) return current;
+  return coverage > current.w || (coverage == current.w && (depth < current.z || (depth == current.z && hit.x < current.x))) ? vec4(hit, depth, coverage) : current;
+}
+
+function cachedSceneHit(trajectory: SpaceCurve, pixel: vec2, u: PlotUniforms): vec4 {
+  const tile = min(vec2u(floor(pixel / f32(u.curveTiles.z))), u.curveTiles.xy - vec2u(1));
+  const groups = (curveIntervalCount(u) * 2 + 127) / 128;
+  let best = vec4(1e20, 0, 1e20, 0);
+  for (let group = 0; group < groups; group++) {
+    const packed = textureLoad(curveCandidates, vec2i(i32(tile.x) * 8 + group, i32(tile.y)), 0);
+    for (let lane = 0; lane < 4; lane++) {
+      let bits = packed[lane];
+      for (let remaining = 0; remaining < 32; remaining++) {
+        if (bits == u32(0)) break;
+        const bit = firstTrailingBit(bits);
+        bits &= bits - u32(1);
+        const index = group * 128 + lane * 32 + i32(bit);
+        const bounds = textureLoad(curveIntervals, vec2i(index, 4), 0);
+        if (any(pixel < bounds.xy) || any(pixel > bounds.zw)) continue;
+        const parameters = textureLoad(curveIntervals, vec2i(index, 0), 0);
+        const a = textureLoad(curveIntervals, vec2i(index, 1), 0), b = textureLoad(curveIntervals, vec2i(index, 2), 0);
+        const middle = textureLoad(curveIntervals, vec2i(index, 3), 0);
+        if (min(intervalChordDistance(pixel, a.xy, middle.xy), intervalChordDistance(pixel, middle.xy, b.xy)) > middle.z) continue;
+        const delta = b.xy - a.xy;
+        const fraction = clamp(dot(pixel - a.xy, delta) / max(dot(delta, delta), 1e-20), 0, 1);
+        const seed = mix(parameters.x, parameters.y, fraction * a.z / max(mix(b.z, a.z, fraction), 1e-20));
+        let hit = refineTrajectoryHit(trajectory, pixel, vec4(0, seed, parameters.xy), u, false);
+        const first = length(pixel - a.xy), last = length(pixel - b.xy);
+        if (first < hit.x) hit = vec2(first, parameters.x);
+        if (last < hit.x) hit = vec2(last, parameters.y);
+        best = chooseSceneHit(trajectory, hit, best, u);
+      }
+    }
+  }
+  return best;
+}
+
+function referenceSceneHit(trajectory: SpaceCurve, pixel: vec2, u: PlotUniforms, bounds: vec2, jumps: bool): vec4 {
+  const requested = f32(u.curveQuality.x);
+  const range = bounds.y - bounds.x;
+  const unbounded = u.parameterMode != u32(0);
+  const focus = unbounded ? parameterFocus(trajectory, u) : vec2(0, 1);
+  const count = i32(min(512, unbounded || u.curvePattern.x == 0 ? requested : max(requested, ceil(range / u.curvePattern.y * 4))));
+  const stepSize = range / f32(count);
+  let best = vec4(1e20, 0, 1e20, 0);
+  for (let i = 0; i < count; i++) {
+    let low = bounds.x + f32(i) * stepSize;
+    let high = min(bounds.y, low + stepSize);
+    if (unbounded) {
+      low = parameterAt(-1 + 2 * f32(i) / f32(count), focus.y, focus.x, u);
+      high = parameterAt(-1 + 2 * f32(i + 1) / f32(count), focus.y, focus.x, u);
+    }
+    let t = (low + high) * 0.5;
+    if (u.curvePattern.x != 0) {
+      const period = u.curvePattern.y;
+      const center = (floor((t + u.curvePattern.z) / period) + 0.5) * period - u.curvePattern.z;
+      low = max(low, center - period * u.curvePattern.w * 0.5);
+      high = min(high, center + period * u.curvePattern.w * 0.5);
+      t = (low + high) * 0.5;
+    }
+    if (high >= low) {
+      const a = trajectory(low), middle = trajectory(t), b = trajectory(high);
+      const finite = all(abs(a) < vec3(1e18)) && all(abs(middle) < vec3(1e18)) && all(abs(b) < vec3(1e18));
+      if (finite) {
+        let possible = true;
+        if (inFront(a, u) && inFront(middle, u) && inFront(b, u)) {
+          const pa = project(a, u), pm = project(middle, u), pb = project(b, u);
+          const bending = intervalChordDistance(pm, pa, pb);
+          const guard = bending * 4 + u.appearance.z * 0.5 + pixelWidth() * 2;
+          possible = min(intervalChordDistance(pixel, pa, pm), intervalChordDistance(pixel, pm, pb)) <= guard;
+        }
+        if (possible) {
+          best = chooseSceneHit(trajectory, intervalHit(trajectory, pixel, low, t, u, jumps), best, u);
+          best = chooseSceneHit(trajectory, intervalHit(trajectory, pixel, t, high, u, jumps), best, u);
+        }
+      }
+    }
+  }
+  return best;
+}
+
+export function sceneCurve(trajectory: SpaceCurve, uv: vec2, u: PlotUniforms): SceneLayer {
+  if (u.sceneOpacity.y <= 0 || u.appearance.z <= 0) return sceneLayer(vec4(0), 0);
+  const hit = cachedSceneHit(trajectory, uv * plotSize(u.resolution), u);
+  return sceneLayer(vec4(sceneMaterial.ink.xyz, hit.w * u.sceneOpacity.y * sceneMaterial.ink.w), hit.z);
+}
+export function sceneCurveReference(trajectory: SpaceCurve, uv: vec2, u: PlotUniforms, jumps: bool): SceneLayer {
+  if (u.sceneOpacity.y <= 0 || u.appearance.z <= 0) return sceneLayer(vec4(0), 0);
+  const hit = referenceSceneHit(trajectory, uv * plotSize(u.resolution), u, u.parameterBounds, jumps);
+  return sceneLayer(vec4(sceneMaterial.ink.xyz, hit.w * u.sceneOpacity.y * sceneMaterial.ink.w), hit.z);
+}
+export function sceneSurface(field: HeightField, uv: vec2, u: PlotUniforms): SceneLayer {
+  if (u.sceneOpacity.y <= 0) return sceneLayer(vec4(0), 0);
+  const hit = surfaceHit(field, uv, u);
+  const ink = surfaceMaterial(field, hit, u);
+  return sceneLayer(vec4(ink.xyz, ink.w * u.sceneOpacity.y), hit.valid ? cameraDistance(hit.point, u) : 0);
+}
+export function sceneBackdrop(uv: vec2, u: PlotUniforms): vec4 {
+  return vec4(cachedSpatialBackground(uv, axesUniforms(u)).color, 1);
+}
+export function sceneBackdropReference(uv: vec2, u: PlotUniforms): vec4 {
+  return vec4(spatialBackground(uv, axesUniforms(u)).color, 1);
+}
+/** Isolate the affine label/halo/color-bar overlay without sampling scene objects. */
+function sceneDecorLabels(uv: vec2, u: PlotUniforms, decor: SpatialDecor, surface: bool): vec4 {
+  let black = labelColor(vec3(0), decor.labels), white = labelColor(vec3(1), decor.labels);
+  if (surface) {
+    black = mix(black, surfaceColorBar(black, uv, u), u.sceneOpacity.y);
+    white = mix(white, surfaceColorBar(white, uv, u), u.sceneOpacity.y);
+  }
+  const alpha = clamp(1 - (white.x - black.x), 0, 1);
+  return vec4(alpha > 0 ? black / alpha : vec3(0), alpha);
+}
+export function sceneLabels(uv: vec2, u: PlotUniforms, surface: bool): vec4 {
+  return sceneDecorLabels(uv, u, cachedSpatialBackground(uv, axesUniforms(u)), surface);
+}
+export function sceneLabelsReference(uv: vec2, u: PlotUniforms, surface: bool): vec4 {
+  return sceneDecorLabels(uv, u, spatialBackground(uv, axesUniforms(u)), surface);
+}
+export function querySceneCurve(trajectory: SpaceCurve, position: vec4, u: PlotUniforms): vec4u {
+  const hit = cachedSceneHit(trajectory, query.pixel, u);
+  if (hit.w <= 0 || u.sceneOpacity.y <= 0) return vec4u(0);
+  const point = trajectory(hit.y);
+  return position.x < 1 ? vec4u(bitcast<vec3u>(point), 1) : vec4u(bitcast<u32>(hit.y), bitcast<u32>(hit.x), 0, 1);
+}
+export function querySceneCurveReference(trajectory: SpaceCurve, position: vec4, u: PlotUniforms, jumps: bool): vec4u {
+  const hit = referenceSceneHit(trajectory, query.pixel, u, u.parameterBounds, jumps);
+  if (hit.w <= 0 || u.sceneOpacity.y <= 0) return vec4u(0);
+  return position.x < 1 ? vec4u(bitcast<vec3u>(trajectory(hit.y)), 1) : vec4u(bitcast<u32>(hit.y), bitcast<u32>(hit.x), 0, 1);
 }
 `;var d=Object.freeze({"function-plot.shade.ts":a,"font.shade.ts":e,"palette.shade.ts":t});export{d as plotShaderFiles};

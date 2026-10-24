@@ -60,7 +60,7 @@ export class RenderSession {
       await this.completion.wait();
     });
   }
-  retire(releasePlotResources: () => void): Promise<void> {
+  retire(releasePlotResources: () => void | Promise<void>): Promise<void> {
     if (!this.retirement) {
       const drained = this.scope.close();
       this.completion.destroy();
@@ -73,7 +73,11 @@ export class RenderSession {
             failures.push(error);
           }
         };
-        release(releasePlotResources);
+        try {
+          await releasePlotResources();
+        } catch (error) {
+          failures.push(error);
+        }
         for (const handle of [...this.arrays])
           release(() => this.release(handle));
         try {

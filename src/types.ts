@@ -6,7 +6,7 @@ import type {
   TimelineOptions,
   TweenOptions,
 } from "./animation.js";
-import type { PlotScene } from "./scene.js";
+import type { SceneNode, PlotScene } from "./scene.js";
 import type { Matrix4 } from "./transform.js";
 export type PlotKind = "scalar" | "parametric" | "surface";
 export type PlotProjection = "perspective" | "orthographic";
@@ -24,6 +24,8 @@ export interface PlotProgram {
   readonly camera?: "projective";
   /** Independent coordinate-frame and content transforms in newly compiled programs. */
   readonly scene?: "transform-v1";
+  /** Color/depth layer entries for multiple callbacks in one scene. */
+  readonly composition?: "layers-v1";
   /** GPU-resident interval/tile search cache in newly compiled spatial programs. */
   readonly acceleration?: "tiles-v1" | "surface-v1";
   /** One-query GPU picking entry points, available after recompilation. */
@@ -74,6 +76,8 @@ export interface SavePlotOptions {
 }
 export interface PlotPick {
   readonly kind: PlotKind;
+  readonly objectId?: string;
+  readonly object?: SceneNode;
   /** Local mathematical coordinates, before the scene transform. */
   readonly point: readonly [number, number, number];
   readonly parameter?: number;
@@ -157,6 +161,7 @@ export interface Plot {
   timeline(options?: Omit<TimelineOptions, "render" | "window">): Timeline;
   readonly kind: PlotKind;
   getMode(): "2d" | "3d";
+  supportsMode(mode: "2d" | "3d"): boolean;
   getProjection(): PlotProjection;
   getContainer(): HTMLElement;
   addControl(control: PlotControl, position?: ControlPosition): Plot;

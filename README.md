@@ -391,7 +391,7 @@ These entry points let a host reuse an existing device and frame lifecycle.
 ## Spatial scene transforms
 
 Newly compiled plots expose `plot.scene.root`, `plot.scene.axes` and `plot.scene.content`.
-A plot still renders its compiled mathematical callback and coordinate frame on one canvas,
+The primary callback, additional mathematical objects and coordinate frame render on one canvas,
 with one TypeShade Runtime. The content branch transforms a curve or height field while the
 axes branch transforms the lattice, ticks and labels independently. The root transforms both.
 Matrices apply in 3D; the 2D mode remains the original mathematical field view. Visibility and
@@ -446,6 +446,66 @@ its playback, as it does `plot.animate()`. Use `parallel` for distinct propertie
 accumulates matrix or opacity deltas. One timeline coalesces the resulting uniform changes into
 complete frames. All grid, curve and surface work stays in named TypeShade shaders, with resident
 observations reused. Picking returns the content's original mathematical coordinates.
+
+## Multiple mathematical objects
+
+Programs compiled with the current compiler support additional callbacks through `plot.scene.add()`.
+The plot must be in 3D. Objects share its Runtime, camera, glyph atlas and render scheduler.
+
+```ts
+const curve = await plot.scene.add(trajectoryProgram, {
+  id: "trajectory",
+  domain: [-3, 3],
+  parameters: { phase: 0, lift: 0.04 },
+  style: { color: "#ff7f0e", curveWidth: 3 },
+});
+const group = plot.scene.group(plot.scene.content, curve);
+const motion = plot.timeline();
+motion.add(
+  parallel(
+    plot.transition({ parameters: { phase: Math.PI } }, { duration: 4 }),
+    curve.transition(
+      { parameters: { phase: Math.PI, lift: 0.25 } },
+      { duration: 4 },
+    ),
+    group.transition({ transform: rotationMatrix(0.4) }, { duration: 4 }),
+  ),
+);
+motion.play();
+const hit = await plot.scene.pick([120, 90]);
+console.log(hit?.objectId, hit?.point, hit?.worldPoint);
+await curve.remove();
+```
+
+The original callback is `scene.content`, with picking ID `primary`. `scene.objects` lists
+prepared additional objects. IDs are nonempty and unique while reserved, including during
+preparation. Objects provide `parameters`, `setParameters`, `setData`, `setDomain`, `setQuality`,
+`setStyle`, `setSurface`, `setSurfaceDomain`, local transitions, opacity and visibility.
+`setData` keeps a copied Float32Array resident; camera and transform changes reuse it.
+
+Each callback contributes one resolved color and camera-depth hit. Curve SDF coverage is
+unioned across search intervals; equally covered branches resolve front to back, preserving
+continuous AA at interval boundaries. Named TypeShade passes order object hits per pixel and
+blend front to back, including translucent curves and surfaces. Equal-depth hits follow stable ID order. `style.depthBias` can intentionally offset
+camera depth for coplanar overlays; the reported mathematical point stays unchanged. Curve
+styles use CSS colors, CSS-pixel `curveWidth`, parameter-based `lineStyle`, `dashPeriod` and
+`dashOffset`. The plot's frame owns the primary color bar; additional surfaces use their own
+color maps and value ranges. Numerical `quality` still bounds curve and ray-search resolution.
+
+Picking queries displayed depth layers before evaluating the chosen callback. It returns the
+node, its ID, local mathematical coordinates and transformed world coordinates. A query invalidated
+by camera/object changes returns null. The same compositor evaluates all objects again at PNG
+export density. Displayed color/depth attachments have an eight-megapixel total atlas budget;
+exports allow sixteen megapixels. Output must also fit device texture dimensions. Display density
+adapts to these bounds, and oversize exports are refused. A scene supports sixteen mathematical
+objects including the original callback. `supportsMode()` reports current 2D/3D availability;
+remove additional spatial objects to return to a flat mathematical view.
+
+`group.remove(node)` detaches a reusable, resident subtree. `scene.remove(object)` or
+`object.remove()` pauses owned playback and permanently removes that object's resources after
+accepted work settles. `plot.reset()` retains additional objects and restores their initial
+parameters, style and transform; observation buffers remain resident. `plot.destroy()` closes
+pending additions, queries and timelines before retiring the shared rendering session.
 
 ## Development
 

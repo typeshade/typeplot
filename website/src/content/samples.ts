@@ -7,6 +7,7 @@ export type Preset =
   | "sine"
   | "helix"
   | "surface"
+  | "multiScene"
   | "sampledSurface"
   | "uncertainty"
   | "field";
@@ -71,6 +72,29 @@ const motion = plot.animate({
 // motion.pause(); await motion.seek(2); motion.play();
 plot.on("click", event => console.log(event.result?.point));
 // Call plot.destroy() when the view unmounts.`;
+export const multiSceneCode = `import { createPlot, parallel, rotationMatrix } from "typeplot";
+import surface from "./surface.shade.ts?plot=surface";
+import trajectory from "./surface-curve.shade.ts?plot=3d";
+
+const plot = await createPlot(canvas, surface, {
+  bounds: { x: [-3, 3], y: [-2, 2] },
+  surfaceDomain: { x: [-4, 4], z: [-4, 4] },
+  surface: { colorMap: "viridis", valueRange: [-1.25, 1.25] },
+});
+const curve = await plot.scene.add(trajectory, {
+  id: "trajectory", domain: [-3, 3], parameters: { phase: 0, lift: 0.04 },
+  style: { color: "#ff7f0e", curveWidth: 3 },
+});
+const group = plot.scene.group(plot.scene.content, curve);
+const motion = plot.timeline();
+motion.add(parallel(
+  plot.transition({ parameters: { phase: 2 * Math.PI }, camera: { rotation: [1.6, 0.6] } }, { duration: 6 }),
+  curve.transition({ parameters: { phase: 2 * Math.PI, lift: 0.25 } }, { duration: 6 }),
+  group.transition({ transform: rotationMatrix(0.35, [0, 0, 1]) }, { duration: 6 }),
+));
+motion.play();
+plot.on("click", event => console.log(event.result?.objectId, event.result?.point));
+// await curve.remove(); plot.destroy();`;
 export const sampledSurfaceCode = `import { createSurface } from "typeplot";
 const rows = 32, columns = 40;
 const values = Float32Array.from({ length: rows * columns }, (_, i) => {
@@ -116,6 +140,7 @@ export function exampleCode(
   threeD = false,
   projection: "perspective" | "orthographic" = "perspective",
 ): string {
+  if (preset === "multiScene") return multiSceneCode;
   if (preset === "surface") return surfaceCode;
   if (preset === "sampledSurface") return sampledSurfaceCode;
   if (preset === "uncertainty") return uncertaintyCode;

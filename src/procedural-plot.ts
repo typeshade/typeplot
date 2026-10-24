@@ -1,3 +1,5 @@
+import type { SceneComposer } from "./render/scene-composer.js";
+import type { ScenePick } from "./scene.js";
 import { PlotScene } from "./scene.js";
 import { FrameScheduler } from "./render/queue.js";
 import { RenderSession } from "./render/session.js";
@@ -117,6 +119,9 @@ export async function createPlot(
   const win = canvas?.ownerDocument?.defaultView;
   if (!win || typeof canvas.getContext !== "function")
     throw new TypeError("createPlot needs a browser canvas.");
+  let composition: SceneComposer | undefined;
+  let compositionPreparation: Promise<SceneComposer> | undefined;
+  let sceneReservations = 0;
   if (
     !program ||
     program.version !== 1 ||
@@ -137,6 +142,10 @@ export async function createPlot(
   const checkMode = (value: string): void => {
     if (value !== "2d" && value !== "3d")
       throw new TypeError("Plot mode must be 2d or 3d.");
+    if (value === "2d" && (composition?.hasObjects || sceneReservations > 0))
+      throw new TypeError(
+        "Multiple-object scenes require 3d mode. Remove additional objects before switching to a flat view.",
+      );
     if (value === "2d" && program.kind === "parametric")
       throw new TypeError("Parametric curves require 3d mode.");
   };
@@ -529,6 +538,7 @@ export async function createPlot(
     () => decorationFades.some((fade) => fade.active(win.performance.now())),
   );
   const requestDraw = (): void => {
+    composition?.invalidate();
     picker?.invalidate();
     frames.request();
   };
@@ -550,6 +560,7 @@ export async function createPlot(
   function destroy(): void {
     if (destroyed) return;
     destroyed = true;
+    composition?.close();
     ACTIVE.delete(canvas);
     void frames.stop();
     observer?.disconnect();
@@ -564,7 +575,8 @@ export async function createPlot(
     controller?.destroy();
     if (rt?.tier === "webgpu")
       (context as GPUCanvasContext | undefined)?.unconfigure();
-    const releaseResources = () => {
+    const releaseResources = async () => {
+      await composition?.dispose();
       intervals?.destroy();
       candidates?.destroy();
       labels?.destroy();
@@ -579,8 +591,7 @@ export async function createPlot(
           console.error("[typeplot] Resource disposal failed", error),
         );
     else {
-      releaseResources();
-      rt?.destroy();
+      void releaseResources().finally(() => rt?.destroy());
     }
     restoreCanvas();
   }
@@ -811,9 +822,11 @@ export async function createPlot(
         limit / width,
         limit / height,
         Math.sqrt(4_194_304 / (width * height)),
+        composition?.hasObjects ? composition.displayScale(width, height) : 1,
       );
-      const nextWidth = Math.max(1, Math.round(width * scale));
-      const nextHeight = Math.max(1, Math.round(height * scale));
+      const round = composition?.hasObjects ? Math.floor : Math.round;
+      const nextWidth = Math.max(1, round(width * scale));
+      const nextHeight = Math.max(1, round(height * scale));
       if (canvas.width !== nextWidth) canvas.width = nextWidth;
       if (canvas.height !== nextHeight) canvas.height = nextHeight;
       const pixelRatio = Math.min(
@@ -1028,36 +1041,63 @@ export async function createPlot(
             ),
           );
       }
-      frame.pass({ color: [target] }, (pass) =>
-        pass.draw(
-          pipeline,
+      const primaryBindings = {
+        u,
+        ...inputs,
+        ...(accelerated
+          ? {
+              spatialLabels: labels,
+              ...(curveCache
+                ? { curveIntervals: intervals, curveCandidates: candidates }
+                : {}),
+            }
+          : {}),
+        ...(glyphs
+          ? {
+              glyphAtlas: glyphs,
+              font: {
+                pixelRatio: Math.min(
+                  canvas.width / box.width,
+                  canvas.height / box.height,
+                ),
+              },
+            }
+          : {}),
+      };
+      let finish: ((success?: boolean) => void) | undefined;
+      if (composition?.hasObjects)
+        finish = composition.record(
+          frame,
           {
             u,
-            ...inputs,
-            ...(accelerated
+            bindings: primaryBindings,
+            generation: inputGeneration,
+            ...(curveCache
               ? {
-                  spatialLabels: labels,
-                  ...(curveCache
-                    ? { curveIntervals: intervals, curveCandidates: candidates }
-                    : {}),
-                }
-              : {}),
-            ...(glyphs
-              ? {
-                  glyphAtlas: glyphs,
-                  font: {
-                    pixelRatio: Math.min(
-                      canvas.width / box.width,
-                      canvas.height / box.height,
-                    ),
+                  cache: {
+                    intervals: intervals!,
+                    candidates: candidates!,
+                    key: geometryKey,
                   },
                 }
               : {}),
-          } as never,
-          { count: 3 },
-        ),
-      );
-      await owner.present(frame);
+          },
+          canvas.width,
+          canvas.height,
+          pixelRatio,
+          target,
+        );
+      else
+        frame.pass({ color: [target] }, (pass) =>
+          pass.draw(pipeline, primaryBindings as never, { count: 3 }),
+        );
+      let presented = false;
+      try {
+        await owner.present(frame);
+        presented = true;
+      } finally {
+        finish?.(presented);
+      }
       preparedKey = geometryKey;
       preparedLabelsKey = labelsKey;
     };
@@ -1078,6 +1118,15 @@ export async function createPlot(
         return scene;
       },
       kind: program.kind,
+      supportsMode(value) {
+        return (
+          value === "3d" ||
+          (value === "2d" &&
+            program.kind !== "parametric" &&
+            !composition?.hasObjects &&
+            sceneReservations === 0)
+        );
+      },
       getMode() {
         alive();
         return mode;
@@ -1344,8 +1393,6 @@ export async function createPlot(
             throw new RangeError(
               "Picking needs a finite CSS-pixel position and radius between zero and 64.",
             );
-          if (supportsScene && scene.snapshot().content.opacity === 0)
-            return null;
           const box = canvas.getBoundingClientRect();
           if (
             box.width <= 0 ||
@@ -1355,6 +1402,12 @@ export async function createPlot(
             position[1] < 0 ||
             position[1] > box.height
           )
+            return null;
+          if (composition?.hasObjects) {
+            await currentFrame();
+            return composition.pick(position, radius);
+          }
+          if (supportsScene && scene.snapshot().content.opacity === 0)
             return null;
           const [, picking] = await Promise.all([
             currentFrame(),
@@ -1448,6 +1501,8 @@ export async function createPlot(
               "PNG export exceeds the device dimension or 16 megapixel limit.",
             );
           const textures: Texture[] = [];
+          let finishScene: (() => void) | undefined;
+          composition?.checkExportSize(width, height);
           const make = (w: number, h: number, format: string) => {
             const texture = runtime.texture({ size: [w, h], format });
             textures.push(texture);
@@ -1509,30 +1564,51 @@ export async function createPlot(
                 ),
               );
             }
-            frame.pass({ color: [output] }, (pass) =>
-              pass.draw(
-                pipeline,
+            const primaryBindings = {
+              u,
+              ...resources,
+              ...(accelerated
+                ? {
+                    spatialLabels: labels,
+                    ...(curveCache
+                      ? {
+                          curveIntervals: intervals,
+                          curveCandidates: candidates,
+                        }
+                      : {}),
+                  }
+                : {}),
+              ...(glyphs
+                ? { glyphAtlas: glyphs, font: { pixelRatio: ratio } }
+                : {}),
+            };
+            if (composition?.hasObjects)
+              finishScene = composition.record(
+                frame,
                 {
                   u,
-                  ...resources,
-                  ...(accelerated
+                  bindings: primaryBindings,
+                  generation: inputGeneration,
+                  ...(curveCache
                     ? {
-                        spatialLabels: labels,
-                        ...(curveCache
-                          ? {
-                              curveIntervals: intervals,
-                              curveCandidates: candidates,
-                            }
-                          : {}),
+                        cache: {
+                          intervals: intervals!,
+                          candidates: candidates!,
+                          key: "export",
+                        },
                       }
                     : {}),
-                  ...(glyphs
-                    ? { glyphAtlas: glyphs, font: { pixelRatio: ratio } }
-                    : {}),
-                } as never,
-                { count: 3 },
-              ),
-            );
+                },
+                width,
+                height,
+                ratio,
+                output,
+                true,
+              );
+            else
+              frame.pass({ color: [output] }, (pass) =>
+                pass.draw(pipeline, primaryBindings as never, { count: 3 }),
+              );
             await frame.submit();
             const bytes = await output.read();
             alive();
@@ -1544,6 +1620,7 @@ export async function createPlot(
               }
             return encodePng(bytes, width, height);
           } finally {
+            finishScene?.();
             for (const texture of textures) texture.destroy();
           }
         });
@@ -1590,7 +1667,7 @@ export async function createPlot(
         surface = surfaceOptions(initialSurface);
         surfaceBounds = surfaceDomain(initialSurfaceBounds);
         automaticDepth = options.surface?.depthRange === undefined;
-        mode = initialMode;
+        mode = composition?.hasObjects ? "3d" : initialMode;
         projection = initialProjection;
         controller!.setMode(mode === "3d");
         controller!.reset();
@@ -1608,6 +1685,100 @@ export async function createPlot(
     canvas.addEventListener("wheel", pauseAnimations, { passive: true });
     canvas.addEventListener("keydown", pauseAnimations);
     controls = new PlotControlHost(canvas, plot);
+    scene.connect({
+      attach(node, objectProgram, objectOptions) {
+        alive();
+        if (mode !== "3d")
+          throw new Error(
+            "Switch the plot to 3d before adding spatial objects.",
+          );
+        if (program.composition !== "layers-v1")
+          throw new Error(
+            "Recompile the primary plot program to compose multiple objects.",
+          );
+        sceneReservations++;
+        controls?.update();
+        return owner
+          .run(async () => {
+            if (!compositionPreparation)
+              compositionPreparation = owner.run(async () => {
+                const { SceneComposer } =
+                  await import("./render/scene-composer.js");
+                alive();
+                const renderer = new SceneComposer(
+                  owner,
+                  scene,
+                  program,
+                  loaded,
+                  format,
+                  canvas.ownerDocument,
+                  requestDraw,
+                  () => frames.current(),
+                  options.acceleration !== false &&
+                    (runtime.tier === "webgpu" ||
+                      !!(target as WebGL2RenderingContext).getExtension(
+                        "EXT_color_buffer_float",
+                      )),
+                  curveCache,
+                  accelerated,
+                );
+                composition = renderer;
+                try {
+                  await renderer.initialize();
+                  alive();
+                  return renderer;
+                } catch (error) {
+                  await renderer.dispose();
+                  composition = undefined;
+                  compositionPreparation = undefined;
+                  throw error;
+                }
+              });
+            const renderer = await compositionPreparation;
+            alive();
+            const handle = await renderer.attach(
+              node,
+              objectProgram,
+              objectOptions,
+            );
+            alive();
+            if (mode !== "3d")
+              throw new Error(
+                "Spatial scene preparation was cancelled by a mode change.",
+              );
+            return handle;
+          })
+          .finally(() => {
+            sceneReservations--;
+            if (!destroyed) controls?.update();
+          });
+      },
+      detach(node) {
+        if (composition?.isActive(node)) pauseAnimations();
+        return composition ? composition.detach(node) : Promise.resolve();
+      },
+      async pick(position, radius) {
+        const hit = await plot.pick(position, radius);
+        if (!hit) return null;
+        if (hit.objectId) return hit as ScenePick;
+        const m = scene.nodeSnapshot(scene.content).transform,
+          p = hit.point;
+        const worldPoint =
+          mode === "2d"
+            ? p
+            : ([
+                m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12],
+                m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13],
+                m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14],
+              ] as const);
+        return {
+          ...hit,
+          objectId: "primary",
+          object: scene.content,
+          worldPoint,
+        };
+      },
+    });
     return plot;
   } catch (error) {
     destroy();

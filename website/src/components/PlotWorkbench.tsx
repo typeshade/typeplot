@@ -10,6 +10,7 @@ import type {
   PlotStyle,
   SurfaceOptions,
 } from "../vendor/typeplot/index.js";
+import MultiSceneControls from "./MultiSceneControls";
 import MotionControls from "./MotionControls";
 import PickReadout from "./PickReadout";
 import { exampleCode, type Preset } from "../content/samples";
@@ -95,7 +96,9 @@ export default function PlotWorkbench({
     samples,
     surfaceStyle,
   };
-  const isSurface = preset === "surface" || preset === "sampledSurface";
+  const isMulti = preset === "multiScene";
+  const isSurface =
+    preset === "surface" || preset === "sampledSurface" || isMulti;
   const gpu =
     preset === "power" || preset === "sine" || preset === "helix" || isSurface;
   useEffect(() => {
@@ -251,7 +254,7 @@ export default function PlotWorkbench({
               ? import("../vendor/typeplot/curve.js")
               : preset === "sine"
                 ? import("../vendor/typeplot/sine.js")
-                : preset === "surface"
+                : preset === "surface" || isMulti
                   ? import("../vendor/typeplot/surface.js")
                   : import("../vendor/typeplot/helix.js"),
         ]);
@@ -287,9 +290,12 @@ export default function PlotWorkbench({
                     : isSurface
                       ? { x: [-3, 3], y: [-2, 2] }
                       : { x: [-6.28, 6.28], y: [-1.5, 1.5] },
-                surface: preset === "surface" ? surfaceStyle : undefined,
+                surface:
+                  preset === "surface" || isMulti ? surfaceStyle : undefined,
                 surfaceDomain:
-                  preset === "surface" ? { x: [-4, 4], z: [-4, 4] } : undefined,
+                  preset === "surface" || isMulti
+                    ? { x: [-4, 4], z: [-4, 4] }
+                    : undefined,
                 domain:
                   preset === "helix"
                     ? unbounded
@@ -325,7 +331,7 @@ export default function PlotWorkbench({
                       : undefined,
                 onError: fail,
               })
-        ).then((result) => {
+        ).then(async (result) => {
           if (disposed) {
             result.destroy();
             return;
@@ -341,6 +347,25 @@ export default function PlotWorkbench({
             }),
             "top-right",
           );
+          if (isMulti) {
+            const { default: curveProgram } =
+              await import("../vendor/typeplot/surface-curve.js");
+            if (disposed) {
+              result.destroy();
+              return;
+            }
+            await result.scene.add(curveProgram, {
+              id: "trajectory",
+              domain: [-3, 3],
+              quality: { samples: 64 },
+              parameters: { phase: 0, lift: 0.04 },
+              style: { color: "#ff7f0e", curveWidth: 3 },
+            });
+            if (disposed) {
+              result.destroy();
+              return;
+            }
+          }
           const current = desired.current;
           result.setStyle(current.style);
           result.setMode(preset === "helix" || current.threeD ? "3d" : "2d");
@@ -478,6 +503,8 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
           "x = 2 cos(t), y = sin(t), z = 0.4t로 정의한 나선입니다. 드래그하면 회전합니다.",
         surface:
           "y = sin(x + 위상) cos(z − 0.35 위상) 곡면입니다. 예제 패치는 x,z가 −4부터 4까지이며 위상과 카메라를 함께 재생할 수 있습니다.",
+        multiScene:
+          "동일한 카메라에서 곡면과 공간 곡선을 함께 표시합니다. 클릭으로 객체를 선택하고 곡선 높이·그룹 변환·투명도와 공통 타임라인을 조절합니다.",
         sampledSurface:
           "32×40 관측 배열을 GPU에서 보간한 곡면입니다. x,z는 −3부터 3까지이며 높이 배율을 애니메이션으로 조절할 수 있습니다.",
         uncertainty:
@@ -499,6 +526,8 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
           "A helix defined by x = 2 cos(t), y = sin(t), z = 0.4t. Drag to orbit.",
         surface:
           "y = sin(x + phase) cos(z − 0.35 phase), displayed on x,z from −4 to 4. Play the function and camera together.",
+        multiScene:
+          "A height field and spatial curve share one camera. Select objects by clicking, inspect curve lift and opacity, and animate them on one timeline.",
         sampledSurface:
           "A 32×40 resident observation grid, interpolated on the GPU over x,z from −3 to 3. Animate its height scale.",
         uncertainty:
@@ -527,6 +556,7 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
               onChange={(value) => {
                 setPreset(value);
                 if (
+                  value === "multiScene" ||
                   value === "surface" ||
                   value === "sampledSurface" ||
                   value === "helix"
@@ -559,6 +589,10 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
                 {
                   value: "surface",
                   label: ko ? "GPU 함수 곡면" : "GPU function surface",
+                },
+                {
+                  value: "multiScene",
+                  label: ko ? "곡면과 곡선 장면" : "Surface and curve scene",
                 },
                 {
                   value: "sampledSurface",
@@ -613,6 +647,7 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
                 <span id="mode-label">{ko ? "3D 보기" : "3D view"}</span>
                 <Switch
                   checked={threeD}
+                  disabled={isMulti}
                   onChange={setThreeD}
                   aria-labelledby="mode-label"
                 />
@@ -907,7 +942,15 @@ plot.setQuality({ samples: ${samples}, refinements: 5 });`
             </div>
           </details>
         )}
-        {isSurface && ready && active.current.gpu && (
+        {isMulti && ready && active.current.gpu && (
+          <MultiSceneControls
+            key={`${preset}-${backend}-${motionEpoch}`}
+            plot={active.current.gpu}
+            locale={locale}
+            onSpatial={() => setThreeD(true)}
+          />
+        )}
+        {isSurface && !isMulti && ready && active.current.gpu && (
           <MotionControls
             key={`${preset}-${backend}-${motionEpoch}`}
             plot={active.current.gpu}

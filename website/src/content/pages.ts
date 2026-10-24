@@ -230,7 +230,7 @@ export const pages: Record<Locale, Record<PageKey, DocPage>> = {
         },
         {
           title: "Independent scene branches",
-          text: "Newly compiled plots expose scene.root, scene.axes and scene.content. In 3D, transform the surface independently of its coordinate frame or group both under a parent. Opacity and visibility inherit through groups. Group changes update TypeShade uniforms and reuse resident observations. plot.timeline() composes node transitions with camera/function clips, supports absolute seek and pauses on pointer input. A plot still contains one compiled mathematical callback; 2D keeps the original field mapping. Older manifests require recompilation for scene branches.",
+          text: "Newly compiled plots expose scene.root, scene.axes and scene.content. In 3D, transform the surface independently of its coordinate frame or group both under a parent. Opacity and visibility inherit through groups. Group changes update TypeShade uniforms and reuse resident observations. plot.timeline() composes node transitions with camera/function clips, supports absolute seek and pauses on pointer input. scene.add adds compiled callbacks sharing the same Runtime and camera, with per-pixel depth composition. 2D keeps the original field mapping while there are no additional spatial objects. Older manifests require recompilation for scene branches.",
           code: `const group = plot.scene.group(plot.scene.content);
 const timeline = plot.timeline();
 timeline.add(parallel(
@@ -336,8 +336,8 @@ await plot.saveImage("surface.png", { pixelRatio: 2 });
               "Control a shared 3D camera and invertible affine scene transform.",
             ],
             [
-              "plot.scene / SceneNode / SceneGroup",
-              "Compose local transforms, visibility and opacity for a plot’s coordinate frame and mathematical content.",
+              "plot.scene / scene.add / SceneNode / SceneGroup / SceneObject",
+              "Compose multiple callbacks with shared camera/depth, per-object data and transforms, and object-aware picking.",
             ],
             [
               "timeline / animate / transition / Timeline / ValueTracker",
@@ -471,7 +471,7 @@ await plot.saveImage("surface.png", { pixelRatio: 2 });
         },
         {
           title: "독립적인 장면 변환",
-          text: "새로 컴파일한 프로그램은 scene.root, scene.axes, scene.content를 제공합니다. 3D에서 좌표계는 고정한 채 곡면만 변환하거나 부모 그룹으로 함께 변환할 수 있습니다. 투명도와 가시성은 상위 그룹에서 상속됩니다. 그룹 변경은 TypeShade uniform을 갱신하며 관측 데이터를 재사용합니다. plot.timeline()은 노드 변환과 카메라·함수 클립을 합성하고 절대 시간 탐색을 지원하며 새 포인터 입력에서 재생을 멈춥니다. 한 Plot에는 하나의 컴파일된 수학 콜백이 있으며 2D는 원래 색상장·함수 좌표를 유지합니다. 이전 프로그램은 장면 계층을 사용하려면 다시 컴파일해야 합니다.",
+          text: "새로 컴파일한 프로그램은 scene.root, scene.axes, scene.content를 제공합니다. 3D에서 좌표계는 고정한 채 곡면만 변환하거나 부모 그룹으로 함께 변환할 수 있습니다. 투명도와 가시성은 상위 그룹에서 상속됩니다. 그룹 변경은 TypeShade uniform을 갱신하며 관측 데이터를 재사용합니다. plot.timeline()은 노드 변환과 카메라·함수 클립을 합성하고 절대 시간 탐색을 지원하며 새 포인터 입력에서 재생을 멈춥니다. scene.add로 같은 Runtime·카메라를 공유하는 콜백을 추가하고 픽셀별 깊이로 합성합니다. 추가 공간 객체가 없을 때 2D는 원래 색상장·함수 좌표를 유지합니다. 이전 프로그램은 장면 계층을 사용하려면 다시 컴파일해야 합니다.",
           code: `const group = plot.scene.group(plot.scene.content);
 const timeline = plot.timeline();
 timeline.add(parallel(
@@ -569,8 +569,8 @@ await plot.saveImage("surface.png", { pixelRatio: 2 });
               "카메라와 독립된 공간 곡선 매개변수 구간을 읽거나 갱신하고 GPU 최근접점 탐색 정밀도를 조절합니다.",
             ],
             [
-              "plot.scene / SceneNode / SceneGroup",
-              "좌표계와 함수·곡면의 로컬 변환, 그룹, 가시성과 투명도를 제어합니다.",
+              "plot.scene / scene.add / SceneNode / SceneGroup / SceneObject",
+              "다중 콜백의 카메라·깊이 합성, 객체별 데이터·변환, 그룹·가시성과 객체별 picking을 제어합니다.",
             ],
             [
               "plot.timeline / animate / transition",

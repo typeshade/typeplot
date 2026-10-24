@@ -144,9 +144,35 @@ export function compilePlot(
 }
 `
         : "";
+  const sceneEntries = `
+@fragment export function drawLayer(@location(0) uv: vec2): SceneLayer {
+  ${kind === "surface" ? "return sceneSurface(heightField, uv, u);" : "return sceneCurve(trajectory, uv, u);"}
+}
+@fragment export function drawLayerReference(@location(0) uv: vec2): SceneLayer {
+  ${kind === "surface" ? "return sceneSurface(heightField, uv, u);" : `return sceneCurveReference(trajectory, uv, u, ${jumps});`}
+}
+@fragment export function drawBackdrop(@location(0) uv: vec2): vec4 { return ${kind === "scalar" ? "sceneBackdropReference" : "sceneBackdrop"}(uv, u); }
+@fragment export function drawBackdropReference(@location(0) uv: vec2): vec4 { return sceneBackdropReference(uv, u); }
+@fragment export function drawLabels(@location(0) uv: vec2): vec4 { return ${kind === "scalar" ? "sceneLabelsReference" : "sceneLabels"}(uv, u, ${kind === "surface"}); }
+@fragment export function drawLabelsReference(@location(0) uv: vec2): vec4 { return sceneLabelsReference(uv, u, ${kind === "surface"}); }
+@fragment export function queryLayer(@builtin("position") position: vec4): vec4u {
+  ${kind === "surface" ? "return pickSurface(heightField, position, u);" : "return querySceneCurve(trajectory, position, u);"}
+}
+@fragment export function queryLayerReference(@builtin("position") position: vec4): vec4u {
+  ${kind === "surface" ? "return pickSurface(heightField, position, u);" : `return querySceneCurveReference(trajectory, position, u, ${jumps});`}
+}
+${
+  kind === "scalar"
+    ? `
+@fragment export function buildCurveIntervals(@builtin("position") position: vec4): vec4 { return prepareCurveIntervals(trajectory, position, u, ${jumps}); }
+@fragment export function buildCurveCandidates(@builtin("position") position: vec4): vec4u { return prepareCurveCandidates(position, u); }
+`
+    : ""
+}
+`;
   const wrapper = `"use typeshade";
 import { ${entry} as callback } from ${JSON.stringify("./" + path.basename(userFile))};
-import { PlotUniforms, axesUniforms, plot2D, plot3D, plotScalar3D, plot3DAccelerated, prepareCurveIntervals, prepareCurveCandidates, prepareSpatialLabels, plotSurface, pickSurface, pickTrajectory } from "./__typeplot-shared.shade.ts";
+import { PlotUniforms, SceneLayer, sceneCurve, sceneCurveReference, sceneSurface, sceneBackdrop, sceneBackdropReference, sceneLabels, sceneLabelsReference, querySceneCurve, querySceneCurveReference, axesUniforms, plot2D, plot3D, plotScalar3D, plot3DAccelerated, prepareCurveIntervals, prepareCurveCandidates, prepareSpatialLabels, plotSurface, pickSurface, pickTrajectory } from "./__typeplot-shared.shade.ts";
 class Uniforms extends PlotUniforms { ${names.map((n) => `${n}: f32;`).join(" ")} }
 declare const u: uniform<Uniforms>;
 ${callback}
@@ -159,6 +185,7 @@ class VertexOutput { @builtin("position") position: vec4; @location(0) uv: vec2;
   ${fragment}
 }
 ${cacheEntries}
+${sceneEntries}
 @fragment export function pick(@builtin("position") position: vec4): vec4u {
   ${kind === "surface" ? "return pickSurface(heightField, position, u);" : `return pickTrajectory(trajectory, position, u, ${kind === "scalar"}, ${jumps});`}
 }
@@ -229,6 +256,7 @@ ${cacheEntries}
     parameters,
     camera: "projective",
     scene: "transform-v1",
+    composition: "layers-v1",
     ...(kind === "parametric"
       ? { acceleration: "tiles-v1" as const }
       : kind === "surface"

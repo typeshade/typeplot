@@ -14,5 +14,5 @@ export declare class RenderSession {
     array<T>(value: T): Resident<T>;
     release(handle: Resident<unknown>): void;
     present(frame: Frame): Promise<void>;
-    retire(releasePlotResources: () => void): Promise<void>;
+    retire(releasePlotResources: () => void | Promise<void>): Promise<void>;
 }

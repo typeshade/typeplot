@@ -74,7 +74,7 @@ for (const name of await readdir(resolve(root, "dist"))) {
   if (/^(index|data|resources|chunk-.*)\.js\.LEGAL\.txt$/.test(name))
     await copyFile(resolve(root, "dist", name), resolve(target, name));
 }
-const programs = ["curve", "helix", "sine", "surface"];
+const programs = ["curve", "helix", "sine", "surface", "surface-curve"];
 for (const name of programs) {
   await copyFile(
     resolve(root, "examples/generated", `${name}.js`),

@@ -123,7 +123,37 @@ before committing; removing a branch hides it. Matrices apply to spatial views; 
 views retain their original domain mapping. Inherited opacity/visibility apply to both views.
 
 Existing data artists, callbacks, cameras, picking, PNG and timelines remain the compatibility
-baseline. Multiple mathematical callbacks in one scene, additional charts, general surfaces,
-text layout and video production are subsequent consumers of the foundation.
+baseline. Additional charts, general surfaces, text layout and video production remain subsequent
+consumers of the foundation.
 Rendering remains in named TypeShade shaders, with the existing axis widths, procedural dash
 semantics, asynchronous startup and complete-frame readiness.
+
+## Multiple objects
+
+`PlotScene.add` prepares a callback instance, while `SceneField` owns its parameters, resident
+inputs and optional GPU curve caches. The host supplies one camera snapshot to all fields.
+`SceneComposer` borrows the existing Runtime/RenderSession and the primary Program; matching
+callback programs share TypeShade's pipeline cache. Additional shader bindings contain no
+separate glyph atlas or input controller. Composition loads only when the first object is added.
+
+Each field renders straight RGBA8 color and packed f32 camera distance into an atlas tile.
+The named TypeShade compositor sorts covered hits at each pixel and blends front to back;
+opaque coverage terminates the loop. Stable IDs break equal-depth ties. This preserves object
+opacity independently of insertion order. Each field supplies its nearest resolved hit, subject
+to the existing numerical search limits. The atlas layout is host resource layout, not a CPU
+geometry sort. Both tiers use the same shader path; composition needs no float color extension.
+GPU curve acceleration retains its existing WebGL2 extension check and reference fallback.
+
+Field tiles and the coordinate-frame backdrop cache independently. Node parameters/data,
+material, transforms and camera values form the relevant keys. Each tile also retains its
+field-instance identity, so removing and recreating an ID cannot reuse obsolete pixels. A
+failed submission invalidates prepared cache keys. Export allocates separate transient
+attachments and caches; it does not overwrite displayed picking state.
+
+Picking first queries visible atlas pixels and then the chosen mathematical callback. Frame
+snapshots retain the field/node and transform, and revision checks discard invalidated queries.
+Object removal closes its preparation/readback scope and waits for display work before releasing
+handles. Scene retirement drains all object work before disposing the borrowed Device and Runtime.
+The eight-megapixel display atlas, sixteen-megapixel export atlas, device dimensions and sixteen
+object slots bound allocation. No additional canvas, Runtime, camera or GPU command encoder is
+created per node.
