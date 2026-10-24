@@ -1,6 +1,6 @@
 {
   "name": "typeplot",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "GPU function plots with TypeShade callbacks, WebGPU and WebGL2",
   "type": "module",
   "license": "Apache-2.0",
@@ -57,6 +57,7 @@
     "dist",
     "shaders",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE",
     "NOTICE",
     "assets/LICENSE-IBM-Plex.txt",
