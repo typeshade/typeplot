@@ -1,6 +1,6 @@
 "use typeshade";
 import { PlotUniforms, ViewRay, axisLabel, plotSize, distanceCoverage, cameraVector, homogeneous, inverseCamera, viewRay, project, surfaceColorBar } from "./plot.shade.ts";
-import { wideTickNumberLayers, wideNumberWidth, wideNumberPlate } from "./wide-font.shade.ts";
+import { wideTickNumberLayers, wideNumberWidth, wideNumberPlate, wideGridSpacing } from "./wide-font.shade.ts";
 import { tickLevels, tickOpacity, coarseTickOpacity, tickMark, pixelWidth } from "./font.shade.ts";
 class CoordinateUniforms extends PlotUniforms { axesOrigin: vec3f64; }
 declare const u: uniform<CoordinateUniforms>;
@@ -31,7 +31,7 @@ function axisVisible(value: f32, axis: vec3, u: CoordinateUniforms): bool {
 }
 
 function wideWeight(value: f64, levels: vec3, coarse: bool): f32 {
-  const multiple = value / f64(coarse ? levels.x : levels.y);
+  const multiple = value / wideGridSpacing(coarse ? levels.x : levels.y);
   const shared = abs(multiple - floor(multiple + 0.5)) < 0.001;
   return shared ? 1 : (coarse ? 1 - levels.z : levels.z);
 }
@@ -87,7 +87,7 @@ function groundField(uv: vec2, ray: ViewRay, u: CoordinateUniforms, xLevels: vec
   let field = 0;
   for (let level = 0; level < 2; level++) {
     const spacing = level == 0 ? vec2(xLevels.x,zLevels.x) : vec2(xLevels.y,zLevels.y);
-    const sx = f64(spacing.x), sz = f64(spacing.y);
+    const sx = wideGridSpacing(spacing.x), sz = wideGridSpacing(spacing.y);
     const phase = vec2(f32(fract(gx / sx + 0.5)),f32(fract(gz / sz + 0.5))) - 0.5;
     const distance = abs(phase) * spacing / gradient * pixelWidth();
     const separation = spacing / gradient * pixelWidth();
@@ -150,7 +150,7 @@ function prepareSpatialLabels(position: vec4, u: CoordinateUniforms): vec4 {
   const levels = spatialLevels(axis, u);
   const stride = candidate < 3 ? levels.x : levels.y;
   const absolute = axisBase(axis,u) + f64(axisParameter(foot,axis,u));
-  const number = (floor(absolute / f64(stride) + 0.5) + f64(f32(candidate % 3 - 1))) * f64(stride);
+  const number = (floor(absolute / wideGridSpacing(stride) + 0.5) + f64(f32(candidate % 3 - 1))) * wideGridSpacing(stride);
   const t = f32(number - axisBase(axis,u));
   if (!axisVisible(t,axis,u)) return vec4(0);
   const at = projectAxis(t,axis,u);

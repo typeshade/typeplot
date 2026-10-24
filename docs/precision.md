@@ -9,7 +9,8 @@ The origin is recomputed from absolute state, rather than accumulated through re
 
 A large coordinate lattice needs more than moving its visual origin. Its world-anchored
 `floor`/`fract` phase must also survive the subtraction. The extended coordinate renderer
-keeps the axis origin and grid phase in TypeShade `f64`, narrows the small phase/delta, and
+keeps the axis origin and grid phase in TypeShade `f64`, reconstructs decimal lattice steps
+before multiplying by a large index, narrows the small phase/delta, and
 uses the existing SDF glyph atlas. Cached numeric labels retain their fractional world values.
 Derivative AA operates on the high/low coordinate difference, rather than a folded phase.
 Grid levels fade before projected line spacing becomes a dense carpet.

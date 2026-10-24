@@ -507,22 +507,32 @@ fn widePower(exponent: i32) -> vec2<f32> {
   return select(value, df64_div(df64_add(_cse0, _cse1, _fp64_g), df64_add(value, _cse1, _fp64_g), _fp64_g), (exponent < 0));
 }
 
+fn wideGridSpacing(step: f32) -> vec2<f32> {
+  let _fp64_g = textureLoad(_fp64, vec2<i32>(0, 0), 0).x;
+  let exponent = i32(floor((log2(max(step, 1e-30)) / log2(10.0))));
+  let multiplier = round((step / pow(10.0, f32(exponent))));
+  return df64_mul(vec2<f32>(multiplier, 0.0), widePower(exponent), _fp64_g);
+}
+
 fn wideDigit(value: vec2<f32>, exponent: i32) -> i32 {
   let _fp64_g = textureLoad(_fp64, vec2<i32>(0, 0), 0).x;
-  let _cse2 = bitcast<f32>(bitcast<u32>(0.0));
-  let _cse0 = vec2<f32>(_cse2, _cse2);
-  let integer = df64_floor(df64_div(df64_add(value, _cse0, _fp64_g), df64_add(widePower(exponent), _cse0, _fp64_g), _fp64_g), _fp64_g);
-  let _cse1 = vec2<f32>(10.0, 0.0);
-  let _lc0 = df64_add(integer, _cse0, _fp64_g);
-  return i32(df64_narrow(df64_sub(_lc0, df64_mul(df64_floor(df64_div(_lc0, df64_add(_cse1, _cse0, _fp64_g), _fp64_g), _fp64_g), _cse1, _fp64_g), _fp64_g)));
+  let _cse0 = vec2<f32>(0.25, 0.0);
+  let _cse3 = bitcast<f32>(bitcast<u32>(0.0));
+  let _cse1 = vec2<f32>(_cse3, _cse3);
+  let integer = df64_floor(df64_div(df64_add(value, _cse0, _fp64_g), df64_add(widePower(exponent), _cse1, _fp64_g), _fp64_g), _fp64_g);
+  let _cse2 = vec2<f32>(10.0, 0.0);
+  return i32(df64_narrow(df64_sub(df64_add(integer, _cse1, _fp64_g), df64_mul(df64_floor(df64_div(df64_add(integer, _cse0, _fp64_g), df64_add(_cse2, _cse1, _fp64_g), _fp64_g), _fp64_g), _cse2, _fp64_g), _fp64_g)));
 }
 
 fn wideNumberFormat(input: vec2<f32>, spacing: f32) -> WideNumberFormat {
   let _fp64_g = textureLoad(_fp64, vec2<i32>(0, 0), 0).x;
-  let _licm0 = vec2<f32>(0.009999999776482582, 2.2351741291171123e-10);
+  let _cse6 = bitcast<f32>(bitcast<u32>(0.0));
+  let _licm0 = vec2<f32>(_cse6, _cse6);
+  let _licm1 = vec2<f32>(10.0, 0.0);
+  let _licm2 = vec2<f32>(0.009999999776482582, 2.2351741291171123e-10);
   let _cse0 = vec2<f32>(0.0, 0.0);
-  let _cse6 = abs(spacing);
-  let value = select(input, _cse0, df64_lt(df64_abs(input), vec2<f32>((_cse6 * 0.0001), 0.0)));
+  let _cse7 = abs(spacing);
+  let value = select(input, _cse0, df64_lt(df64_abs(input), vec2<f32>((_cse7 * 0.0001), 0.0)));
   var magnitude: vec2<f32> = df64_abs(value);
   let _cse1 = log2(10.0);
   var exponent: i32 = i32(floor((log2(max(df64_narrow(magnitude), 1e-30)) / _cse1)));
@@ -534,29 +544,38 @@ fn wideNumberFormat(input: vec2<f32>, spacing: f32) -> WideNumberFormat {
     exponent += 1;
   }
   let scientific = (_gv0 && ((exponent >= 12) || (exponent < -3)));
-  let _cse2 = log2(max(_cse6, 1e-30));
-  var decimals: i32 = i32(clamp(ceil(((-_cse2) / _cse1)), 0.0, 13.0));
+  let _cse2 = log2(max(_cse7, 1e-30));
+  var decimals: i32 = i32(clamp(ceil(((-_cse2) / _cse1)), 0.0, 12.0));
+  if ((scientific == false)) {
+    decimals = min(decimals, max(0, (12 - exponent)));
+  }
   var digits: i32 = 1;
-  let _cse7 = bitcast<f32>(bitcast<u32>(0.0));
-  let _cse3 = vec2<f32>(_cse7, _cse7);
-  let _cse4 = vec2<f32>(0.5, 0.0);
-  let _cse5 = vec2<f32>(10.0, 0.0);
+  let _cse3 = vec2<f32>(0.5, 0.0);
+  let _cse4 = vec2<f32>(0.25, 0.0);
   if (scientific) {
-    decimals = i32(clamp(ceil((f32(exponent) - (_cse2 / _cse1))), 0.0, 13.0));
+    decimals = i32(clamp(ceil((f32(exponent) - (_cse2 / _cse1))), 0.0, 12.0));
     let scale = widePower(decimals);
-    magnitude = df64_floor(df64_add(df64_mul(df64_div(df64_add(magnitude, _cse3, _fp64_g), df64_add(widePower(exponent), _cse3, _fp64_g), _fp64_g), scale, _fp64_g), _cse4, _fp64_g), _fp64_g);
-    if (df64_ge(magnitude, df64_mul(_cse5, scale, _fp64_g))) {
+    magnitude = df64_floor(df64_add(df64_mul(df64_div(df64_add(magnitude, _licm0, _fp64_g), df64_add(widePower(exponent), _licm0, _fp64_g), _fp64_g), scale, _fp64_g), _cse3, _fp64_g), _fp64_g);
+    if (df64_ge(magnitude, df64_mul(_licm1, scale, _fp64_g))) {
       magnitude = scale;
       exponent = (exponent + 1);
     }
   } else {
     let _gv1 = widePower(decimals);
-    magnitude = df64_floor(df64_add(df64_mul(magnitude, _gv1, _fp64_g), _cse4, _fp64_g), _fp64_g);
-    digits = (i32(floor((log2(max(df64_narrow(df64_floor(df64_div(df64_add(magnitude, _cse3, _fp64_g), df64_add(_gv1, _cse3, _fp64_g), _fp64_g), _fp64_g)), 1.0)) / _cse1))) + 1);
+    magnitude = df64_floor(df64_add(df64_mul(magnitude, _gv1, _fp64_g), _cse3, _fp64_g), _fp64_g);
+    let integral = df64_floor(df64_div(df64_add(magnitude, _cse4, _fp64_g), df64_add(_gv1, _licm0, _fp64_g), _fp64_g), _fp64_g);
+    digits = max(1, (exponent + 1));
+    if (df64_ge(integral, widePower(digits))) {
+      digits += 1;
+    }
+    if (((digits > 1) && df64_lt(integral, widePower((digits - 1))))) {
+      digits -= 1;
+    }
   }
+  let _cse5 = df64_add(_licm1, _licm0, _fp64_g);
   for (var i: i32 = 0; (i < 13); i = (i + 1)) {
-    if (((decimals > 0) && df64_lt(df64_abs(df64_sub(df64_add(magnitude, _cse3, _fp64_g), df64_mul(df64_floor(df64_div(df64_add(magnitude, _cse3, _fp64_g), df64_add(_cse5, _cse3, _fp64_g), _fp64_g), _fp64_g), _cse5, _fp64_g), _fp64_g)), _licm0))) {
-      magnitude = df64_div(magnitude, _cse5, _fp64_g);
+    if (((decimals > 0) && df64_lt(df64_abs(df64_sub(df64_add(magnitude, _licm0, _fp64_g), df64_mul(df64_floor(df64_div(df64_add(magnitude, _cse4, _fp64_g), _cse5, _fp64_g), _fp64_g), _licm1, _fp64_g), _fp64_g)), _licm2))) {
+      magnitude = df64_floor(df64_div(df64_add(magnitude, _cse4, _fp64_g), _cse5, _fp64_g), _fp64_g);
       decimals -= 1;
     }
   }
@@ -686,7 +705,7 @@ fn wideWeight(value: vec2<f32>, levels: vec3<f32>, coarse: bool) -> f32 {
   let _fp64_g = textureLoad(_fp64, vec2<i32>(0, 0), 0).x;
   let _cse1 = bitcast<f32>(bitcast<u32>(0.0));
   let _cse0 = vec2<f32>(_cse1, _cse1);
-  let multiple = df64_div(df64_add(value, _cse0, _fp64_g), df64_add(vec2<f32>(select(levels.y, levels.x, coarse), 0.0), _cse0, _fp64_g), _fp64_g);
+  let multiple = df64_div(df64_add(value, _cse0, _fp64_g), df64_add(wideGridSpacing(select(levels.y, levels.x, coarse)), _cse0, _fp64_g), _fp64_g);
   let shared_ = df64_lt(df64_abs(df64_sub(df64_add(multiple, _cse0, _fp64_g), df64_floor(df64_add(multiple, vec2<f32>(0.5, 0.0), _fp64_g), _fp64_g), _fp64_g)), vec2<f32>(0.0010000000474974513, -4.7497450417210985e-11));
   return select(select(levels.z, (1.0 - levels.z), coarse), 1.0, shared_);
 }
@@ -776,8 +795,8 @@ fn groundField(uv: vec2<f32>, ray: ViewRay, u: CoordinateUniforms, xLevels: vec3
   let _cse6 = pixelWidth();
   for (var level: i32 = 0; (level < 2); level = (level + 1)) {
     let spacing = select(_licm1, _licm0, (level == 0));
-    let sx = vec2<f32>(spacing.x, 0.0);
-    let sz = vec2<f32>(spacing.y, 0.0);
+    let sx = wideGridSpacing(spacing.x);
+    let sz = wideGridSpacing(spacing.y);
     let _gv2 = df64_add(df64_div(_gv0, df64_add(sx, _cse4, _fp64_g), _fp64_g), _cse5, _fp64_g);
     let _gv3 = df64_add(df64_div(_gv1, df64_add(sz, _cse4, _fp64_g), _fp64_g), _cse5, _fp64_g);
     let phase = (vec2<f32>(df64_narrow(df64_fract(_gv2, _fp64_g)), df64_narrow(df64_fract(_gv3, _fp64_g))) - 0.5);
@@ -869,7 +888,7 @@ fn prepareSpatialLabels(position: vec4<f32>, u: CoordinateUniforms) -> vec4<f32>
   let absolute = df64_add(_gv1, vec2<f32>(axisParameter(foot, axis_1, u), 0.0), _fp64_g);
   let _cse9 = bitcast<f32>(bitcast<u32>(0.0));
   let _cse5 = vec2<f32>(_cse9, _cse9);
-  let _lc0 = vec2<f32>(stride, 0.0);
+  let _lc0 = wideGridSpacing(stride);
   let number = df64_mul(df64_add(df64_floor(df64_add(df64_div(df64_add(absolute, _cse5, _fp64_g), df64_add(_lc0, _cse5, _fp64_g), _fp64_g), vec2<f32>(0.5, 0.0), _fp64_g), _fp64_g), vec2<f32>(f32(((candidate % 3) - 1)), 0.0), _fp64_g), _lc0, _fp64_g);
   let t_1 = df64_narrow(df64_sub(df64_add(number, _cse5, _fp64_g), df64_add(_gv1, _cse5, _fp64_g), _fp64_g));
   if ((axisVisible(t_1, axis_1, u) == false)) {
@@ -1445,6 +1464,13 @@ vec2 widePower(int exponent) {
   return ((exponent < 0) ? df64_div(df64_add(_cse0, _cse1, _fp64_g), df64_add(value, _cse1, _fp64_g), _fp64_g) : value);
 }
 
+vec2 wideGridSpacing(float step) {
+  float _fp64_g = texelFetch(_fp64, ivec2(0, 0), 0).x;
+  int exponent = _f2i(floor((log2(max(step, 1e-30)) / log2(10.0))));
+  float multiplier = roundEven((step / pow(10.0, float(exponent))));
+  return df64_mul(vec2(multiplier, 0.0), widePower(exponent), _fp64_g);
+}
+
 bool df64_lt(vec2 a, vec2 b) {
   return ((a.x < b.x) || ((a.x == b.x) && (a.y < b.y)));
 }
@@ -1472,10 +1498,13 @@ vec2 df64_floor(vec2 a, float _fp64_g) {
 
 WideNumberFormat wideNumberFormat(vec2 input_, float spacing) {
   float _fp64_g = texelFetch(_fp64, ivec2(0, 0), 0).x;
-  vec2 _licm0 = vec2(0.009999999776482582, 2.2351741291171123e-10);
+  float _cse6 = uintBitsToFloat(floatBitsToUint(0.0));
+  vec2 _licm0 = vec2(_cse6, _cse6);
+  vec2 _licm1 = vec2(10.0, 0.0);
+  vec2 _licm2 = vec2(0.009999999776482582, 2.2351741291171123e-10);
   vec2 _cse0 = vec2(0.0, 0.0);
-  float _cse6 = abs(spacing);
-  vec2 value = (df64_lt(df64_abs(input_), vec2((_cse6 * 0.0001), 0.0)) ? _cse0 : input_);
+  float _cse7 = abs(spacing);
+  vec2 value = (df64_lt(df64_abs(input_), vec2((_cse7 * 0.0001), 0.0)) ? _cse0 : input_);
   vec2 magnitude = df64_abs(value);
   float _cse1 = log2(10.0);
   int exponent = _f2i(floor((log2(max(df64_narrow(magnitude), 1e-30)) / _cse1)));
@@ -1487,29 +1516,38 @@ WideNumberFormat wideNumberFormat(vec2 input_, float spacing) {
     exponent += 1;
   }
   bool scientific = (_gv0 && ((exponent >= 12) || (exponent < -3)));
-  float _cse2 = log2(max(_cse6, 1e-30));
-  int decimals = _f2i(clamp(ceil(((-_cse2) / _cse1)), 0.0, 13.0));
+  float _cse2 = log2(max(_cse7, 1e-30));
+  int decimals = _f2i(clamp(ceil(((-_cse2) / _cse1)), 0.0, 12.0));
+  if ((scientific == false)) {
+    decimals = min(decimals, max(0, (12 - exponent)));
+  }
   int digits = 1;
-  float _cse7 = uintBitsToFloat(floatBitsToUint(0.0));
-  vec2 _cse3 = vec2(_cse7, _cse7);
-  vec2 _cse4 = vec2(0.5, 0.0);
-  vec2 _cse5 = vec2(10.0, 0.0);
+  vec2 _cse3 = vec2(0.5, 0.0);
+  vec2 _cse4 = vec2(0.25, 0.0);
   if (scientific) {
-    decimals = _f2i(clamp(ceil((float(exponent) - (_cse2 / _cse1))), 0.0, 13.0));
+    decimals = _f2i(clamp(ceil((float(exponent) - (_cse2 / _cse1))), 0.0, 12.0));
     vec2 scale = widePower(decimals);
-    magnitude = df64_floor(df64_add(df64_mul(df64_div(df64_add(magnitude, _cse3, _fp64_g), df64_add(widePower(exponent), _cse3, _fp64_g), _fp64_g), scale, _fp64_g), _cse4, _fp64_g), _fp64_g);
-    if (df64_ge(magnitude, df64_mul(_cse5, scale, _fp64_g))) {
+    magnitude = df64_floor(df64_add(df64_mul(df64_div(df64_add(magnitude, _licm0, _fp64_g), df64_add(widePower(exponent), _licm0, _fp64_g), _fp64_g), scale, _fp64_g), _cse3, _fp64_g), _fp64_g);
+    if (df64_ge(magnitude, df64_mul(_licm1, scale, _fp64_g))) {
       magnitude = scale;
       exponent = (exponent + 1);
     }
   } else {
     vec2 _gv1 = widePower(decimals);
-    magnitude = df64_floor(df64_add(df64_mul(magnitude, _gv1, _fp64_g), _cse4, _fp64_g), _fp64_g);
-    digits = (_f2i(floor((log2(max(df64_narrow(df64_floor(df64_div(df64_add(magnitude, _cse3, _fp64_g), df64_add(_gv1, _cse3, _fp64_g), _fp64_g), _fp64_g)), 1.0)) / _cse1))) + 1);
+    magnitude = df64_floor(df64_add(df64_mul(magnitude, _gv1, _fp64_g), _cse3, _fp64_g), _fp64_g);
+    vec2 integral = df64_floor(df64_div(df64_add(magnitude, _cse4, _fp64_g), df64_add(_gv1, _licm0, _fp64_g), _fp64_g), _fp64_g);
+    digits = max(1, (exponent + 1));
+    if (df64_ge(integral, widePower(digits))) {
+      digits += 1;
+    }
+    if (((digits > 1) && df64_lt(integral, widePower((digits - 1))))) {
+      digits -= 1;
+    }
   }
+  vec2 _cse5 = df64_add(_licm1, _licm0, _fp64_g);
   for (int i = 0; (i < 13); i = (i + 1)) {
-    if (((decimals > 0) && df64_lt(df64_abs(df64_sub(df64_add(magnitude, _cse3, _fp64_g), df64_mul(df64_floor(df64_div(df64_add(magnitude, _cse3, _fp64_g), df64_add(_cse5, _cse3, _fp64_g), _fp64_g), _fp64_g), _cse5, _fp64_g), _fp64_g)), _licm0))) {
-      magnitude = df64_div(magnitude, _cse5, _fp64_g);
+    if (((decimals > 0) && df64_lt(df64_abs(df64_sub(df64_add(magnitude, _licm0, _fp64_g), df64_mul(df64_floor(df64_div(df64_add(magnitude, _cse4, _fp64_g), _cse5, _fp64_g), _fp64_g), _licm1, _fp64_g), _fp64_g)), _licm2))) {
+      magnitude = df64_floor(df64_div(df64_add(magnitude, _cse4, _fp64_g), _cse5, _fp64_g), _fp64_g);
       decimals -= 1;
     }
   }
@@ -1560,7 +1598,7 @@ float wideWeight(vec2 value, vec3 levels, bool coarse) {
   float _fp64_g = texelFetch(_fp64, ivec2(0, 0), 0).x;
   float _cse1 = uintBitsToFloat(floatBitsToUint(0.0));
   vec2 _cse0 = vec2(_cse1, _cse1);
-  vec2 multiple = df64_div(df64_add(value, _cse0, _fp64_g), df64_add(vec2((coarse ? levels.x : levels.y), 0.0), _cse0, _fp64_g), _fp64_g);
+  vec2 multiple = df64_div(df64_add(value, _cse0, _fp64_g), df64_add(wideGridSpacing((coarse ? levels.x : levels.y)), _cse0, _fp64_g), _fp64_g);
   bool shared_ = df64_lt(df64_abs(df64_sub(df64_add(multiple, _cse0, _fp64_g), df64_floor(df64_add(multiple, vec2(0.5, 0.0), _fp64_g), _fp64_g), _fp64_g)), vec2(0.0010000000474974513, -4.7497450417210985e-11));
   return (shared_ ? 1.0 : (coarse ? (1.0 - levels.z) : levels.z));
 }
@@ -1643,7 +1681,7 @@ vec4 prepareSpatialLabels(vec4 position, CoordinateUniforms_value u) {
   vec2 absolute = df64_add(_gv1, vec2(axisParameter(foot, axis_1, u), 0.0), _fp64_g);
   float _cse9 = uintBitsToFloat(floatBitsToUint(0.0));
   vec2 _cse5 = vec2(_cse9, _cse9);
-  vec2 _lc0 = vec2(stride, 0.0);
+  vec2 _lc0 = wideGridSpacing(stride);
   vec2 number = df64_mul(df64_add(df64_floor(df64_add(df64_div(df64_add(absolute, _cse5, _fp64_g), df64_add(_lc0, _cse5, _fp64_g), _fp64_g), vec2(0.5, 0.0), _fp64_g), _fp64_g), vec2(float((_irem(candidate, 3) - 1)), 0.0), _fp64_g), _lc0, _fp64_g);
   float t_1 = df64_narrow(df64_sub(df64_add(number, _cse5, _fp64_g), df64_add(_gv1, _cse5, _fp64_g), _fp64_g));
   if ((axisVisible(t_1, axis_1, u) == false)) {
@@ -2199,6 +2237,13 @@ vec2 widePower(int exponent) {
   return ((exponent < 0) ? df64_div(df64_add(_cse0, _cse1, _fp64_g), df64_add(value, _cse1, _fp64_g), _fp64_g) : value);
 }
 
+vec2 wideGridSpacing(float step) {
+  float _fp64_g = texelFetch(_fp64, ivec2(0, 0), 0).x;
+  int exponent = _f2i(floor((log2(max(step, 1e-30)) / log2(10.0))));
+  float multiplier = roundEven((step / pow(10.0, float(exponent))));
+  return df64_mul(vec2(multiplier, 0.0), widePower(exponent), _fp64_g);
+}
+
 vec2 df64_floor(vec2 a, float _fp64_g) {
   float _v0 = floor(a.x);
   return ((_v0 == a.x) ? df64_quickTwoSum(_v0, floor(a.y), _fp64_g) : vec2(_v0, 0.0));
@@ -2210,12 +2255,12 @@ float df64_narrow(vec2 a) {
 
 int wideDigit(vec2 value, int exponent) {
   float _fp64_g = texelFetch(_fp64, ivec2(0, 0), 0).x;
-  float _cse2 = uintBitsToFloat(floatBitsToUint(0.0));
-  vec2 _cse0 = vec2(_cse2, _cse2);
-  vec2 integer = df64_floor(df64_div(df64_add(value, _cse0, _fp64_g), df64_add(widePower(exponent), _cse0, _fp64_g), _fp64_g), _fp64_g);
-  vec2 _cse1 = vec2(10.0, 0.0);
-  vec2 _lc0 = df64_add(integer, _cse0, _fp64_g);
-  return _f2i(df64_narrow(df64_sub(_lc0, df64_mul(df64_floor(df64_div(_lc0, df64_add(_cse1, _cse0, _fp64_g), _fp64_g), _fp64_g), _cse1, _fp64_g), _fp64_g)));
+  vec2 _cse0 = vec2(0.25, 0.0);
+  float _cse3 = uintBitsToFloat(floatBitsToUint(0.0));
+  vec2 _cse1 = vec2(_cse3, _cse3);
+  vec2 integer = df64_floor(df64_div(df64_add(value, _cse0, _fp64_g), df64_add(widePower(exponent), _cse1, _fp64_g), _fp64_g), _fp64_g);
+  vec2 _cse2 = vec2(10.0, 0.0);
+  return _f2i(df64_narrow(df64_sub(df64_add(integer, _cse1, _fp64_g), df64_mul(df64_floor(df64_div(df64_add(integer, _cse0, _fp64_g), df64_add(_cse2, _cse1, _fp64_g), _fp64_g), _fp64_g), _cse2, _fp64_g), _fp64_g)));
 }
 
 bool df64_lt(vec2 a, vec2 b) {
@@ -2236,10 +2281,13 @@ bool df64_ge(vec2 a, vec2 b) {
 
 WideNumberFormat wideNumberFormat(vec2 input_, float spacing) {
   float _fp64_g = texelFetch(_fp64, ivec2(0, 0), 0).x;
-  vec2 _licm0 = vec2(0.009999999776482582, 2.2351741291171123e-10);
+  float _cse6 = uintBitsToFloat(floatBitsToUint(0.0));
+  vec2 _licm0 = vec2(_cse6, _cse6);
+  vec2 _licm1 = vec2(10.0, 0.0);
+  vec2 _licm2 = vec2(0.009999999776482582, 2.2351741291171123e-10);
   vec2 _cse0 = vec2(0.0, 0.0);
-  float _cse6 = abs(spacing);
-  vec2 value = (df64_lt(df64_abs(input_), vec2((_cse6 * 0.0001), 0.0)) ? _cse0 : input_);
+  float _cse7 = abs(spacing);
+  vec2 value = (df64_lt(df64_abs(input_), vec2((_cse7 * 0.0001), 0.0)) ? _cse0 : input_);
   vec2 magnitude = df64_abs(value);
   float _cse1 = log2(10.0);
   int exponent = _f2i(floor((log2(max(df64_narrow(magnitude), 1e-30)) / _cse1)));
@@ -2251,29 +2299,38 @@ WideNumberFormat wideNumberFormat(vec2 input_, float spacing) {
     exponent += 1;
   }
   bool scientific = (_gv0 && ((exponent >= 12) || (exponent < -3)));
-  float _cse2 = log2(max(_cse6, 1e-30));
-  int decimals = _f2i(clamp(ceil(((-_cse2) / _cse1)), 0.0, 13.0));
+  float _cse2 = log2(max(_cse7, 1e-30));
+  int decimals = _f2i(clamp(ceil(((-_cse2) / _cse1)), 0.0, 12.0));
+  if ((scientific == false)) {
+    decimals = min(decimals, max(0, (12 - exponent)));
+  }
   int digits = 1;
-  float _cse7 = uintBitsToFloat(floatBitsToUint(0.0));
-  vec2 _cse3 = vec2(_cse7, _cse7);
-  vec2 _cse4 = vec2(0.5, 0.0);
-  vec2 _cse5 = vec2(10.0, 0.0);
+  vec2 _cse3 = vec2(0.5, 0.0);
+  vec2 _cse4 = vec2(0.25, 0.0);
   if (scientific) {
-    decimals = _f2i(clamp(ceil((float(exponent) - (_cse2 / _cse1))), 0.0, 13.0));
+    decimals = _f2i(clamp(ceil((float(exponent) - (_cse2 / _cse1))), 0.0, 12.0));
     vec2 scale = widePower(decimals);
-    magnitude = df64_floor(df64_add(df64_mul(df64_div(df64_add(magnitude, _cse3, _fp64_g), df64_add(widePower(exponent), _cse3, _fp64_g), _fp64_g), scale, _fp64_g), _cse4, _fp64_g), _fp64_g);
-    if (df64_ge(magnitude, df64_mul(_cse5, scale, _fp64_g))) {
+    magnitude = df64_floor(df64_add(df64_mul(df64_div(df64_add(magnitude, _licm0, _fp64_g), df64_add(widePower(exponent), _licm0, _fp64_g), _fp64_g), scale, _fp64_g), _cse3, _fp64_g), _fp64_g);
+    if (df64_ge(magnitude, df64_mul(_licm1, scale, _fp64_g))) {
       magnitude = scale;
       exponent = (exponent + 1);
     }
   } else {
     vec2 _gv1 = widePower(decimals);
-    magnitude = df64_floor(df64_add(df64_mul(magnitude, _gv1, _fp64_g), _cse4, _fp64_g), _fp64_g);
-    digits = (_f2i(floor((log2(max(df64_narrow(df64_floor(df64_div(df64_add(magnitude, _cse3, _fp64_g), df64_add(_gv1, _cse3, _fp64_g), _fp64_g), _fp64_g)), 1.0)) / _cse1))) + 1);
+    magnitude = df64_floor(df64_add(df64_mul(magnitude, _gv1, _fp64_g), _cse3, _fp64_g), _fp64_g);
+    vec2 integral = df64_floor(df64_div(df64_add(magnitude, _cse4, _fp64_g), df64_add(_gv1, _licm0, _fp64_g), _fp64_g), _fp64_g);
+    digits = max(1, (exponent + 1));
+    if (df64_ge(integral, widePower(digits))) {
+      digits += 1;
+    }
+    if (((digits > 1) && df64_lt(integral, widePower((digits - 1))))) {
+      digits -= 1;
+    }
   }
+  vec2 _cse5 = df64_add(_licm1, _licm0, _fp64_g);
   for (int i = 0; (i < 13); i = (i + 1)) {
-    if (((decimals > 0) && df64_lt(df64_abs(df64_sub(df64_add(magnitude, _cse3, _fp64_g), df64_mul(df64_floor(df64_div(df64_add(magnitude, _cse3, _fp64_g), df64_add(_cse5, _cse3, _fp64_g), _fp64_g), _fp64_g), _cse5, _fp64_g), _fp64_g)), _licm0))) {
-      magnitude = df64_div(magnitude, _cse5, _fp64_g);
+    if (((decimals > 0) && df64_lt(df64_abs(df64_sub(df64_add(magnitude, _licm0, _fp64_g), df64_mul(df64_floor(df64_div(df64_add(magnitude, _cse4, _fp64_g), _cse5, _fp64_g), _fp64_g), _licm1, _fp64_g), _fp64_g)), _licm2))) {
+      magnitude = df64_floor(df64_div(df64_add(magnitude, _cse4, _fp64_g), _cse5, _fp64_g), _fp64_g);
       decimals -= 1;
     }
   }
@@ -2398,7 +2455,7 @@ float wideWeight(vec2 value, vec3 levels, bool coarse) {
   float _fp64_g = texelFetch(_fp64, ivec2(0, 0), 0).x;
   float _cse1 = uintBitsToFloat(floatBitsToUint(0.0));
   vec2 _cse0 = vec2(_cse1, _cse1);
-  vec2 multiple = df64_div(df64_add(value, _cse0, _fp64_g), df64_add(vec2((coarse ? levels.x : levels.y), 0.0), _cse0, _fp64_g), _fp64_g);
+  vec2 multiple = df64_div(df64_add(value, _cse0, _fp64_g), df64_add(wideGridSpacing((coarse ? levels.x : levels.y)), _cse0, _fp64_g), _fp64_g);
   bool shared_ = df64_lt(df64_abs(df64_sub(df64_add(multiple, _cse0, _fp64_g), df64_floor(df64_add(multiple, vec2(0.5, 0.0), _fp64_g), _fp64_g), _fp64_g)), vec2(0.0010000000474974513, -4.7497450417210985e-11));
   return (shared_ ? 1.0 : (coarse ? (1.0 - levels.z) : levels.z));
 }
@@ -2505,8 +2562,8 @@ float groundField(vec2 uv, ViewRay ray, CoordinateUniforms_value u, vec3 xLevels
   float _cse6 = pixelWidth();
   for (int level = 0; (level < 2); level = (level + 1)) {
     vec2 spacing = ((level == 0) ? _licm0 : _licm1);
-    vec2 sx = vec2(spacing.x, 0.0);
-    vec2 sz = vec2(spacing.y, 0.0);
+    vec2 sx = wideGridSpacing(spacing.x);
+    vec2 sz = wideGridSpacing(spacing.y);
     vec2 _gv2 = df64_add(df64_div(_gv0, df64_add(sx, _cse4, _fp64_g), _fp64_g), _cse5, _fp64_g);
     vec2 _gv3 = df64_add(df64_div(_gv1, df64_add(sz, _cse4, _fp64_g), _fp64_g), _cse5, _fp64_g);
     vec2 phase = (vec2(df64_narrow(df64_fract(_gv2, _fp64_g)), df64_narrow(df64_fract(_gv3, _fp64_g))) - 0.5);
@@ -3222,6 +3279,13 @@ vec2 widePower(int exponent) {
   return ((exponent < 0) ? df64_div(df64_add(_cse0, _cse1, _fp64_g), df64_add(value, _cse1, _fp64_g), _fp64_g) : value);
 }
 
+vec2 wideGridSpacing(float step) {
+  float _fp64_g = texelFetch(_fp64, ivec2(0, 0), 0).x;
+  int exponent = _f2i(floor((log2(max(step, 1e-30)) / log2(10.0))));
+  float multiplier = roundEven((step / pow(10.0, float(exponent))));
+  return df64_mul(vec2(multiplier, 0.0), widePower(exponent), _fp64_g);
+}
+
 vec2 df64_floor(vec2 a, float _fp64_g) {
   float _v0 = floor(a.x);
   return ((_v0 == a.x) ? df64_quickTwoSum(_v0, floor(a.y), _fp64_g) : vec2(_v0, 0.0));
@@ -3233,12 +3297,12 @@ float df64_narrow(vec2 a) {
 
 int wideDigit(vec2 value, int exponent) {
   float _fp64_g = texelFetch(_fp64, ivec2(0, 0), 0).x;
-  float _cse2 = uintBitsToFloat(floatBitsToUint(0.0));
-  vec2 _cse0 = vec2(_cse2, _cse2);
-  vec2 integer = df64_floor(df64_div(df64_add(value, _cse0, _fp64_g), df64_add(widePower(exponent), _cse0, _fp64_g), _fp64_g), _fp64_g);
-  vec2 _cse1 = vec2(10.0, 0.0);
-  vec2 _lc0 = df64_add(integer, _cse0, _fp64_g);
-  return _f2i(df64_narrow(df64_sub(_lc0, df64_mul(df64_floor(df64_div(_lc0, df64_add(_cse1, _cse0, _fp64_g), _fp64_g), _fp64_g), _cse1, _fp64_g), _fp64_g)));
+  vec2 _cse0 = vec2(0.25, 0.0);
+  float _cse3 = uintBitsToFloat(floatBitsToUint(0.0));
+  vec2 _cse1 = vec2(_cse3, _cse3);
+  vec2 integer = df64_floor(df64_div(df64_add(value, _cse0, _fp64_g), df64_add(widePower(exponent), _cse1, _fp64_g), _fp64_g), _fp64_g);
+  vec2 _cse2 = vec2(10.0, 0.0);
+  return _f2i(df64_narrow(df64_sub(df64_add(integer, _cse1, _fp64_g), df64_mul(df64_floor(df64_div(df64_add(integer, _cse0, _fp64_g), df64_add(_cse2, _cse1, _fp64_g), _fp64_g), _fp64_g), _cse2, _fp64_g), _fp64_g)));
 }
 
 bool df64_lt(vec2 a, vec2 b) {
@@ -3259,10 +3323,13 @@ bool df64_ge(vec2 a, vec2 b) {
 
 WideNumberFormat wideNumberFormat(vec2 input_, float spacing) {
   float _fp64_g = texelFetch(_fp64, ivec2(0, 0), 0).x;
-  vec2 _licm0 = vec2(0.009999999776482582, 2.2351741291171123e-10);
+  float _cse6 = uintBitsToFloat(floatBitsToUint(0.0));
+  vec2 _licm0 = vec2(_cse6, _cse6);
+  vec2 _licm1 = vec2(10.0, 0.0);
+  vec2 _licm2 = vec2(0.009999999776482582, 2.2351741291171123e-10);
   vec2 _cse0 = vec2(0.0, 0.0);
-  float _cse6 = abs(spacing);
-  vec2 value = (df64_lt(df64_abs(input_), vec2((_cse6 * 0.0001), 0.0)) ? _cse0 : input_);
+  float _cse7 = abs(spacing);
+  vec2 value = (df64_lt(df64_abs(input_), vec2((_cse7 * 0.0001), 0.0)) ? _cse0 : input_);
   vec2 magnitude = df64_abs(value);
   float _cse1 = log2(10.0);
   int exponent = _f2i(floor((log2(max(df64_narrow(magnitude), 1e-30)) / _cse1)));
@@ -3274,29 +3341,38 @@ WideNumberFormat wideNumberFormat(vec2 input_, float spacing) {
     exponent += 1;
   }
   bool scientific = (_gv0 && ((exponent >= 12) || (exponent < -3)));
-  float _cse2 = log2(max(_cse6, 1e-30));
-  int decimals = _f2i(clamp(ceil(((-_cse2) / _cse1)), 0.0, 13.0));
+  float _cse2 = log2(max(_cse7, 1e-30));
+  int decimals = _f2i(clamp(ceil(((-_cse2) / _cse1)), 0.0, 12.0));
+  if ((scientific == false)) {
+    decimals = min(decimals, max(0, (12 - exponent)));
+  }
   int digits = 1;
-  float _cse7 = uintBitsToFloat(floatBitsToUint(0.0));
-  vec2 _cse3 = vec2(_cse7, _cse7);
-  vec2 _cse4 = vec2(0.5, 0.0);
-  vec2 _cse5 = vec2(10.0, 0.0);
+  vec2 _cse3 = vec2(0.5, 0.0);
+  vec2 _cse4 = vec2(0.25, 0.0);
   if (scientific) {
-    decimals = _f2i(clamp(ceil((float(exponent) - (_cse2 / _cse1))), 0.0, 13.0));
+    decimals = _f2i(clamp(ceil((float(exponent) - (_cse2 / _cse1))), 0.0, 12.0));
     vec2 scale = widePower(decimals);
-    magnitude = df64_floor(df64_add(df64_mul(df64_div(df64_add(magnitude, _cse3, _fp64_g), df64_add(widePower(exponent), _cse3, _fp64_g), _fp64_g), scale, _fp64_g), _cse4, _fp64_g), _fp64_g);
-    if (df64_ge(magnitude, df64_mul(_cse5, scale, _fp64_g))) {
+    magnitude = df64_floor(df64_add(df64_mul(df64_div(df64_add(magnitude, _licm0, _fp64_g), df64_add(widePower(exponent), _licm0, _fp64_g), _fp64_g), scale, _fp64_g), _cse3, _fp64_g), _fp64_g);
+    if (df64_ge(magnitude, df64_mul(_licm1, scale, _fp64_g))) {
       magnitude = scale;
       exponent = (exponent + 1);
     }
   } else {
     vec2 _gv1 = widePower(decimals);
-    magnitude = df64_floor(df64_add(df64_mul(magnitude, _gv1, _fp64_g), _cse4, _fp64_g), _fp64_g);
-    digits = (_f2i(floor((log2(max(df64_narrow(df64_floor(df64_div(df64_add(magnitude, _cse3, _fp64_g), df64_add(_gv1, _cse3, _fp64_g), _fp64_g), _fp64_g)), 1.0)) / _cse1))) + 1);
+    magnitude = df64_floor(df64_add(df64_mul(magnitude, _gv1, _fp64_g), _cse3, _fp64_g), _fp64_g);
+    vec2 integral = df64_floor(df64_div(df64_add(magnitude, _cse4, _fp64_g), df64_add(_gv1, _licm0, _fp64_g), _fp64_g), _fp64_g);
+    digits = max(1, (exponent + 1));
+    if (df64_ge(integral, widePower(digits))) {
+      digits += 1;
+    }
+    if (((digits > 1) && df64_lt(integral, widePower((digits - 1))))) {
+      digits -= 1;
+    }
   }
+  vec2 _cse5 = df64_add(_licm1, _licm0, _fp64_g);
   for (int i = 0; (i < 13); i = (i + 1)) {
-    if (((decimals > 0) && df64_lt(df64_abs(df64_sub(df64_add(magnitude, _cse3, _fp64_g), df64_mul(df64_floor(df64_div(df64_add(magnitude, _cse3, _fp64_g), df64_add(_cse5, _cse3, _fp64_g), _fp64_g), _fp64_g), _cse5, _fp64_g), _fp64_g)), _licm0))) {
-      magnitude = df64_div(magnitude, _cse5, _fp64_g);
+    if (((decimals > 0) && df64_lt(df64_abs(df64_sub(df64_add(magnitude, _licm0, _fp64_g), df64_mul(df64_floor(df64_div(df64_add(magnitude, _cse4, _fp64_g), _cse5, _fp64_g), _fp64_g), _licm1, _fp64_g), _fp64_g)), _licm2))) {
+      magnitude = df64_floor(df64_div(df64_add(magnitude, _cse4, _fp64_g), _cse5, _fp64_g), _fp64_g);
       decimals -= 1;
     }
   }
@@ -3421,7 +3497,7 @@ float wideWeight(vec2 value, vec3 levels, bool coarse) {
   float _fp64_g = texelFetch(_fp64, ivec2(0, 0), 0).x;
   float _cse1 = uintBitsToFloat(floatBitsToUint(0.0));
   vec2 _cse0 = vec2(_cse1, _cse1);
-  vec2 multiple = df64_div(df64_add(value, _cse0, _fp64_g), df64_add(vec2((coarse ? levels.x : levels.y), 0.0), _cse0, _fp64_g), _fp64_g);
+  vec2 multiple = df64_div(df64_add(value, _cse0, _fp64_g), df64_add(wideGridSpacing((coarse ? levels.x : levels.y)), _cse0, _fp64_g), _fp64_g);
   bool shared_ = df64_lt(df64_abs(df64_sub(df64_add(multiple, _cse0, _fp64_g), df64_floor(df64_add(multiple, vec2(0.5, 0.0), _fp64_g), _fp64_g), _fp64_g)), vec2(0.0010000000474974513, -4.7497450417210985e-11));
   return (shared_ ? 1.0 : (coarse ? (1.0 - levels.z) : levels.z));
 }
@@ -3528,8 +3604,8 @@ float groundField(vec2 uv, ViewRay ray, CoordinateUniforms_value u, vec3 xLevels
   float _cse6 = pixelWidth();
   for (int level = 0; (level < 2); level = (level + 1)) {
     vec2 spacing = ((level == 0) ? _licm0 : _licm1);
-    vec2 sx = vec2(spacing.x, 0.0);
-    vec2 sz = vec2(spacing.y, 0.0);
+    vec2 sx = wideGridSpacing(spacing.x);
+    vec2 sz = wideGridSpacing(spacing.y);
     vec2 _gv2 = df64_add(df64_div(_gv0, df64_add(sx, _cse4, _fp64_g), _fp64_g), _cse5, _fp64_g);
     vec2 _gv3 = df64_add(df64_div(_gv1, df64_add(sz, _cse4, _fp64_g), _fp64_g), _cse5, _fp64_g);
     vec2 phase = (vec2(df64_narrow(df64_fract(_gv2, _fp64_g)), df64_narrow(df64_fract(_gv3, _fp64_g))) - 0.5);
@@ -4264,6 +4340,13 @@ vec2 widePower(int exponent) {
   return ((exponent < 0) ? df64_div(df64_add(_cse0, _cse1, _fp64_g), df64_add(value, _cse1, _fp64_g), _fp64_g) : value);
 }
 
+vec2 wideGridSpacing(float step) {
+  float _fp64_g = texelFetch(_fp64, ivec2(0, 0), 0).x;
+  int exponent = _f2i(floor((log2(max(step, 1e-30)) / log2(10.0))));
+  float multiplier = roundEven((step / pow(10.0, float(exponent))));
+  return df64_mul(vec2(multiplier, 0.0), widePower(exponent), _fp64_g);
+}
+
 vec2 df64_floor(vec2 a, float _fp64_g) {
   float _v0 = floor(a.x);
   return ((_v0 == a.x) ? df64_quickTwoSum(_v0, floor(a.y), _fp64_g) : vec2(_v0, 0.0));
@@ -4275,12 +4358,12 @@ float df64_narrow(vec2 a) {
 
 int wideDigit(vec2 value, int exponent) {
   float _fp64_g = texelFetch(_fp64, ivec2(0, 0), 0).x;
-  float _cse2 = uintBitsToFloat(floatBitsToUint(0.0));
-  vec2 _cse0 = vec2(_cse2, _cse2);
-  vec2 integer = df64_floor(df64_div(df64_add(value, _cse0, _fp64_g), df64_add(widePower(exponent), _cse0, _fp64_g), _fp64_g), _fp64_g);
-  vec2 _cse1 = vec2(10.0, 0.0);
-  vec2 _lc0 = df64_add(integer, _cse0, _fp64_g);
-  return _f2i(df64_narrow(df64_sub(_lc0, df64_mul(df64_floor(df64_div(_lc0, df64_add(_cse1, _cse0, _fp64_g), _fp64_g), _fp64_g), _cse1, _fp64_g), _fp64_g)));
+  vec2 _cse0 = vec2(0.25, 0.0);
+  float _cse3 = uintBitsToFloat(floatBitsToUint(0.0));
+  vec2 _cse1 = vec2(_cse3, _cse3);
+  vec2 integer = df64_floor(df64_div(df64_add(value, _cse0, _fp64_g), df64_add(widePower(exponent), _cse1, _fp64_g), _fp64_g), _fp64_g);
+  vec2 _cse2 = vec2(10.0, 0.0);
+  return _f2i(df64_narrow(df64_sub(df64_add(integer, _cse1, _fp64_g), df64_mul(df64_floor(df64_div(df64_add(integer, _cse0, _fp64_g), df64_add(_cse2, _cse1, _fp64_g), _fp64_g), _fp64_g), _cse2, _fp64_g), _fp64_g)));
 }
 
 bool df64_lt(vec2 a, vec2 b) {
@@ -4301,10 +4384,13 @@ bool df64_ge(vec2 a, vec2 b) {
 
 WideNumberFormat wideNumberFormat(vec2 input_, float spacing) {
   float _fp64_g = texelFetch(_fp64, ivec2(0, 0), 0).x;
-  vec2 _licm0 = vec2(0.009999999776482582, 2.2351741291171123e-10);
+  float _cse6 = uintBitsToFloat(floatBitsToUint(0.0));
+  vec2 _licm0 = vec2(_cse6, _cse6);
+  vec2 _licm1 = vec2(10.0, 0.0);
+  vec2 _licm2 = vec2(0.009999999776482582, 2.2351741291171123e-10);
   vec2 _cse0 = vec2(0.0, 0.0);
-  float _cse6 = abs(spacing);
-  vec2 value = (df64_lt(df64_abs(input_), vec2((_cse6 * 0.0001), 0.0)) ? _cse0 : input_);
+  float _cse7 = abs(spacing);
+  vec2 value = (df64_lt(df64_abs(input_), vec2((_cse7 * 0.0001), 0.0)) ? _cse0 : input_);
   vec2 magnitude = df64_abs(value);
   float _cse1 = log2(10.0);
   int exponent = _f2i(floor((log2(max(df64_narrow(magnitude), 1e-30)) / _cse1)));
@@ -4316,29 +4402,38 @@ WideNumberFormat wideNumberFormat(vec2 input_, float spacing) {
     exponent += 1;
   }
   bool scientific = (_gv0 && ((exponent >= 12) || (exponent < -3)));
-  float _cse2 = log2(max(_cse6, 1e-30));
-  int decimals = _f2i(clamp(ceil(((-_cse2) / _cse1)), 0.0, 13.0));
+  float _cse2 = log2(max(_cse7, 1e-30));
+  int decimals = _f2i(clamp(ceil(((-_cse2) / _cse1)), 0.0, 12.0));
+  if ((scientific == false)) {
+    decimals = min(decimals, max(0, (12 - exponent)));
+  }
   int digits = 1;
-  float _cse7 = uintBitsToFloat(floatBitsToUint(0.0));
-  vec2 _cse3 = vec2(_cse7, _cse7);
-  vec2 _cse4 = vec2(0.5, 0.0);
-  vec2 _cse5 = vec2(10.0, 0.0);
+  vec2 _cse3 = vec2(0.5, 0.0);
+  vec2 _cse4 = vec2(0.25, 0.0);
   if (scientific) {
-    decimals = _f2i(clamp(ceil((float(exponent) - (_cse2 / _cse1))), 0.0, 13.0));
+    decimals = _f2i(clamp(ceil((float(exponent) - (_cse2 / _cse1))), 0.0, 12.0));
     vec2 scale = widePower(decimals);
-    magnitude = df64_floor(df64_add(df64_mul(df64_div(df64_add(magnitude, _cse3, _fp64_g), df64_add(widePower(exponent), _cse3, _fp64_g), _fp64_g), scale, _fp64_g), _cse4, _fp64_g), _fp64_g);
-    if (df64_ge(magnitude, df64_mul(_cse5, scale, _fp64_g))) {
+    magnitude = df64_floor(df64_add(df64_mul(df64_div(df64_add(magnitude, _licm0, _fp64_g), df64_add(widePower(exponent), _licm0, _fp64_g), _fp64_g), scale, _fp64_g), _cse3, _fp64_g), _fp64_g);
+    if (df64_ge(magnitude, df64_mul(_licm1, scale, _fp64_g))) {
       magnitude = scale;
       exponent = (exponent + 1);
     }
   } else {
     vec2 _gv1 = widePower(decimals);
-    magnitude = df64_floor(df64_add(df64_mul(magnitude, _gv1, _fp64_g), _cse4, _fp64_g), _fp64_g);
-    digits = (_f2i(floor((log2(max(df64_narrow(df64_floor(df64_div(df64_add(magnitude, _cse3, _fp64_g), df64_add(_gv1, _cse3, _fp64_g), _fp64_g), _fp64_g)), 1.0)) / _cse1))) + 1);
+    magnitude = df64_floor(df64_add(df64_mul(magnitude, _gv1, _fp64_g), _cse3, _fp64_g), _fp64_g);
+    vec2 integral = df64_floor(df64_div(df64_add(magnitude, _cse4, _fp64_g), df64_add(_gv1, _licm0, _fp64_g), _fp64_g), _fp64_g);
+    digits = max(1, (exponent + 1));
+    if (df64_ge(integral, widePower(digits))) {
+      digits += 1;
+    }
+    if (((digits > 1) && df64_lt(integral, widePower((digits - 1))))) {
+      digits -= 1;
+    }
   }
+  vec2 _cse5 = df64_add(_licm1, _licm0, _fp64_g);
   for (int i = 0; (i < 13); i = (i + 1)) {
-    if (((decimals > 0) && df64_lt(df64_abs(df64_sub(df64_add(magnitude, _cse3, _fp64_g), df64_mul(df64_floor(df64_div(df64_add(magnitude, _cse3, _fp64_g), df64_add(_cse5, _cse3, _fp64_g), _fp64_g), _fp64_g), _cse5, _fp64_g), _fp64_g)), _licm0))) {
-      magnitude = df64_div(magnitude, _cse5, _fp64_g);
+    if (((decimals > 0) && df64_lt(df64_abs(df64_sub(df64_add(magnitude, _licm0, _fp64_g), df64_mul(df64_floor(df64_div(df64_add(magnitude, _cse4, _fp64_g), _cse5, _fp64_g), _fp64_g), _licm1, _fp64_g), _fp64_g)), _licm2))) {
+      magnitude = df64_floor(df64_div(df64_add(magnitude, _cse4, _fp64_g), _cse5, _fp64_g), _fp64_g);
       decimals -= 1;
     }
   }
@@ -4463,7 +4558,7 @@ float wideWeight(vec2 value, vec3 levels, bool coarse) {
   float _fp64_g = texelFetch(_fp64, ivec2(0, 0), 0).x;
   float _cse1 = uintBitsToFloat(floatBitsToUint(0.0));
   vec2 _cse0 = vec2(_cse1, _cse1);
-  vec2 multiple = df64_div(df64_add(value, _cse0, _fp64_g), df64_add(vec2((coarse ? levels.x : levels.y), 0.0), _cse0, _fp64_g), _fp64_g);
+  vec2 multiple = df64_div(df64_add(value, _cse0, _fp64_g), df64_add(wideGridSpacing((coarse ? levels.x : levels.y)), _cse0, _fp64_g), _fp64_g);
   bool shared_ = df64_lt(df64_abs(df64_sub(df64_add(multiple, _cse0, _fp64_g), df64_floor(df64_add(multiple, vec2(0.5, 0.0), _fp64_g), _fp64_g), _fp64_g)), vec2(0.0010000000474974513, -4.7497450417210985e-11));
   return (shared_ ? 1.0 : (coarse ? (1.0 - levels.z) : levels.z));
 }
@@ -4570,8 +4665,8 @@ float groundField(vec2 uv, ViewRay ray, CoordinateUniforms_value u, vec3 xLevels
   float _cse6 = pixelWidth();
   for (int level = 0; (level < 2); level = (level + 1)) {
     vec2 spacing = ((level == 0) ? _licm0 : _licm1);
-    vec2 sx = vec2(spacing.x, 0.0);
-    vec2 sz = vec2(spacing.y, 0.0);
+    vec2 sx = wideGridSpacing(spacing.x);
+    vec2 sz = wideGridSpacing(spacing.y);
     vec2 _gv2 = df64_add(df64_div(_gv0, df64_add(sx, _cse4, _fp64_g), _fp64_g), _cse5, _fp64_g);
     vec2 _gv3 = df64_add(df64_div(_gv1, df64_add(sz, _cse4, _fp64_g), _fp64_g), _cse5, _fp64_g);
     vec2 phase = (vec2(df64_narrow(df64_fract(_gv2, _fp64_g)), df64_narrow(df64_fract(_gv3, _fp64_g))) - 0.5);
@@ -4700,4 +4795,4 @@ layout(location = 0) out vec4 _ret;
 void main() {
   _ret = labels(uv, true);
 }
-`,blocks:{u:"CoordinateUniforms",font:"FontUniforms"},samplers:{spatialLabels:null,glyphAtlas:null,_fp64:null}}}}};var m={color:{srcFactor:"src-alpha",dstFactor:"one-minus-src-alpha",operation:"add"},alpha:{srcFactor:"one",dstFactor:"one-minus-src-alpha",operation:"add"}},u=class{constructor(c,a,t,i){this.owner=c;this.format=a;this.surface=t;this.limit=i;this.program=c.runtime.load(this.pack)}pack=d;program;labels;backdrop;overlay;cache;async initialize(){let c=["buildSpatialLabels","drawBackdrop",this.surface?"drawSurfaceLabels":"drawLabels"],a=await Promise.allSettled(c.map((i,o)=>this.owner.run(()=>this.program.render({vertex:"fullscreen",fragment:i,targets:[o===0?"rgba32uint":o===2?{format:this.format,blend:m}:this.format]})))),t=a.find(i=>i.status==="rejected");if(t?.status==="rejected")throw t.reason;[this.labels,this.backdrop,this.overlay]=a.map(i=>i.value)}draw(c,a,t,i,o="clear"){let s=new Set(this.pack.entries.filter(l=>l.name===a.vertex||l.name===a.fragment).flatMap(l=>(l.bindings??[]).map(e=>e.name)));c.pass({color:[{target:i,load:o}]},l=>l.draw(a,Object.fromEntries(Object.entries(t).filter(([e])=>s.has(e))),{count:3}))}prepare(c,a,t,i){let o=a.u,s=o.resolution,l=Math.min(this.limit,Math.ceil(Math.hypot(...s)*t)+2),e=i?void 0:this.cache;e||(e={texture:this.owner.runtime.texture({size:[l,38],format:"rgba32uint"}),key:""},i||(this.cache=e)),e.texture.width!==l&&(e.texture.resize(l,38),e.key="");let r=o.curveTiles,n={...o,model:o.axesModel,inverseModel:o.inverseAxesModel,curveTiles:[r[0],r[1],r[2],l]},_={u:n,glyphAtlas:a.bindings.glyphAtlas,font:{pixelRatio:t},spatialLabels:e.texture},v=JSON.stringify([n.resolution,n.axesOrigin,n.plotSpan,n.plotPan,n.rotationBasis,n.cameraLens,n.view3d,n.appearance,n.labelStyle,n.decorations,n.decorationOpacity,n.sceneOpacity,n.model,n.inverseModel,t]);try{e.key!==v&&(this.draw(c,this.labels,_,e.texture),e.key=v)}catch(f){throw i?e.texture.destroy():e.key="",f}return{bindings:_,finish(f){i?e.texture.destroy():f||(e.key="")}}}background(c,a,t){this.draw(c,this.backdrop,a.bindings,t)}foreground(c,a,t){this.draw(c,this.overlay,a.bindings,t,"load")}dispose(){this.cache?.texture.destroy(),this.cache=void 0}};export{u as CoordinatesRenderer};
+`,blocks:{u:"CoordinateUniforms",font:"FontUniforms"},samplers:{spatialLabels:null,glyphAtlas:null,_fp64:null}}}}};var m={color:{srcFactor:"src-alpha",dstFactor:"one-minus-src-alpha",operation:"add"},alpha:{srcFactor:"one",dstFactor:"one-minus-src-alpha",operation:"add"}},u=class{constructor(l,a,t,i){this.owner=l;this.format=a;this.surface=t;this.limit=i;this.program=l.runtime.load(this.pack)}pack=d;program;labels;backdrop;overlay;cache;async initialize(){let l=["buildSpatialLabels","drawBackdrop",this.surface?"drawSurfaceLabels":"drawLabels"],a=await Promise.allSettled(l.map((i,o)=>this.owner.run(()=>this.program.render({vertex:"fullscreen",fragment:i,targets:[o===0?"rgba32uint":o===2?{format:this.format,blend:m}:this.format]})))),t=a.find(i=>i.status==="rejected");if(t?.status==="rejected")throw t.reason;[this.labels,this.backdrop,this.overlay]=a.map(i=>i.value)}draw(l,a,t,i,o="clear"){let s=new Set(this.pack.entries.filter(c=>c.name===a.vertex||c.name===a.fragment).flatMap(c=>(c.bindings??[]).map(e=>e.name)));l.pass({color:[{target:i,load:o}]},c=>c.draw(a,Object.fromEntries(Object.entries(t).filter(([e])=>s.has(e))),{count:3}))}prepare(l,a,t,i){let o=a.u,s=o.resolution,c=Math.min(this.limit,Math.ceil(Math.hypot(...s)*t)+2),e=i?void 0:this.cache;e||(e={texture:this.owner.runtime.texture({size:[c,38],format:"rgba32uint"}),key:""},i||(this.cache=e)),e.texture.width!==c&&(e.texture.resize(c,38),e.key="");let r=o.curveTiles,n={...o,model:o.axesModel,inverseModel:o.inverseAxesModel,curveTiles:[r[0],r[1],r[2],c]},_={u:n,glyphAtlas:a.bindings.glyphAtlas,font:{pixelRatio:t},spatialLabels:e.texture},v=JSON.stringify([n.resolution,n.axesOrigin,n.plotSpan,n.plotPan,n.rotationBasis,n.cameraLens,n.view3d,n.appearance,n.labelStyle,n.decorations,n.decorationOpacity,n.sceneOpacity,n.model,n.inverseModel,t]);try{e.key!==v&&(this.draw(l,this.labels,_,e.texture),e.key=v)}catch(f){throw i?e.texture.destroy():e.key="",f}return{bindings:_,finish(f){i?e.texture.destroy():f||(e.key="")}}}background(l,a,t){this.draw(l,this.backdrop,a.bindings,t)}foreground(l,a,t){this.draw(l,this.overlay,a.bindings,t,"load")}dispose(){this.cache?.texture.destroy(),this.cache=void 0}};export{u as CoordinatesRenderer};

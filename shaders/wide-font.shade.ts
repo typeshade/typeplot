@@ -7,9 +7,18 @@ function widePower(exponent: i32): f64 {
   for (let i = 0; i < min(abs(exponent), 32); i++) value *= 10;
   return exponent < 0 ? 1 / value : value;
 }
+/** Reconstruct a decimal lattice step before multiplying by a large index.
+ * Widening an already-rounded f32 0.1 would preserve the wrong world phase. */
+export function wideGridSpacing(step: f32): f64 {
+  const exponent = i32(floor(log2(max(step,1e-30))/log2(10)));
+  const multiplier = round(step/pow(10,f32(exponent)));
+  return f64(multiplier)*widePower(exponent);
+}
 function wideDigit(value: f64, exponent: i32): i32 {
-  const integer = floor(value / widePower(exponent));
-  return i32(f32(integer - floor(integer / 10) * 10));
+  // The mantissa is an integer. A quarter-unit guard keeps decimal division
+  // away from an exact-integer floor boundary without changing any digit.
+  const integer = floor((value + 0.25) / widePower(exponent));
+  return i32(f32(integer - floor((integer + 0.25) / 10) * 10));
 }
 class WideNumberFormat {
   value: f64;
@@ -28,20 +37,24 @@ function wideNumberFormat(input: f64, spacing: f32): WideNumberFormat {
   if (magnitude > 0 && magnitude < widePower(exponent)) exponent -= 1;
   if (magnitude >= widePower(exponent + 1)) exponent += 1;
   const scientific = magnitude > 0 && (exponent >= 12 || exponent < -3);
-  let decimals = i32(clamp(ceil(-log2(max(abs(spacing), 1e-30)) / log2(10)), 0, 13));
+  let decimals = i32(clamp(ceil(-log2(max(abs(spacing), 1e-30)) / log2(10)), 0, 12));
+  if (!scientific) decimals = min(decimals,max(0,12-exponent));
   let digits: i32 = 1;
   if (scientific) {
-    decimals = i32(clamp(ceil(f32(exponent) - log2(max(abs(spacing), 1e-30)) / log2(10)), 0, 13));
+    decimals = i32(clamp(ceil(f32(exponent) - log2(max(abs(spacing), 1e-30)) / log2(10)), 0, 12));
     const scale = widePower(decimals);
     magnitude = floor(magnitude / widePower(exponent) * scale + 0.5);
     if (magnitude >= 10 * scale) { magnitude = scale; exponent = exponent + 1; }
   } else {
     magnitude = floor(magnitude * widePower(decimals) + 0.5);
-    digits = i32(floor(log2(max(f32(floor(magnitude / widePower(decimals))), 1)) / log2(10))) + 1;
+    const integral = floor((magnitude + 0.25) / widePower(decimals));
+    digits = max(1,exponent+1);
+    if(integral >= widePower(digits)) digits += 1;
+    if(digits>1 && integral < widePower(digits-1)) digits -= 1;
   }
   for (let i = 0; i < 13; i++) {
-    if (decimals > 0 && abs(magnitude - floor(magnitude / 10) * 10) < 0.01) {
-      magnitude /= 10;
+    if (decimals > 0 && abs(magnitude - floor((magnitude + 0.25) / 10) * 10) < 0.01) {
+      magnitude = floor((magnitude + 0.25) / 10);
       decimals -= 1;
     }
   }
