@@ -169,12 +169,32 @@ export function createPlotInteraction(
     );
   }
 
+  function focusPlaneOffset(x: number, y: number, span: Pair) {
+    const rect = viewport();
+    const scale = target.lens[1] * Math.tan(target.lens[0] / 2);
+    const cameraX =
+      x * (Math.max(rect.width, 1) / Math.max(rect.height, 1)) * scale;
+    const cameraY = y * scale;
+    const [yaw, pitch] = target.rotation;
+    const depth = -cameraY * Math.sin(pitch);
+    return [
+      (cameraX * Math.cos(yaw) - depth * Math.sin(yaw)) * span[0],
+      cameraY * Math.cos(pitch) * span[1],
+      (cameraX * Math.sin(yaw) + depth * Math.cos(yaw)) * Math.max(...span),
+    ];
+  }
+
   function zoom(
     factor: number,
     anchor: Pair = [0.5, 0.5],
     immediate = false,
     notify = true,
   ) {
+    const pointerX = anchor[0] - 0.5 - target.pan[0];
+    const pointerY = anchor[1] - 0.5 - target.pan[1];
+    const offset = threeD
+      ? focusPlaneOffset(pointerX, pointerY, target.span)
+      : null;
     for (let axis = 0; axis < 2; axis++) {
       const before = target.span[axis];
       const after = clamp(
@@ -182,19 +202,21 @@ export function createPlotInteraction(
         original.span[axis] * 1e-3,
         original.span[axis] * 1e3,
       );
-      if (threeD) {
-        // Hold the focus plane under the pointer. Perspective parallax remains
-        // depth-dependent, while orthographic anchoring is exact.
-        const cursor = anchor[axis] - 0.5;
-        target.pan[axis] =
-          cursor - ((cursor - target.pan[axis]) * before) / after;
-      } else {
+      if (!threeD) {
         target.center[axis] = limitCenter(
           axis,
           target.center[axis] + (anchor[axis] - 0.5) * (before - after),
         );
       }
       target.span[axis] = after;
+    }
+    if (offset) {
+      // Move the world focus instead of accumulating a screen-space lens shift.
+      // Orthographic anchoring is exact; perspective anchors the focus plane.
+      const next = focusPlaneOffset(pointerX, pointerY, target.span);
+      target.center[0] += offset[0] - next[0];
+      target.center[1] += offset[1] - next[1];
+      target.focusZ[0] += offset[2] - next[2];
     }
     if (notify) change(immediate);
   }
@@ -353,8 +375,10 @@ export function createPlotInteraction(
   function dragBy(dx: number, dy: number, pan: boolean) {
     if (threeD && !pan) rotate(dx * Math.PI, dy * Math.PI);
     else if (threeD) {
-      target.pan[0] += dx;
-      target.pan[1] -= dy;
+      const offset = focusPlaneOffset(-dx, dy, target.span);
+      target.center[0] += offset[0];
+      target.center[1] += offset[1];
+      target.focusZ[0] += offset[2];
     } else {
       target.center[0] = limitCenter(0, target.center[0] - dx * target.span[0]);
       target.center[1] = limitCenter(1, target.center[1] + dy * target.span[1]);

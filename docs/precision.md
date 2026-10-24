@@ -6,6 +6,9 @@ object's affine translation. GPU projection, distance fields, ray searches and A
 on the resulting local coordinates. Scene transforms remain world transforms in the public API;
 picking reconstructs local mathematical and world coordinates from the captured frame origin.
 The origin is recomputed from absolute state, rather than accumulated through repeated pans.
+Spatial pointer and two-finger panning move the world camera focus in its view plane.
+Pointer-anchored zoom moves that focus as it changes the visible span, keeping the relative
+origin near the inspected content. The explicit camera `pan` option remains a lens shift.
 
 A large coordinate lattice needs more than moving its visual origin. Its world-anchored
 `floor`/`fract` phase must also survive the subtraction. The extended coordinate renderer
