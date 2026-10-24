@@ -390,6 +390,9 @@ These entry points let a host reuse an existing device and frame lifecycle.
 
 ## Development
 
+See the [rendering architecture](docs/architecture.md) for TypeShade capabilities,
+module boundaries, resource ownership and the structural migration.
+
 ```sh
 npm ci
 npm run build

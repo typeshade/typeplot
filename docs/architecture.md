@@ -76,6 +76,38 @@ Device time budgets size chunks of compute work. They do not automatically bound
 an arbitrary fragment ray search. Similarly, emulated f64 in TypeShade does not make the
 current f32 camera uniforms and observation packing double precision.
 
+## Observed capability checks
+
+A separate build-time TypeShade probe at the pinned revision was run on Chromium's
+SwiftShader WebGPU implementation during this migration. It used named shader sources,
+`typeshade({ fuse: true })`, a Runtime and a Device borrowing that Runtime:
+
+| Operation                                                                             | Observed result                                                                                                      |
+| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `add → mul → relu`, with same-index reads and scratch intermediates                   | FuseReport: one dispatch, one submission; `[3, 12, 15, 18]`.                                                         |
+| Insert a paired-index sum reading `t[i ^ 1]`                                          | FuseReport: two dispatches, one submission; the report names the cross-index dependency. Result: `[15, 15, 33, 33]`. |
+| Render two overlapping full-screen layers with a depth attachment, nearer layer first | The later, farther red layer fails the depth test; the output stays green.                                           |
+| Request equivalent render states twice from one Program                               | The resolved pipeline handle is reused.                                                                              |
+| Compute `(x + 1) - x` for a resident f64 value of `1e12`                              | The emulated float flavor returns `1`.                                                                               |
+
+These are capability observations, not performance benchmarks. The probe is separate from
+the library's render path: it does not add compute work to plots or change their precision.
+
+## Current implementation map
+
+- `index.ts` is the public facade; `procedural-plot.ts` hosts compiled function programs.
+- `render/snapshot.ts` describes coherent figure frames. Stable artist keys retain resident
+  inputs across snapshots; small settings are copied while bulk observations retain identity.
+- `render/queue.ts` coalesces requests for Figure, procedural Plot and Timeline. Animation
+  sampling keeps its own wall clock; TypeShade still owns command submission.
+- `render/lifetime.ts` drains accepted asynchronous work and refuses new work after close.
+- `render/session.ts` owns plot handles, borrows the WebGPU device for resident data, and
+  disposes resources after preparation/readback settles. Canvas detachment stays synchronous
+  so retirement cannot detach a replacement plot on the same canvas.
+
+The website synchronizer follows relative declaration dependencies from browser entry points.
+Adding an internal module therefore does not require another hand-maintained declaration list.
+
 ## Compatibility and subsequent work
 
 This migration uses existing data artists, callbacks, cameras, picking, PNG and timelines as

@@ -1,4 +1,4 @@
-import { createPlot } from "./index.js";
+import { createPlot } from "./procedural-plot.js";
 import type { NumericData } from "./data.js";
 import type { Plot, PlotOptions, PlotProgram } from "./types.js";
 export interface GridSurfaceOptions extends Omit<

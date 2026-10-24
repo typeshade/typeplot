@@ -37,8 +37,7 @@ export declare class Timeline {
     private epoch;
     private started;
     private status;
-    private renderDirty;
-    private rendering;
+    private readonly renders;
     private complete;
     private completion;
     private completionPending;

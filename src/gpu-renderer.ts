@@ -1,10 +1,13 @@
-import { GpuCompletion } from "./gpu-completion.js";
+import { RenderSession } from "./render/session.js";
+import type {
+  FigureSnapshot as Scene,
+  AxesSnapshot as RenderAxes,
+  SeriesSnapshot as RenderSeries,
+  FieldSnapshot as RenderField,
+} from "./render/snapshot.js";
 import {
   createRuntime,
-  resident,
   type Resident,
-  createDevice,
-  type Device,
   type Runtime,
   type Pack,
   type Texture,
@@ -13,53 +16,11 @@ import {
 } from "typeshade/runtime";
 import manifest from "../.build/data-program.json";
 import { loadGlyphAtlas, prepareGlyphAtlas } from "./font.js";
-import type {
-  AxesOptions,
-  SeriesOptions,
-  SeriesKind,
-  SeriesData,
-} from "./data.js";
-import type { FieldStyle, FieldKind } from "./field.js";
+import type { SeriesOptions, SeriesData } from "./data.js";
 import { COLOR_MAPS } from "./surface.js";
-import type { Annotation, AnnotationOptions } from "./annotation.js";
+import type { AnnotationOptions } from "./annotation.js";
 
 export type Backend = "webgpu" | "webgl2";
-export interface RenderSeries {
-  readonly kind: SeriesKind;
-  readonly data: SeriesData;
-  readonly style: Required<SeriesOptions> & { width: number };
-  readonly edges?: readonly number[];
-}
-export interface RenderAxes {
-  readonly bounds: {
-    x: readonly [number, number];
-    y: readonly [number, number];
-  };
-  readonly settings: AxesOptions;
-  readonly gridOpacity: number;
-  readonly series: readonly RenderSeries[];
-  readonly fields: readonly RenderField[];
-  readonly annotations: readonly Pick<
-    Annotation,
-    "value" | "position" | "target" | "options"
-  >[];
-  readonly focused: boolean;
-}
-export interface RenderField {
-  readonly values: readonly number[];
-  readonly options: FieldStyle;
-  readonly mode: FieldKind;
-}
-export interface Scene {
-  readonly width: number;
-  readonly height: number;
-  readonly rows: number;
-  readonly cols: number;
-  readonly title?: string;
-  readonly titleHeight?: number;
-  readonly background?: string;
-  readonly axes: readonly RenderAxes[];
-}
 const BLEND = {
   color: {
     srcFactor: "src-alpha",
@@ -180,11 +141,9 @@ export class GpuRenderer {
   private fullGlyphs = false;
   private glyphUpgrade?: Promise<void>;
   private program!: ReturnType<Runtime["load"]>;
-  private pipelines = new Map<string, Promise<RenderPipeline>>();
-  private device?: Device;
-  private samples = new Map<RenderSeries, SampleResource>();
+  private samples = new Map<object, SampleResource>();
   private fields = new Map<
-    RenderField,
+    object,
     {
       values: readonly number[];
       levels: string;
@@ -192,18 +151,16 @@ export class GpuRenderer {
     }
   >();
   private destroyed = false;
-  private readonly completion: GpuCompletion;
+  private readonly session: RenderSession;
   private constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly runtime: Runtime,
     private target: GPUCanvasContext | WebGL2RenderingContext | undefined,
     private readonly format: string,
   ) {
-    this.completion = new GpuCompletion(
+    this.session = new RenderSession(
+      runtime,
       canvas.ownerDocument.defaultView!,
-      runtime.tier === "webgl2"
-        ? (target as WebGL2RenderingContext)
-        : undefined,
     );
   }
   get backend(): Backend {
@@ -265,15 +222,17 @@ export class GpuRenderer {
   }
   private async initialize(glyphSource: Promise<Blob>): Promise<void> {
     this.program = this.runtime.load(manifest as Pack);
-    const glyphs = loadGlyphAtlas(
-      this.runtime,
-      false,
-      undefined,
-      () => !this.destroyed,
-      glyphSource,
-    ).then((value) => {
-      this.glyphs = value;
-    });
+    const glyphs = this.session.run(() =>
+      loadGlyphAtlas(
+        this.runtime,
+        false,
+        undefined,
+        () => !this.destroyed,
+        glyphSource,
+      ).then((value) => {
+        this.glyphs = value;
+      }),
+    );
     // Let an already-fetched atlas start its off-thread bitmap decoder before
     // invoking a backend whose pipeline creation may run synchronously.
     await Promise.resolve();
@@ -290,11 +249,7 @@ export class GpuRenderer {
         this.text = value;
       }),
       glyphs,
-      this.backend === "webgpu"
-        ? createDevice({ runtime: this.runtime }).then((value) => {
-            this.device = value;
-          })
-        : Promise.resolve(),
+      this.session.prepareData(),
     ]);
     const failed = results.find((result) => result.status === "rejected");
     if (failed?.status === "rejected") throw failed.reason;
@@ -305,19 +260,15 @@ export class GpuRenderer {
     vertex = "surfaceVertex",
     integer = false,
   ): Promise<RenderPipeline> {
-    let pending = this.pipelines.get(fragment);
-    if (!pending) {
-      pending = this.program.render({
+    return this.session.run(() =>
+      this.program.render({
         vertex,
         fragment,
         targets: integer
           ? ["rgba32uint"]
           : [{ format: this.format, blend: BLEND }],
-      });
-      this.pipelines.set(fragment, pending);
-      void pending.catch(() => this.pipelines.delete(fragment));
-    }
-    return pending;
+      }),
+    );
   }
 
   private async prepareScene(scene: Scene): Promise<void> {
@@ -379,12 +330,15 @@ export class GpuRenderer {
       );
     if (!needsFull) return;
     if (!this.glyphUpgrade) {
-      this.glyphUpgrade = loadGlyphAtlas(
-        this.runtime,
-        true,
-        this.glyphs,
-        () => !this.destroyed,
-      )
+      this.glyphUpgrade = this.session
+        .run(() =>
+          loadGlyphAtlas(
+            this.runtime,
+            true,
+            this.glyphs,
+            () => !this.destroyed,
+          ),
+        )
         .then(() => {
           this.fullGlyphs = true;
         })
@@ -428,7 +382,7 @@ export class GpuRenderer {
   }
   /** Input data stays resident. Camera changes update uniforms, not path geometry. */
   private sampleResource(series: RenderSeries): SampleResource {
-    const previous = this.samples.get(series);
+    const previous = this.samples.get(series.key);
     if (
       previous?.data === series.data &&
       previous.parameter === series.style.parameter
@@ -488,7 +442,7 @@ export class GpuRenderer {
     }
     const resource = {
       data: series.data,
-      points: this.device ? this.device.array(packed) : resident(packed),
+      points: this.session.array(packed),
       count: x.length,
       ordered,
       period: Math.max((upper - lower) / 60, 1e-20),
@@ -497,21 +451,24 @@ export class GpuRenderer {
       xParameter: useX,
       bounds: Number.isFinite(minX) ? [minX, minY, maxX, maxY] : [0, 0, 0, 0],
     };
-    this.samples.set(series, resource);
+    this.samples.set(series.key, resource);
     return resource;
   }
   private release(points: Resident<Float32Array>): void {
-    if (this.device) this.device.release(points);
-    else points.destroy();
+    this.session.release(points);
   }
   private prune(scene: Scene): void {
-    const live = new Set(scene.axes.flatMap((axes) => axes.series));
+    const live = new Set(
+      scene.axes.flatMap((axes) => axes.series.map((series) => series.key)),
+    );
     for (const [series, resource] of this.samples)
       if (!live.has(series)) {
         this.release(resource.points);
         this.samples.delete(series);
       }
-    const liveFields = new Set(scene.axes.flatMap((axes) => axes.fields));
+    const liveFields = new Set(
+      scene.axes.flatMap((axes) => axes.fields.map((field) => field.key)),
+    );
     for (const [field, resource] of this.fields)
       if (!liveFields.has(field)) {
         this.release(resource.points);
@@ -520,7 +477,7 @@ export class GpuRenderer {
   }
   private fieldResource(field: RenderField): Resident<Float32Array> {
     const levels = JSON.stringify(field.options.levels),
-      previous = this.fields.get(field);
+      previous = this.fields.get(field.key);
     if (previous?.values === field.values && previous.levels === levels)
       return previous.points;
     if (previous) this.release(previous.points);
@@ -529,8 +486,8 @@ export class GpuRenderer {
     );
     array.set(field.values);
     array.set(field.options.levels, field.values.length);
-    const points = this.device ? this.device.array(array) : resident(array);
-    this.fields.set(field, { values: field.values, levels, points });
+    const points = this.session.array(array);
+    this.fields.set(field.key, { values: field.values, levels, points });
     return points;
   }
   private drawField(
@@ -650,7 +607,17 @@ export class GpuRenderer {
       if (style.marker !== "none") draw(1);
     }
   }
-  async pick(
+  pick(
+    scene: Scene,
+    axesIndex: number,
+    position: readonly [number, number],
+    radius: number,
+  ): Promise<{ series: number; index: number } | null> {
+    return this.session.run(() =>
+      this.pickFrame(scene, axesIndex, position, radius),
+    );
+  }
+  private async pickFrame(
     scene: Scene,
     axesIndex: number,
     position: readonly [number, number],
@@ -969,7 +936,11 @@ export class GpuRenderer {
       text(u, scene.title, scene.width / 2, 8, 16, 0.5);
     }
   }
-  async render(scene: Scene, ratio: number): Promise<void> {
+  render(scene: Scene, ratio: number): Promise<void> {
+    if (this.destroyed) return Promise.resolve();
+    return this.session.run(() => this.renderFrame(scene, ratio));
+  }
+  private async renderFrame(scene: Scene, ratio: number): Promise<void> {
     if (this.destroyed) return;
     await this.prepareScene(scene);
     if (this.destroyed) return;
@@ -990,10 +961,15 @@ export class GpuRenderer {
       },
       (pass) => this.scene(pass, scene, width, height),
     );
-    await frame.submit();
-    await this.completion.wait();
+    await this.session.present(frame);
   }
-  async pixels(
+  pixels(
+    scene: Scene,
+    ratio: number,
+  ): Promise<{ bytes: Uint8Array; width: number; height: number }> {
+    return this.session.run(() => this.readPixels(scene, ratio));
+  }
+  private async readPixels(
     scene: Scene,
     ratio: number,
   ): Promise<{ bytes: Uint8Array; width: number; height: number }> {
@@ -1045,16 +1021,17 @@ export class GpuRenderer {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
-    this.completion.destroy();
-    this.glyphs?.destroy();
-    for (const resource of this.samples.values()) this.release(resource.points);
-    this.samples.clear();
-    for (const resource of this.fields.values()) this.release(resource.points);
-    this.fields.clear();
+    // Detach synchronously so a replacement plot can reuse the canvas immediately.
     if (this.backend === "webgpu")
       (this.target as GPUCanvasContext | undefined)?.unconfigure();
-    if (this.device)
-      void this.device.dispose().then(() => this.runtime.destroy());
-    else this.runtime.destroy();
+    void this.session
+      .retire(() => {
+        this.glyphs?.destroy();
+        this.samples.clear();
+        this.fields.clear();
+      })
+      .catch((error) =>
+        console.error("[typeplot] Resource disposal failed", error),
+      );
   }
 }

@@ -1,3 +1,4 @@
+import { RenderQueue } from "./render/queue.js";
 export type Easing =
   | "linear"
   | "smooth"
@@ -117,12 +118,12 @@ export class Timeline {
   private epoch = 0;
   private started = 0;
   private status: AnimationState = "idle";
-  private renderDirty = false;
-  private rendering: Promise<void> | null = null;
+  private readonly renders: RenderQueue;
   private complete!: (value: "finished" | "cancelled") => void;
   private completion!: Promise<"finished" | "cancelled">;
   private completionPending = true;
   constructor(private readonly options: TimelineOptions = {}) {
+    this.renders = new RenderQueue(() => this.options.render?.());
     const repeat = options.repeat ?? 0;
     if (repeat !== Infinity && (!Number.isSafeInteger(repeat) || repeat < 0))
       throw new RangeError("repeat must be a nonnegative integer or Infinity.");
@@ -192,17 +193,7 @@ export class Timeline {
         clip.sample(clip.duration ? clamp((local - at) / clip.duration) : 1);
   }
   private render(): Promise<void> {
-    this.renderDirty = true;
-    if (!this.rendering)
-      this.rendering = (async () => {
-        while (this.renderDirty) {
-          this.renderDirty = false;
-          await this.options.render?.();
-        }
-      })().finally(() => {
-        this.rendering = null;
-      });
-    return this.rendering;
+    return this.renders.flush();
   }
   async seek(seconds: number): Promise<void> {
     duration(seconds);

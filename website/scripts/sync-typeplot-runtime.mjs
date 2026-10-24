@@ -10,9 +10,18 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const target = resolve(root, "website/src/vendor/typeplot");
 await mkdir(target, { recursive: true });
+async function removeDeclarations(directory) {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = resolve(directory, entry.name);
+    if (entry.isDirectory()) await removeDeclarations(path);
+    else if (entry.name.endsWith(".d.ts")) await rm(path);
+  }
+}
+await removeDeclarations(target);
 for (const name of await readdir(target))
   if (
     /^chunk-.*\.js(?:\.LEGAL\.txt)?$/.test(name) ||
@@ -27,37 +36,55 @@ const shared = (await readdir(resolve(root, "dist")))
 const assets = (await readdir(resolve(root, "dist/assets")))
   .map((name) => `assets/${name}`)
   .sort();
+// Follow the declaration graph so internal module boundaries remain resolvable.
+// This script runs at build time; the TypeScript compiler never enters browser code.
+const dist = resolve(root, "dist");
+const declarations = new Set();
+async function declaration(name) {
+  if (declarations.has(name)) return;
+  declarations.add(name);
+  const source = await readFile(resolve(dist, name), "utf8");
+  for (const { fileName } of ts.preProcessFile(source).importedFiles) {
+    if (!fileName.startsWith(".")) continue;
+    const dependency = resolve(
+      dirname(resolve(dist, name)),
+      fileName.replace(/\.js$/, ".d.ts"),
+    );
+    if (!dependency.startsWith(dist + "/"))
+      throw new Error("Declaration escaped the runtime output.");
+    await declaration(dependency.slice(dist.length + 1));
+  }
+}
+for (const name of ["index.d.ts", "data.d.ts", "resources.d.ts"])
+  await declaration(name);
 const runtimeFiles = [
   "browser-load.json",
   "index.js",
   "data.js",
   "resources.js",
-  "resources.d.ts",
-  "index.d.ts",
-  "data.d.ts",
-  "types.d.ts",
-  "controls.d.ts",
-  "gpu-renderer.d.ts",
-  "animation.d.ts",
-  "annotation.d.ts",
-  "field.d.ts",
-  "grid-surface.d.ts",
-  "transform.d.ts",
+  ...[...declarations].sort(),
   ...shared,
   ...assets,
 ];
 for (const name of runtimeFiles) {
+  await mkdir(dirname(resolve(target, name)), { recursive: true });
   await copyFile(resolve(root, "dist", name), resolve(target, name));
 }
 for (const name of await readdir(resolve(root, "dist"))) {
   if (/^(index|data|resources|chunk-.*)\.js\.LEGAL\.txt$/.test(name))
     await copyFile(resolve(root, "dist", name), resolve(target, name));
 }
-for (const name of ["curve", "helix", "sine", "surface"])
+const programs = ["curve", "helix", "sine", "surface"];
+for (const name of programs) {
   await copyFile(
     resolve(root, "examples/generated", `${name}.js`),
     resolve(target, `${name}.js`),
   );
+  await writeFile(
+    resolve(target, `${name}.d.ts`),
+    'import type { PlotProgram } from "./types.js";\ndeclare const program: PlotProgram;\nexport default program;\n',
+  );
+}
 for (const name of ["LICENSE", "NOTICE"])
   await copyFile(resolve(root, name), resolve(target, name));
 await copyFile(
@@ -68,10 +95,7 @@ await copyFile(
 const hash = createHash("sha256");
 for (const name of [
   ...runtimeFiles,
-  "curve.js",
-  "helix.js",
-  "sine.js",
-  "surface.js",
+  ...programs.flatMap((name) => [`${name}.js`, `${name}.d.ts`]),
 ])
   hash
     .update(name)
