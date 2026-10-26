@@ -1138,6 +1138,12 @@ function scalarParameter(pixel: vec2, u: PlotUniforms): vec2 {
   return vec2((ray.origin + ray.direction * depth).x, u.view3d != u32(2) || depth >= 0.101 ? 1 : 0);
 }
 
+/** A derivative step of about an eighth of a pixel in parameter units, and never
+ * below f32 resolution at t. A fixed step is pixels wide once the view zooms in. */
+function scalarStep(t: f32, u: PlotUniforms): f32 {
+  return max(abs(t) * 1e-6, max(u.plotSpan.x, u.plotSpan.y) / max(u.resolution.x, 1) * 0.125);
+}
+
 /** Distance from an actual projected callback point, with its dash gap. The
  * derivative is one-sided beside an omitted domain. */
 function scalarPointDistance(sample: ScalarCurve, pixel: vec2, t: f32, h: f32, u: PlotUniforms): f32 {
@@ -1153,12 +1159,30 @@ function scalarPointDistance(sample: ScalarCurve, pixel: vec2, t: f32, h: f32, u
   return length(vec2(length(center - pixel), patternDistance(t, rate, u)));
 }
 
-/** Bisect a side change of the projected callback between two valid parameters. */
+/** Bisect a valid/omitted parameter pair to the last valid parameter: an actual
+ * endpoint of the callback. It runs to f32 resolution, since a steep branch
+ * (x^0.25 at zero) climbs several pixels between parameters 1e-6 apart. */
+function scalarDomainEdge(sample: ScalarCurve, inside: f32, outside: f32, u: PlotUniforms): f32 {
+  let a = inside, b = outside;
+  for (let step = 0; step < 64; step++) {
+    if (abs(b - a) <= max(abs(a), abs(b)) * 1.2e-7) break;
+    const t = (a + b) * 0.5;
+    const value = sample(t);
+    if (present(value) && inFront(vec3(t, value, 0), u)) a = t;
+    else b = t;
+  }
+  return a;
+}
+
+/** Bisect a side change of the projected callback between two valid parameters,
+ * until the crossing is within an eighth of a pixel. A fixed step count leaves a
+ * bracket several pixels tall on a steep branch beside a domain edge. */
 function scalarCrossing(sample: ScalarCurve, pixel: vec2, normal: vec2, low: f32, high: f32, lowSide: f32, u: PlotUniforms): f32 {
   let a = low, b = high, side = lowSide;
-  for (let step = 0; step < 8; step++) {
+  for (let step = 0; step < 48; step++) {
     const t = (a + b) * 0.5;
     const signed = dot(project(vec3(t, sample(t), 0), u) - pixel, normal);
+    if (abs(signed) <= pixelWidth() * 0.125) return t;
     if (side * signed <= 0) b = t;
     else { a = t; side = signed; }
   }
@@ -1171,7 +1195,7 @@ function scalarCrossing(sample: ScalarCurve, pixel: vec2, normal: vec2, low: f32
  * omitted domain (\`edge\`), the last valid parameter is an actual endpoint, and a
  * steep branch can cross the pixel between that endpoint and the next sample. */
 function scalarFootprintDistance(sample: ScalarCurve, pixel: vec2, seed: f32, u: PlotUniforms, edge: bool): f32 {
-  const h = max(abs(seed) * 1e-6, 0.0001);
+  const h = scalarStep(seed, u);
   const direction = project(vec3(seed + h, 0, 0), u) - project(vec3(seed - h, 0, 0), u);
   const along = normalize(direction + vec2(1e-20));
   const normal = vec2(-along.y, along.x);
@@ -1201,13 +1225,7 @@ function scalarFootprintDistance(sample: ScalarCurve, pixel: vec2, seed: f32, u:
     if (previousValid && nextValid && previousSide * nextSide <= 0) {
       crossing = scalarCrossing(sample, pixel, normal, previous, next, previousSide, u);
     } else if (edge && previousValid != nextValid) {
-      let inside = previousValid ? previous : next, outside = previousValid ? next : previous;
-      for (let step = 0; step < 12; step++) {
-        const t = (inside + outside) * 0.5;
-        const value = sample(t);
-        if (present(value) && inFront(vec3(t, value, 0), u)) inside = t;
-        else outside = t;
-      }
+      const inside = scalarDomainEdge(sample, previousValid ? previous : next, previousValid ? next : previous, u);
       best = min(best, scalarPointDistance(sample, pixel, inside, h, u));
       const valid = previousValid ? previous : next;
       const endpointSide = dot(project(vec3(inside, sample(inside), 0), u) - pixel, normal);
@@ -1249,7 +1267,7 @@ function projectedScalarDistance(sample: ScalarCurve, pixel: vec2, u: PlotUnifor
     }
     steps++;
     const point = vec3(t, value, 0);
-    const h = max(abs(t) * 1e-6, 0.0001);
+    const h = scalarStep(t, u);
     const before = sample(t - h), after = sample(t + h);
     const at = project(point, u);
     const validBefore = present(before) && inFront(vec3(t - h, before, 0), u);
