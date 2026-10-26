@@ -199,6 +199,10 @@ function projector(cpu: Cpu, view: View, u: ReturnType<typeof uniforms>) {
   return ([x, y]: Vec2) => cpu.fns.project([x, y, 0], u) as Vec2;
 }
 
+/** A truth segment. `isolated` marks a single f32-representable point whose
+ * neighbours are more than a chord apart: f32 cannot draw the curve there. */
+type Segment = [Vec2, Vec2, boolean];
+
 /** A dense polyline of the exact curve near the cells. Intervals subdivide until
  * their projected chord is below 0.2 px, and each domain edge is bisected to an
  * actual endpoint, so the truth never joins across an omitted domain. */
@@ -208,10 +212,11 @@ function truthSegments(
   low: number,
   high: number,
   box: [number, number, number, number],
-): [Vec2, Vec2][] {
-  const segments: [Vec2, Vec2][] = [];
-  const valid = (t: number) => Number.isFinite(callback.exact(t));
-  const at = (t: number) => project([t, callback.exact(t)]);
+): Segment[] {
+  const segments: Segment[] = [];
+  const quantize = precision === "f32" ? Math.fround : (t: number) => t;
+  const valid = (t: number) => Number.isFinite(callback.exact(quantize(t)));
+  const at = (t: number) => project([quantize(t), callback.exact(quantize(t))]);
   const near = (a: Vec2, b: Vec2) => {
     const pad = Math.hypot(b[0] - a[0], b[1] - a[1]) + curveWidth + 2;
     return (
@@ -221,13 +226,24 @@ function truthSegments(
       Math.min(a[1], b[1]) <= box[3] + pad
     );
   };
+  // In f32 the shader can only evaluate f32 parameters, so the truth may not be
+  // finer: an edge bisects to the last valid f32 parameter, and parameters
+  // closer than one f32 step are separate points, never joined by a chord.
   const edge = (inside: number, outside: number) => {
-    for (let i = 0; i < 80; i++) {
-      const mid = (inside + outside) / 2;
+    for (let i = 0; i < 200; i++) {
+      const mid = quantize((inside + outside) / 2);
+      if (mid === inside || mid === outside) break;
       if (valid(mid)) inside = mid;
       else outside = mid;
     }
     return inside;
+  };
+  const separate = (a: number, b: number) => {
+    if (precision !== "f32") return false;
+    const fa = Math.fround(a),
+      fb = Math.fround(b),
+      mid = Math.fround((fa + fb) / 2);
+    return mid === fa || mid === fb;
   };
   const refine = (a: number, b: number, depth: number) => {
     const va = valid(a),
@@ -248,8 +264,12 @@ function truthSegments(
     const pa = at(a),
       pb = at(b);
     if (!near(pa, pb)) return;
+    if (separate(a, b)) {
+      segments.push([pa, pa, true], [pb, pb, true]);
+      return;
+    }
     if (Math.hypot(pb[0] - pa[0], pb[1] - pa[1]) < 0.2 || depth > 60) {
-      segments.push([pa, pb]);
+      segments.push([pa, pb, false]);
       return;
     }
     const mid = (a + b) / 2;
@@ -266,7 +286,7 @@ function truthSegments(
   return segments;
 }
 
-function segmentDistance(p: Vec2, [a, b]: [Vec2, Vec2]) {
+function segmentDistance(p: Vec2, [a, b]: Segment) {
   const dx = b[0] - a[0],
     dy = b[1] - a[1],
     length = dx * dx + dy * dy;
@@ -291,6 +311,8 @@ interface Result {
   readonly name: string;
   readonly missing: number;
   readonly spurious: number;
+  /** Pixels covered only by isolated f32 points: reported, not failed. */
+  readonly floor: number;
   readonly worst: number;
   readonly map: string;
 }
@@ -341,22 +363,29 @@ function check(
   const dy: Vec2 = [0, span[1] / (resolution[1] * pixelRatio)];
   let missing = 0,
     spurious = 0,
+    floor = 0,
     worst = 0;
   const rows: string[] = [];
   for (let j = cells - 1; j >= 0; j--) {
     let row = "";
     for (let i = 0; i < cells; i++) {
       let truth = 0,
+        curve = 0,
         shader = 0;
       for (const [ox, oy] of offsets) {
         const pixel: Vec2 = [
           (x0 + i + 0.5 + ox) * width,
           (y0 + j + 0.5 + oy) * width,
         ];
-        let d = Infinity;
-        for (const segment of segments)
-          d = Math.min(d, segmentDistance(pixel, segment));
+        let d = Infinity,
+          dCurve = Infinity;
+        for (const segment of segments) {
+          const distance = segmentDistance(pixel, segment);
+          d = Math.min(d, distance);
+          if (!segment[2]) dCurve = Math.min(dCurve, distance);
+        }
         truth += coverage(d, curveWidth) / 4;
+        curve += coverage(dCurve, curveWidth) / 4;
         if (field2D) {
           const p: Vec2 = [
             focus[0] + (pixel[0] / resolution[0] - 0.5) * span[0],
@@ -369,19 +398,23 @@ function check(
         }
       }
       worst = Math.max(worst, Math.abs(shader - truth));
-      const miss = truth > 0.5 && shader < 0.25;
+      const miss = curve > 0.5 && shader < 0.25;
       const extra = truth < 0.05 && shader > 0.5;
+      const limited = !miss && truth > 0.5 && shader < 0.25;
       if (miss) missing++;
       if (extra) spurious++;
+      if (limited) floor++;
       row += miss
         ? "!"
-        : extra
-          ? "x"
-          : shader > 0.5
-            ? "#"
-            : truth > 0.5
-              ? "+"
-              : ".";
+        : limited
+          ? "~"
+          : extra
+            ? "x"
+            : shader > 0.5
+              ? "#"
+              : truth > 0.5
+                ? "+"
+                : ".";
     }
     rows.push(row);
   }
@@ -389,6 +422,7 @@ function check(
     name: `${callback.name} ${view.name} ${zoom}x at (${focus.map((v) => +v.toFixed(3)).join(", ")})`,
     missing,
     spurious,
+    floor,
     worst,
     map: rows.join("\n"),
   };
@@ -407,14 +441,14 @@ for (const callback of callbacks) {
         cases++;
         const ok = result.missing === 0 && result.spurious === 0;
         console.log(
-          `${ok ? "ok  " : "FAIL"} ${result.name}: missing ${result.missing}, spurious ${result.spurious}, max |coverage error| ${result.worst.toFixed(2)}`,
+          `${ok ? "ok  " : "FAIL"} ${result.name}: missing ${result.missing}, spurious ${result.spurious}, f32 floor ${result.floor}, max |coverage error| ${result.worst.toFixed(2)}`,
         );
         if (!ok) failures.push(result);
       }
 }
 for (const failure of failures)
   console.log(
-    `\n${failure.name} ("!" missing, "x" spurious, "#" drawn, "+" truth only)\n${failure.map}`,
+    `\n${failure.name} ("!" missing, "x" spurious, "~" f32 floor, "#" drawn, "+" truth only)\n${failure.map}`,
   );
 console.log(
   `\n${cases - failures.length}/${cases} cases passed (${precision}) in ${((performance.now() - started) / 1000).toFixed(1)} s.`,
