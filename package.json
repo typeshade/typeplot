@@ -66,6 +66,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "check": "tsc --noEmit",
+    "check:coverage": "node scripts/coverage.mjs",
     "format": "prettier --write src scripts examples docs README.md package.json tsconfig.json",
     "examples": "node scripts/examples.mjs",
     "pack": "npm pack",
