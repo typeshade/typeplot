@@ -956,6 +956,24 @@ function refineTrajectory(trajectory: SpaceCurve, pixel: vec2, candidate: vec4, 
   return refineTrajectoryHit(trajectory, pixel, candidate, u, jumps).x;
 }
 
+/** A curve point the plot can draw: present, and in front of the perspective near plane. */
+function drawablePoint(p: vec3, u: PlotUniforms): bool { return presentPoint(p) && inFront(p, u); }
+
+/** Bisect a drawable/undrawable parameter pair to the last drawable parameter: an
+ * actual domain endpoint or near-plane crossing. It runs to the arithmetic's
+ * resolution; a fixed count leaves the endpoint pixels away on a steep branch. */
+function curveEdge(trajectory: SpaceCurve, inside: f32, outside: f32, u: PlotUniforms): f32 {
+  let a = inside, b = outside;
+  for (let step = 0; step < 64; step++) {
+    const t = (a + b) * 0.5;
+    // No representable parameter is left between the two.
+    if (t == a || t == b) break;
+    if (drawablePoint(trajectory(t), u)) a = t;
+    else b = t;
+  }
+  return a;
+}
+
 /** Projected chord distance is a search bound only; it never supplies coverage. */
 function intervalChordDistance(pixel: vec2, a: vec2, b: vec2): f32 {
   const delta = b - a;
@@ -967,19 +985,20 @@ function intervalChordDistance(pixel: vec2, a: vec2, b: vec2): f32 {
 function intervalHit(trajectory: SpaceCurve, pixel: vec2, low: f32, high: f32, u: PlotUniforms, jumps: bool): vec2 {
   let start = low, end = high;
   let a = trajectory(start), b = trajectory(end);
-  const frontA = inFront(a, u), frontB = inFront(b, u);
-  if (!(presentPoint(a) && presentPoint(b)) || (!frontA && !frontB)) return vec2(1e20, low);
-  if (frontA != frontB) {
-    // Clip the parameter against actual callback evaluations, rather than a
-    // world-space chord which can put the seed behind the near plane.
-    let left = start, right = end;
-    for (let i = 0; i < 12; i++) {
-      const middle = (left + right) * 0.5;
-      if (inFront(trajectory(middle), u) == frontA) left = middle;
-      else right = middle;
-    }
-    if (frontA) end = left;
-    else start = right;
+  // Clip the parameter against actual callback evaluations, never a world-space
+  // chord: an omitted domain or the near plane ends the drawable stretch at an
+  // actual endpoint, and a stretch may lie inside an interval with neither end.
+  const drawA = drawablePoint(a, u), drawB = drawablePoint(b, u);
+  if (!drawA && !drawB) {
+    const middle = (low + high) * 0.5;
+    if (!drawablePoint(trajectory(middle), u)) return vec2(1e20, low);
+    start = curveEdge(trajectory, middle, low, u);
+    end = curveEdge(trajectory, middle, high, u);
+  } else if (drawA != drawB) {
+    if (drawA) end = curveEdge(trajectory, start, end, u);
+    else start = curveEdge(trajectory, end, start, u);
+  }
+  if (!drawA || !drawB) {
     a = trajectory(start);
     b = trajectory(end);
   }
@@ -1000,11 +1019,39 @@ function intervalHit(trajectory: SpaceCurve, pixel: vec2, low: f32, high: f32, u
   const first = length(pixel - pa), last = length(pixel - pb);
   if (first < refined.x) refined = vec2(first, start);
   if (last < refined.x) refined = vec2(last, end);
+  // A chord seed misplaces Newton on a branch that is steep in its parameter
+  // (sqrt beside its edge spans thousands of pixels in one interval). Where the
+  // stroke is not fully covered, bisect the closest-point condition instead.
+  if (refined.x > u.appearance.z * 0.5 - pixelWidth() * 0.5) {
+    const foot = curveFoot(trajectory, pixel, start, end, u);
+    if (foot.x < refined.x) refined = foot;
+  }
   return continuous ? refined : vec2(1e20, start);
 }
 
-function intervalDistance(trajectory: SpaceCurve, pixel: vec2, low: f32, high: f32, u: PlotUniforms, jumps: bool): f32 {
-  return intervalHit(trajectory, pixel, low, high, u, jumps).x;
+/** The sign of (P(t) - pixel) . P'(t) in screen space, with the derivative kept
+ * inside [low, high]. The closest projected point is where it changes sign. */
+function footSide(trajectory: SpaceCurve, pixel: vec2, t: f32, low: f32, high: f32, u: PlotUniforms): f32 {
+  const step = max(max(abs(t) * 1e-6, (high - low) * 1e-6), 1e-30);
+  const before = project(trajectory(max(low, t - step)), u), after = project(trajectory(min(high, t + step)), u);
+  return dot(project(trajectory(t), u) - pixel, after - before);
+}
+
+/** Bisect the closest-point condition between two drawable parameters. It needs
+ * no seed, so a singular parameterisation cannot misplace it. */
+function curveFoot(trajectory: SpaceCurve, pixel: vec2, low: f32, high: f32, u: PlotUniforms): vec2 {
+  let a = low, b = high;
+  if (!(footSide(trajectory, pixel, a, low, high, u) < 0 && footSide(trajectory, pixel, b, low, high, u) > 0)) return vec2(1e20, low);
+  for (let step = 0; step < 48; step++) {
+    const t = (a + b) * 0.5;
+    if (t == a || t == b) break;
+    if (footSide(trajectory, pixel, t, low, high, u) < 0) a = t;
+    else b = t;
+    if (length(project(trajectory(b), u) - project(trajectory(a), u)) < pixelWidth() * 0.125) break;
+  }
+  const t = (a + b) * 0.5;
+  const point = trajectory(t);
+  return drawablePoint(point, u) ? vec2(length(project(point, u) - pixel), t) : vec2(1e20, low);
 }
 
 /** Compactify unbounded parameter space instead of clipping to a finite domain.
@@ -1027,16 +1074,23 @@ function parameterFocus(trajectory: SpaceCurve, u: PlotUniforms): vec2 {
   let error = presentPoint(initial) && inFront(initial,u) ? dot(project(initial,u)-pixel,project(initial,u)-pixel) : 1e30;
   // Search long-baseline trends before a local tangent. Periodic transverse
   // motion must not trap the visible window near the original parameter zero.
+  // A seed on a domain edge (sqrt at zero) has only one side: the baseline then
+  // runs from the seed itself, so the search still leaves the edge.
+  const seed = u.parameterFocusSeed;
+  const seedPoint = trajectory(seed);
   for (let level = 0; level < 8; level++) {
     const radius = pow(4,f32(level));
-    const a = trajectory(u.parameterFocusSeed-radius), b = trajectory(u.parameterFocusSeed+radius);
-    if (presentPoint(a) && presentPoint(b)) {
-      const middle = (a+b)*0.5, direction = (b-a)/(2*radius);
+    let lowT = seed - radius, highT = seed + radius;
+    let a = trajectory(lowT), b = trajectory(highT);
+    if (!presentPoint(a) && presentPoint(b) && presentPoint(seedPoint)) { lowT = seed; a = seedPoint; }
+    if (presentPoint(a) && !presentPoint(b) && presentPoint(seedPoint)) { highT = seed; b = seedPoint; }
+    if (presentPoint(a) && presentPoint(b) && highT > lowT) {
+      const middle = (a+b)*0.5, direction = (b-a)/(highT-lowT);
       const originH = homogeneous(middle,u,false), directionH = homogeneous(direction,u,true);
       const slope = directionH.xy - pixel*directionH.z;
       const norm = dot(slope,slope);
       if (norm > 1e-20) {
-        const candidate = u.parameterFocusSeed + dot(pixel*originH.z-originH.xy,slope)/norm;
+        const candidate = (lowT+highT)*0.5 + dot(pixel*originH.z-originH.xy,slope)/norm;
         const point = trajectory(candidate);
         if (present(candidate) && presentPoint(point) && inFront(point,u)) {
           const delta = project(point,u)-pixel, nextError = dot(delta,delta);
@@ -1049,9 +1103,15 @@ function parameterFocus(trajectory: SpaceCurve, u: PlotUniforms): vec2 {
   for (let i = 0; i < 4; i++) {
     const h = max(abs(center)*1e-5,0.001);
     const at = trajectory(center), left = trajectory(center-h), right = trajectory(center+h);
-    const normalized = cameraVector((right-left)/(2*h),u);
+    // Beside an omitted domain the derivative is one-sided; the sentinel is no sample.
+    if (!presentPoint(at)) break;
+    const leftValid = presentPoint(left), rightValid = presentPoint(right);
+    if (!leftValid && !rightValid) break;
+    const before = leftValid ? left : at, after = rightValid ? right : at;
+    const step = (leftValid ? h : 0) + (rightValid ? h : 0);
+    const normalized = cameraVector((after-before)/step,u);
     speed = max(length(normalized),1e-10);
-    const tangent = (project(right,u)-project(left,u))/(2*h);
+    const tangent = (project(after,u)-project(before,u))/step;
     const correction = clamp(dot(pixel-project(at,u),tangent)/max(dot(tangent,tangent),1e-20),-32/speed,32/speed);
     let candidate = center+correction;
     for (let backtrack=0;backtrack<4;backtrack++) {
@@ -1072,19 +1132,37 @@ function parameterFocus(trajectory: SpaceCurve, u: PlotUniforms): vec2 {
  * Bounds use sampled bending as a numerical guard, not a proof for an arbitrary
  * callback; quality still determines how much detail the search can resolve. */
 function trajectoryDistance(trajectory: SpaceCurve, pixel: vec2, u: PlotUniforms, bounds: vec2, jumps: bool): f32 {
+  return referenceCurveHit(trajectory, pixel, u, bounds, jumps, false).x;
+}
+
+/** The reference search over the whole parameter domain, shared by display,
+ * scene layers and queries. It returns vec4(distance, parameter, depth,
+ * coverage); depthOrder chooses the nearest covering hit, as scene layers need,
+ * instead of the nearest distance. */
+function referenceCurveHit(trajectory: SpaceCurve, pixel: vec2, u: PlotUniforms, bounds: vec2, jumps: bool, depthOrder: bool): vec4 {
   const requested = f32(u.curveQuality.x);
   const range = bounds.y - bounds.x;
   const unbounded = u.parameterMode != u32(0);
   const focus = unbounded ? parameterFocus(trajectory, u) : vec2(0, 1);
   const count = i32(min(512, unbounded || u.curvePattern.x == 0 ? requested : max(requested, ceil(range / u.curvePattern.y * 4))));
   const stepSize = range / f32(count);
-  let distance = 1e20;
-  for (let i = 0; i < count; i++) {
+  // The focus follows the curve point nearest the screen centre, which can lie
+  // on another fold than the visible one (a helix seen down its axis). An
+  // unbounded search therefore adds an exploration partition centred on the
+  // seed that spans the seed-to-focus distance, as the cached search does.
+  const extra = unbounded ? max(count / 4, 8) : 0;
+  const exploreScale = max(abs(focus.x - u.parameterFocusSeed), focus.y);
+  let best = vec4(1e20, 0, 1e20, 0);
+  for (let i = 0; i < count + extra; i++) {
     let low = bounds.x + f32(i) * stepSize;
     let high = min(bounds.y, low + stepSize);
-    if (unbounded) {
+    if (unbounded && i < count) {
       low = parameterAt(-1 + 2 * f32(i) / f32(count), focus.y, focus.x, u);
       high = parameterAt(-1 + 2 * f32(i + 1) / f32(count), focus.y, focus.x, u);
+    } else if (unbounded) {
+      const j = i - count;
+      low = parameterAt(-1 + 2 * f32(j) / f32(extra), exploreScale, u.parameterFocusSeed, u);
+      high = parameterAt(-1 + 2 * f32(j + 1) / f32(extra), exploreScale, u.parameterFocusSeed, u);
     }
     let t = (low + high) * 0.5;
     if (u.curvePattern.x != 0) {
@@ -1096,23 +1174,30 @@ function trajectoryDistance(trajectory: SpaceCurve, pixel: vec2, u: PlotUniforms
     }
     if (high >= low) {
       const a = trajectory(low), middle = trajectory(t), b = trajectory(high);
-      const finite = presentPoint(a) && presentPoint(middle) && presentPoint(b);
-      if (finite) {
-        let possible = true;
-        if (inFront(a, u) && inFront(middle, u) && inFront(b, u)) {
-          const pa = project(a, u), pm = project(middle, u), pb = project(b, u);
-          const bending = intervalChordDistance(pm, pa, pb);
-          const guard = bending * 4 + u.appearance.z * 0.5 + pixelWidth() * 2;
-          possible = min(intervalChordDistance(pixel, pa, pm), intervalChordDistance(pixel, pm, pb)) <= guard;
-        }
-        if (possible) {
-          distance = min(distance, intervalDistance(trajectory, pixel, low, t, u, jumps));
-          distance = min(distance, intervalDistance(trajectory, pixel, t, high, u, jumps));
+      // The chord guard needs three drawable points; an interval that meets an
+      // omitted domain or the near plane is always searched, and intervalHit
+      // clips it to its actual endpoints.
+      let possible = true;
+      if (drawablePoint(a, u) && drawablePoint(middle, u) && drawablePoint(b, u)) {
+        const pa = project(a, u), pm = project(middle, u), pb = project(b, u);
+        const bending = intervalChordDistance(pm, pa, pb);
+        const guard = bending * 4 + u.appearance.z * 0.5 + pixelWidth() * 2;
+        possible = min(intervalChordDistance(pixel, pa, pm), intervalChordDistance(pixel, pm, pb)) <= guard;
+      }
+      if (possible) {
+        const first = intervalHit(trajectory, pixel, low, t, u, jumps);
+        const second = intervalHit(trajectory, pixel, t, high, u, jumps);
+        if (depthOrder) {
+          best = chooseSceneHit(trajectory, first, best, u);
+          best = chooseSceneHit(trajectory, second, best, u);
+        } else {
+          if (first.x < best.x) best = vec4(first, 0, 0);
+          if (second.x < best.x) best = vec4(second, 0, 0);
         }
       }
     }
   }
-  return distance;
+  return best;
 }
 
 function spatialProbe(trajectory: SpaceCurve, u: PlotUniforms): vec3 {
@@ -1757,47 +1842,7 @@ function cachedSceneHit(trajectory: SpaceCurve, pixel: vec2, u: PlotUniforms): v
 }
 
 function referenceSceneHit(trajectory: SpaceCurve, pixel: vec2, u: PlotUniforms, bounds: vec2, jumps: bool): vec4 {
-  const requested = f32(u.curveQuality.x);
-  const range = bounds.y - bounds.x;
-  const unbounded = u.parameterMode != u32(0);
-  const focus = unbounded ? parameterFocus(trajectory, u) : vec2(0, 1);
-  const count = i32(min(512, unbounded || u.curvePattern.x == 0 ? requested : max(requested, ceil(range / u.curvePattern.y * 4))));
-  const stepSize = range / f32(count);
-  let best = vec4(1e20, 0, 1e20, 0);
-  for (let i = 0; i < count; i++) {
-    let low = bounds.x + f32(i) * stepSize;
-    let high = min(bounds.y, low + stepSize);
-    if (unbounded) {
-      low = parameterAt(-1 + 2 * f32(i) / f32(count), focus.y, focus.x, u);
-      high = parameterAt(-1 + 2 * f32(i + 1) / f32(count), focus.y, focus.x, u);
-    }
-    let t = (low + high) * 0.5;
-    if (u.curvePattern.x != 0) {
-      const period = u.curvePattern.y;
-      const center = (floor((t + u.curvePattern.z) / period) + 0.5) * period - u.curvePattern.z;
-      low = max(low, center - period * u.curvePattern.w * 0.5);
-      high = min(high, center + period * u.curvePattern.w * 0.5);
-      t = (low + high) * 0.5;
-    }
-    if (high >= low) {
-      const a = trajectory(low), middle = trajectory(t), b = trajectory(high);
-      const finite = presentPoint(a) && presentPoint(middle) && presentPoint(b);
-      if (finite) {
-        let possible = true;
-        if (inFront(a, u) && inFront(middle, u) && inFront(b, u)) {
-          const pa = project(a, u), pm = project(middle, u), pb = project(b, u);
-          const bending = intervalChordDistance(pm, pa, pb);
-          const guard = bending * 4 + u.appearance.z * 0.5 + pixelWidth() * 2;
-          possible = min(intervalChordDistance(pixel, pa, pm), intervalChordDistance(pixel, pm, pb)) <= guard;
-        }
-        if (possible) {
-          best = chooseSceneHit(trajectory, intervalHit(trajectory, pixel, low, t, u, jumps), best, u);
-          best = chooseSceneHit(trajectory, intervalHit(trajectory, pixel, t, high, u, jumps), best, u);
-        }
-      }
-    }
-  }
-  return best;
+  return referenceCurveHit(trajectory, pixel, u, bounds, jumps, true);
 }
 
 export function sceneCurve(trajectory: SpaceCurve, uv: vec2, u: PlotUniforms): SceneLayer {
