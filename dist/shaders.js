@@ -684,10 +684,39 @@ function scalarParameter(pixel: vec2, u: PlotUniforms): vec2 {
   return vec2((ray.origin + ray.direction * depth).x, u.view3d != u32(2) || depth >= 0.101 ? 1 : 0);
 }
 
+/** Distance from an actual projected callback point, with its dash gap. The
+ * derivative is one-sided beside an omitted domain. */
+function scalarPointDistance(sample: ScalarCurve, pixel: vec2, t: f32, h: f32, u: PlotUniforms): f32 {
+  const value = sample(t), at = vec3(t, value, 0);
+  if (!(abs(value) < 1e18 && inFront(at, u))) return 1e20;
+  const center = project(at, u);
+  const beforeValue = sample(t - h), afterValue = sample(t + h);
+  const beforeValid = abs(beforeValue) < 1e18, afterValid = abs(afterValue) < 1e18;
+  const before = beforeValid ? project(vec3(t - h, beforeValue, 0), u) : center;
+  const after = afterValid ? project(vec3(t + h, afterValue, 0), u) : center;
+  const step = beforeValid && afterValid ? 2 * h : h;
+  const rate = pixelWidth() * step / max(length(after - before), 1e-20);
+  return length(vec2(length(center - pixel), patternDistance(t, rate, u)));
+}
+
+/** Bisect a side change of the projected callback between two valid parameters. */
+function scalarCrossing(sample: ScalarCurve, pixel: vec2, normal: vec2, low: f32, high: f32, lowSide: f32, u: PlotUniforms): f32 {
+  let a = low, b = high, side = lowSide;
+  for (let step = 0; step < 8; step++) {
+    const t = (a + b) * 0.5;
+    const signed = dot(project(vec3(t, sample(t), 0), u) - pixel, normal);
+    if (side * signed <= 0) b = t;
+    else { a = t; side = signed; }
+  }
+  return (a + b) * 0.5;
+}
+
 /** Bracket within the pixel's inverse-projected interval. This resolves dense
  * crossings without trusting a single tangent, and accepts only actual projected
- * callback points. No chord supplies coverage, including at the horizon. */
-function scalarFootprintDistance(sample: ScalarCurve, pixel: vec2, seed: f32, u: PlotUniforms): f32 {
+ * callback points. No chord supplies coverage, including at the horizon. Near an
+ * omitted domain (\`edge\`), the last valid parameter is an actual endpoint, and a
+ * steep branch can cross the pixel between that endpoint and the next sample. */
+function scalarFootprintDistance(sample: ScalarCurve, pixel: vec2, seed: f32, u: PlotUniforms, edge: bool): f32 {
   const h = max(abs(seed) * 1e-6, 0.0001);
   const direction = project(vec3(seed + h, 0, 0), u) - project(vec3(seed - h, 0, 0), u);
   const along = normalize(direction + vec2(1e-20));
@@ -697,11 +726,14 @@ function scalarFootprintDistance(sample: ScalarCurve, pixel: vec2, seed: f32, u:
   const last = scalarParameter(pixel + along * radius, u);
   if (first.y <= 0 || last.y <= 0) return 1e20;
   const low = min(first.x, last.x), high = max(first.x, last.x);
-  // Well-resolved areas already have an accurate local closest-point query.
-  if (high - low < u.plotSpan.x / max(u.resolution.x, 1) * 4) return 1e20;
+  // Well-resolved areas already have an accurate local closest-point query,
+  // except where that query stopped at an omitted domain.
+  if (!edge && high - low < u.plotSpan.x / max(u.resolution.x, 1) * 4) return 1e20;
   let best = 1e20;
   let previous = low;
   let previousValue = sample(previous);
+  // A footprint wholly inside the omitted domain has no endpoint to find.
+  if (edge && abs(previousValue) >= 1e18 && abs(sample(high)) >= 1e18) return 1e20;
   let previousWorld = vec3(previous, previousValue, 0);
   let previousSide = dot(project(previousWorld, u) - pixel, normal);
   for (let i = 1; i <= 8; i++) {
@@ -709,25 +741,26 @@ function scalarFootprintDistance(sample: ScalarCurve, pixel: vec2, seed: f32, u:
     const nextValue = sample(next);
     const nextWorld = vec3(next, nextValue, 0);
     const nextSide = dot(project(nextWorld, u) - pixel, normal);
-    if (abs(previousValue) < 1e18 && abs(nextValue) < 1e18 && inFront(previousWorld, u) && inFront(nextWorld, u) && previousSide * nextSide <= 0) {
-      let a = previous, b = next, side = previousSide;
-      for (let step = 0; step < 8; step++) {
-        const t = (a + b) * 0.5;
-        const at = vec3(t, sample(t), 0);
-        const signed = dot(project(at, u) - pixel, normal);
-        if (side * signed <= 0) b = t;
-        else { a = t; side = signed; }
+    const previousValid = abs(previousValue) < 1e18 && inFront(previousWorld, u);
+    const nextValid = abs(nextValue) < 1e18 && inFront(nextWorld, u);
+    let crossing = 1e20;
+    if (previousValid && nextValid && previousSide * nextSide <= 0) {
+      crossing = scalarCrossing(sample, pixel, normal, previous, next, previousSide, u);
+    } else if (edge && previousValid != nextValid) {
+      let inside = previousValid ? previous : next, outside = previousValid ? next : previous;
+      for (let step = 0; step < 12; step++) {
+        const t = (inside + outside) * 0.5;
+        const value = sample(t);
+        if (abs(value) < 1e18 && inFront(vec3(t, value, 0), u)) inside = t;
+        else outside = t;
       }
-      const t = (a + b) * 0.5;
-      const value = sample(t), at = vec3(t, value, 0);
-      if (abs(value) < 1e18 && inFront(at, u)) {
-        const before = project(vec3(t - h, sample(t - h), 0), u);
-        const after = project(vec3(t + h, sample(t + h), 0), u);
-        const rate = pixelWidth() * 2 * h / max(length(after - before), 1e-20);
-        const gap = patternDistance(t, rate, u);
-        best = min(best, length(vec2(length(project(at, u) - pixel), gap)));
-      }
+      best = min(best, scalarPointDistance(sample, pixel, inside, h, u));
+      const valid = previousValid ? previous : next;
+      const endpointSide = dot(project(vec3(inside, sample(inside), 0), u) - pixel, normal);
+      const validSide = previousValid ? previousSide : nextSide;
+      if (endpointSide * validSide <= 0) crossing = scalarCrossing(sample, pixel, normal, inside, valid, endpointSide, u);
     }
+    if (crossing < 1e19) best = min(best, scalarPointDistance(sample, pixel, crossing, h, u));
     previous = next; previousValue = nextValue; previousWorld = nextWorld; previousSide = nextSide;
   }
   return best;
@@ -744,14 +777,30 @@ function projectedScalarDistance(sample: ScalarCurve, pixel: vec2, u: PlotUnifor
   const world = ray.origin + ray.direction * depth;
   let t = world.x;
   let best = 1e20;
-  for (let iteration = 0; iteration < 5; iteration++) {
+  // A steep branch beside an omitted domain (sqrt at zero) sends a full Newton
+  // step past the domain edge. Halve that step back instead of stopping there.
+  let edge = false, anchored = false, previous = t, steps = 0;
+  for (let iteration = 0; iteration < 13; iteration++) {
+    if (!(steps < 5)) { break; }
     const value = sample(t);
+    if (!(abs(value) < 1e18)) {
+      edge = true;
+      if (anchored) {
+        t = (previous + t) * 0.5;
+        continue;
+      }
+    } else {
+      anchored = true;
+      previous = t;
+    }
+    steps++;
     const point = vec3(t, value, 0);
     const h = max(abs(t) * 1e-6, 0.0001);
     const before = sample(t - h), after = sample(t + h);
     const at = project(point, u);
     const validBefore = abs(before) < 1e18 && inFront(vec3(t - h, before, 0), u);
     const validAfter = abs(after) < 1e18 && inFront(vec3(t + h, after, 0), u);
+    if (!(abs(before) < 1e18 && abs(after) < 1e18)) edge = true;
     const a = validBefore ? project(vec3(t - h, before, 0), u) : at;
     const b = validAfter ? project(vec3(t + h, after, 0), u) : at;
     const tangent = (b - a) / (validBefore && validAfter ? 2 * h : h);
@@ -766,7 +815,7 @@ function projectedScalarDistance(sample: ScalarCurve, pixel: vec2, u: PlotUnifor
     const limit = max(u.plotSpan.x, abs(t) * 0.5);
     t -= clamp(correction, -limit, limit);
   }
-  if (best > u.appearance.z * 0.25) best = min(best, scalarFootprintDistance(sample, pixel, world.x, u));
+  if (best > u.appearance.z * 0.25) best = min(best, scalarFootprintDistance(sample, pixel, world.x, u, edge));
   return best;
 }
 
