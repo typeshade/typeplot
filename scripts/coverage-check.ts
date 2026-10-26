@@ -412,6 +412,9 @@ interface Result {
   readonly spurious: number;
   /** Pixels covered only by isolated f32 points: reported, not failed. */
   readonly floor: number;
+  /** Pick queries that missed a curve within reach, or hit one beyond it. */
+  readonly pickMissing: number;
+  readonly pickSpurious: number;
   readonly worst: number;
   readonly map: string;
 }
@@ -531,11 +534,40 @@ function check(
     }
     rows.push(row);
   }
+  // Picking: every third pixel, at radius 0 and 4 px. A pick must hit where the
+  // exact curve is within reach (radius + half the stroke), less half a pixel
+  // of tolerance, and must miss where it is half a pixel beyond.
+  const pick = specialized(cpu.tested, "pickTrajectory");
+  const scalarPick = curve.kind === "scalar";
+  let pickMissing = 0,
+    pickSpurious = 0;
+  for (const radius of [0, 4])
+    for (let j = 0; j < cells; j += 3)
+      for (let i = 0; i < cells; i += 3) {
+        const pixel: Vec2 = [(x0 + i + 0.5) * width, (y0 + j + 0.5) * width];
+        // Missing picks are judged against the continuous truth, spurious
+        // picks against every f32 point, as coverage is.
+        let d = Infinity,
+          dCurve = Infinity;
+        for (const segment of segments) {
+          const value = segmentDistance(pixel, segment);
+          d = Math.min(d, value);
+          if (!segment[2]) dCurve = Math.min(dCurve, value);
+        }
+        const reach = radius + curveWidth * 0.5;
+        cpu.tested.setBinding("query", { pixel, radius });
+        const result = pick([0.5, 0.5, 0, 1], u, scalarPick, false) as number[];
+        const hit = result[3] !== 0;
+        if (!hit && dCurve < reach - 0.5) pickMissing++;
+        if (hit && d > reach + 0.5) pickSpurious++;
+      }
   return {
     name: `${curve.name} ${view.name} ${zoom}x at (${focus.map((v) => +v.toFixed(3)).join(", ")})${domainLabel(domain)}`,
     missing,
     spurious,
     floor,
+    pickMissing,
+    pickSpurious,
     worst,
     map: rows.join("\n"),
   };
@@ -554,9 +586,13 @@ for (const curve of curves) {
       for (const item of curve.cases) {
         const result = check(curve, cpu, view, item, zoom);
         cases++;
-        const ok = result.missing === 0 && result.spurious === 0;
+        const ok =
+          result.missing === 0 &&
+          result.spurious === 0 &&
+          result.pickMissing === 0 &&
+          result.pickSpurious === 0;
         console.log(
-          `${ok ? "ok  " : "FAIL"} ${result.name}: missing ${result.missing}, spurious ${result.spurious}, f32 floor ${result.floor}, max |coverage error| ${result.worst.toFixed(2)}`,
+          `${ok ? "ok  " : "FAIL"} ${result.name}: missing ${result.missing}, spurious ${result.spurious}, f32 floor ${result.floor}, max |coverage error| ${result.worst.toFixed(2)}, picks missed ${result.pickMissing}, picks spurious ${result.pickSpurious}`,
         );
         if (!ok) failures.push(result);
       }
