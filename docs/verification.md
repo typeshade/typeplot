@@ -41,18 +41,33 @@ these:
   domain, on a steep branch, or where the tangent line disagrees with the callback at its
   foot point, they use the 3D projected query through `flatView`. The hard cases have one
   implementation.
+- Parametric curves have one reference search, `referenceCurveHit`, shared by display,
+  scene layers and picking (2D picks go through `flatView`). `drawablePoint` and
+  `curveEdge` clip an interval to its actual endpoint at an omitted domain or the near
+  plane; `curveFoot` bisects the closest-point condition where a chord seed fails on a
+  steep branch; `parameterFocus` takes a one-sided baseline from a seed on a domain edge;
+  an exploration partition around the seed keeps a fold visible when the focus lands on
+  another one. Interval ends come from one `mix()` expression, so f32 rounding leaves no
+  gap between neighbours.
 - `src/plot-source.ts` builds the program documents for `compilePlot` and for the check,
   so the check compiles the text that a plot program ships with.
 
 ## What the check measures
 
 `scripts/coverage-check.ts` compiles a catalog of callbacks with `plotSource`.
-TypeShade's CPU oracle (`compileModuleJs`, precision `f32`) then evaluates
-`projectedScalarDistance` (3D) and `scalarField` (2D) as a correctly rounding f32 machine.
+TypeShade's CPU oracle (`compileModuleJs`, precision `f32`) then evaluates the shader's
+queries as a correctly rounding f32 machine: `scalarField` (2D) and
+`projectedScalarDistance` (3D) for scalar graphs, `trajectoryDistance` (the reference
+search that `plot3D`, `sceneCurveReference` and picking share) for parametric curves, and
+`pickTrajectory` for both.
 
-- Callbacks: `sqrt` and `x^0.25` beside an omitted domain, a semicircle with an edge on
-  each side, `log` with its steep part near zero, `sin(3x)` and `sin(40x)`.
-- Views: 2D, orthographic 3D (front and turned), perspective 3D, at 1x and 100x zoom.
+- Scalar callbacks: `sqrt` and `x^0.25` beside an omitted domain, a semicircle with an
+  edge on each side, `log` with its steep part near zero, `sin(3x)` and `sin(40x)`.
+- Parametric callbacks: `(t, sqrt(t), 0)` and a semicircle beside omitted domains, an arc
+  and a helix. Each runs in a bounded domain or an unbounded one, including a search seed
+  on a domain edge (createPlot's default probe can be one).
+- Views: 2D (scalar only), orthographic 3D (front and turned), perspective 3D, at 1x and
+  100x zoom.
 - Pixels: a 24 by 24 window around each hard point, with the shader's four subsamples.
 - Truth: the exact JS twin of each callback at f32 parameters. Intervals subdivide until
   each projected chord is below 0.2 px. Each domain edge bisects to the last valid f32
@@ -60,18 +75,23 @@ TypeShade's CPU oracle (`compileModuleJs`, precision `f32`) then evaluates
 - Failure: a pixel the truth covers (> 0.5) that the shader leaves (< 0.25), or the
   reverse (< 0.05 against > 0.5). Pixels covered only by isolated f32 points are reported
   as the f32 floor and do not fail: there, no f32 renderer can draw between the points.
+- Picking: every third pixel at radius 0 and 4 px. A pick must hit where the exact curve
+  is within the radius plus half the stroke, less half a pixel, and must miss half a pixel
+  beyond it.
 
-The check takes about 40 seconds. `npm run check:coverage -- --only <name>` runs one
+The check takes about five minutes; the parametric reference search dominates. `npm run check:coverage -- --only <name>` runs one
 callback and prints an ASCII map of each failing window.
 
 ## Not covered yet
 
-- Texture-sampling paths. The CPU oracle stubs texture reads, so the cached adaptive
-  curves (`cachedCurveHit`, `plot3DAccelerated`) and the label caches are not evaluated.
-- Parametric curves, picking and surfaces. The audit of 2026-10-26 found the same
-  defect class in `parameterFocus`, `prepareCurveIntervals`, `trajectoryDistance`,
-  `referenceSceneHit`, `pickTrajectory` and `surfaceHit`. These are open, and each fix
-  adds its cases to the check.
+- The cached parametric search. `plot3DAccelerated` and the cached scene layers draw
+  parametric curves by default, through `prepareCurveIntervals` and `cachedCurveHit`. Those
+  read textures, which the CPU oracle stubs, so the check does not evaluate them. The audit
+  of 2026-10-26 found that `prepareCurveIntervals` still drops a half-interval with an
+  omitted endpoint. This is open: it needs CPU texture reads in TypeShade, or a GPU render
+  comparison, before it can be fixed with evidence.
+- Surfaces. `surfaceHit` needs two valid samples to bracket a hit, so a steep rim beside
+  an omitted domain is missed (audit, 2026-10-26). This is open.
 - GPU parity. The oracle rounds f32 operations correctly but does not model GPU
   transcendental precision or fused multiply-add. A browser render remains the final
   check of a visual change.
