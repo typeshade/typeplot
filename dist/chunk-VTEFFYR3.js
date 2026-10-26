@@ -422,6 +422,10 @@ fn labelRecord(at: vec2<i32>) -> vec4<f32> {
   return bitcast<vec4<f32>>(textureLoad(spatialLabels, at, 0u));
 }
 
+fn present(value: f32) -> bool {
+  return (abs(value) < 1000000000000000000.0);
+}
+
 fn axisLabel(pixel: vec2<f32>, at: vec2<f32>, code: i32, typeplot_shared_u_2: PlotViewport) -> vec3<f32> {
   let _cse0 = (((typeplot_shared_u_2.appearance.w * 1.5) + 4.0) + pixelWidth());
   if (any((abs((pixel - at)) > vec2<f32>(_cse0, _cse0)))) {
@@ -1110,11 +1114,11 @@ fn surfaceHit_heightField(uv: vec2<f32>, typeplot_shared_u_25: PlotUniforms) -> 
     let value = (p.y - heightField(p.x, p.z));
     var bracketEnd: f32 = at_4;
     var bracketValue: f32 = value;
-    if ((((abs(value) < 1000000000000000000.0) && (abs(before) < 1000000000000000000.0)) && ((value >= 0.0) == (before >= 0.0)))) {
+    if (((present(value) && present(before)) && ((value >= 0.0) == (before >= 0.0)))) {
       let middle = ((previous + at_4) * 0.5);
       let point = (ray.origin + (ray.direction * middle));
       let midValue = (point.y - heightField(point.x, point.z));
-      if ((abs(midValue) < 1000000000000000000.0)) {
+      if (present(midValue)) {
         let _gv1 = (before >= 0.0);
         if ((((midValue >= 0.0) != _gv1) || (midValue == 0.0))) {
           bracketEnd = middle;
@@ -1126,7 +1130,7 @@ fn surfaceHit_heightField(uv: vec2<f32>, typeplot_shared_u_25: PlotUniforms) -> 
             let candidate = mix(previous, at_4, fraction);
             let q = (ray.origin + (ray.direction * candidate));
             let typeplot_shared_sample = (q.y - heightField(q.x, q.z));
-            if (((abs(typeplot_shared_sample) < 1000000000000000000.0) && (((typeplot_shared_sample >= 0.0) != _gv1) || (typeplot_shared_sample == 0.0)))) {
+            if ((present(typeplot_shared_sample) && (((typeplot_shared_sample >= 0.0) != _gv1) || (typeplot_shared_sample == 0.0)))) {
               bracketEnd = candidate;
               bracketValue = typeplot_shared_sample;
             }
@@ -1134,7 +1138,7 @@ fn surfaceHit_heightField(uv: vec2<f32>, typeplot_shared_u_25: PlotUniforms) -> 
         }
       }
     }
-    if ((((abs(bracketValue) < 1000000000000000000.0) && (abs(before) < 1000000000000000000.0)) && ((((bracketValue >= 0.0) != (before >= 0.0)) || (bracketValue == 0.0)) || (before == 0.0)))) {
+    if (((present(bracketValue) && present(before)) && ((((bracketValue >= 0.0) != (before >= 0.0)) || (bracketValue == 0.0)) || (before == 0.0)))) {
       var low: f32 = previous;
       var high: f32 = bracketEnd;
       var residual: f32 = before;
@@ -1144,11 +1148,10 @@ fn surfaceHit_heightField(uv: vec2<f32>, typeplot_shared_u_25: PlotUniforms) -> 
         let middle_1 = mix(low, high, fraction_1);
         let point_1 = (ray.origin + (ray.direction * middle_1));
         let typeplot_shared_sample_2 = (point_1.y - heightField(point_1.x, point_1.z));
-        let _gv2 = abs(typeplot_shared_sample_2);
-        if (((_gv2 < 1000000000000000000.0) == false)) {
+        if ((present(typeplot_shared_sample_2) == false)) {
           break;
         }
-        if (((_gv2 <= tolerance) && (length((project(vec3<f32>(point_1.x, (point_1.y - typeplot_shared_sample_2), point_1.z), typeplot_shared_u_25) - _cse4)) <= 0.02))) {
+        if (((abs(typeplot_shared_sample_2) <= tolerance) && (length((project(vec3<f32>(point_1.x, (point_1.y - typeplot_shared_sample_2), point_1.z), typeplot_shared_u_25) - _cse4)) <= 0.02))) {
           low = middle_1;
           high = middle_1;
           break;
@@ -1164,7 +1167,7 @@ fn surfaceHit_heightField(uv: vec2<f32>, typeplot_shared_u_25: PlotUniforms) -> 
       let depth = ((low + high) * 0.5);
       let point_2 = (ray.origin + (ray.direction * depth));
       let typeplot_shared_sample_3 = heightField(point_2.x, point_2.z);
-      if (((((abs(typeplot_shared_sample_3) < 1000000000000000000.0) && (abs((point_2.y - typeplot_shared_sample_3)) <= tolerance)) && (length((project(vec3<f32>(point_2.x, typeplot_shared_sample_3, point_2.z), typeplot_shared_u_25) - _cse4)) <= 0.04)) && surfaceInside(point_2.xz, typeplot_shared_u_25))) {
+      if ((((present(typeplot_shared_sample_3) && (abs((point_2.y - typeplot_shared_sample_3)) <= tolerance)) && (length((project(vec3<f32>(point_2.x, typeplot_shared_sample_3, point_2.z), typeplot_shared_u_25) - _cse4)) <= 0.04)) && surfaceInside(point_2.xz, typeplot_shared_u_25))) {
         return SurfaceHit(vec3<f32>(point_2.x, typeplot_shared_sample_3, point_2.z), depth, true);
       }
     }
@@ -1198,8 +1201,8 @@ fn surfaceMaterial_heightField(hit: SurfaceHit, typeplot_shared_u_27: PlotUnifor
       let right = heightField((hit.point.x + h), hit.point.z);
       let before = heightField(hit.point.x, (hit.point.z - h));
       let after = heightField(hit.point.x, (hit.point.z + h));
-      let dx = select(select(select(0.0, ((hit.point.y - left) / h), (abs(left) < 1000000000000000000.0)), ((right - hit.point.y) / h), (abs(right) < 1000000000000000000.0)), ((right - left) / (2.0 * h)), ((abs(left) < 1000000000000000000.0) && (abs(right) < 1000000000000000000.0)));
-      let dz = select(select(select(0.0, ((hit.point.y - before) / h), (abs(before) < 1000000000000000000.0)), ((after - hit.point.y) / h), (abs(after) < 1000000000000000000.0)), ((after - before) / (2.0 * h)), ((abs(before) < 1000000000000000000.0) && (abs(after) < 1000000000000000000.0)));
+      let dx = select(select(select(0.0, ((hit.point.y - left) / h), present(left)), ((right - hit.point.y) / h), present(right)), ((right - left) / (2.0 * h)), (present(left) && present(right)));
+      let dz = select(select(select(0.0, ((hit.point.y - before) / h), present(before)), ((after - hit.point.y) / h), present(after)), ((after - before) / (2.0 * h)), (present(before) && present(after)));
       let tx = cameraVector(vec3<f32>(1.0, dx, 0.0), typeplot_shared_u_27);
       let tz = cameraVector(vec3<f32>(0.0, dz, 1.0), typeplot_shared_u_27);
       let crossNormal = cross((tz / max(max(max(abs(tz.x), abs(tz.y)), abs(tz.z)), 1e-20)), (tx / max(max(max(abs(tx.x), abs(tx.y)), abs(tx.z)), 1e-20)));
@@ -1229,7 +1232,7 @@ fn plotSurface_heightField(uv: vec2<f32>, typeplot_shared_u_28: PlotUniforms, ca
   if (_cse0) {
     hit = surfaceHit_heightField(uv, typeplot_shared_u_28);
   } else {
-    hit.valid = ((abs(hit.point.y) < 1000000000000000000.0) && surfaceInside(flat, typeplot_shared_u_28));
+    hit.valid = (present(hit.point.y) && surfaceInside(flat, typeplot_shared_u_28));
   }
   let material = surfaceMaterial_heightField(hit, typeplot_shared_u_28);
   var color: vec3<f32> = vec3<f32>(0.965, 0.973, 0.985);
@@ -1323,7 +1326,7 @@ fn pickSurface_heightField(position: vec4<f32>, typeplot_shared_u_29: PlotUnifor
   if ((typeplot_shared_u_29.view3d != 0u)) {
     hit = surfaceHit_heightField(uv, typeplot_shared_u_29);
   } else {
-    hit.valid = ((abs(hit.point.y) < 1000000000000000000.0) && surfaceInside(p, typeplot_shared_u_29));
+    hit.valid = (present(hit.point.y) && surfaceInside(p, typeplot_shared_u_29));
   }
   if ((hit.valid == false)) {
     return vec4<u32>(0u, 0u, 0u, 0u);
@@ -1833,6 +1836,10 @@ PlotUniforms axesUniforms(PlotUniforms typeplot_shared_u) {
 
 vec4 labelRecord(ivec2 at) {
   return uintBitsToFloat(texelFetch(spatialLabels, at, int(0u)));
+}
+
+bool present(float value) {
+  return (abs(value) < 1000000000000000000.0);
 }
 
 vec3 axisLabel(vec2 pixel, vec2 at, int code, PlotViewport typeplot_shared_u_2) {
@@ -2400,11 +2407,11 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
     float value = (p.y - heightField(p.x, p.z));
     float bracketEnd = at_4;
     float bracketValue = value;
-    if ((((abs(value) < 1000000000000000000.0) && (abs(before) < 1000000000000000000.0)) && ((value >= 0.0) == (before >= 0.0)))) {
+    if (((present(value) && present(before)) && ((value >= 0.0) == (before >= 0.0)))) {
       float middle = ((previous + at_4) * 0.5);
       vec3 point = (ray.origin + (ray.direction * middle));
       float midValue = (point.y - heightField(point.x, point.z));
-      if ((abs(midValue) < 1000000000000000000.0)) {
+      if (present(midValue)) {
         bool _gv1 = (before >= 0.0);
         if ((((midValue >= 0.0) != _gv1) || (midValue == 0.0))) {
           bracketEnd = middle;
@@ -2416,7 +2423,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
             float candidate = mix(previous, at_4, fraction);
             vec3 q = (ray.origin + (ray.direction * candidate));
             float typeplot_shared_sample = (q.y - heightField(q.x, q.z));
-            if (((abs(typeplot_shared_sample) < 1000000000000000000.0) && (((typeplot_shared_sample >= 0.0) != _gv1) || (typeplot_shared_sample == 0.0)))) {
+            if ((present(typeplot_shared_sample) && (((typeplot_shared_sample >= 0.0) != _gv1) || (typeplot_shared_sample == 0.0)))) {
               bracketEnd = candidate;
               bracketValue = typeplot_shared_sample;
             }
@@ -2424,7 +2431,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
         }
       }
     }
-    if ((((abs(bracketValue) < 1000000000000000000.0) && (abs(before) < 1000000000000000000.0)) && ((((bracketValue >= 0.0) != (before >= 0.0)) || (bracketValue == 0.0)) || (before == 0.0)))) {
+    if (((present(bracketValue) && present(before)) && ((((bracketValue >= 0.0) != (before >= 0.0)) || (bracketValue == 0.0)) || (before == 0.0)))) {
       float low = previous;
       float high = bracketEnd;
       float residual = before;
@@ -2434,11 +2441,10 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
         float middle_1 = mix(low, high, fraction_1);
         vec3 point_1 = (ray.origin + (ray.direction * middle_1));
         float typeplot_shared_sample_2 = (point_1.y - heightField(point_1.x, point_1.z));
-        float _gv2 = abs(typeplot_shared_sample_2);
-        if (((_gv2 < 1000000000000000000.0) == false)) {
+        if ((present(typeplot_shared_sample_2) == false)) {
           break;
         }
-        if (((_gv2 <= tolerance) && (length((project(vec3(point_1.x, (point_1.y - typeplot_shared_sample_2), point_1.z), typeplot_shared_u_25) - _cse4)) <= 0.02))) {
+        if (((abs(typeplot_shared_sample_2) <= tolerance) && (length((project(vec3(point_1.x, (point_1.y - typeplot_shared_sample_2), point_1.z), typeplot_shared_u_25) - _cse4)) <= 0.02))) {
           low = middle_1;
           high = middle_1;
           break;
@@ -2454,7 +2460,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
       float depth = ((low + high) * 0.5);
       vec3 point_2 = (ray.origin + (ray.direction * depth));
       float typeplot_shared_sample_3 = heightField(point_2.x, point_2.z);
-      if (((((abs(typeplot_shared_sample_3) < 1000000000000000000.0) && (abs((point_2.y - typeplot_shared_sample_3)) <= tolerance)) && (length((project(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), typeplot_shared_u_25) - _cse4)) <= 0.04)) && surfaceInside(point_2.xz, typeplot_shared_u_25))) {
+      if ((((present(typeplot_shared_sample_3) && (abs((point_2.y - typeplot_shared_sample_3)) <= tolerance)) && (length((project(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), typeplot_shared_u_25) - _cse4)) <= 0.04)) && surfaceInside(point_2.xz, typeplot_shared_u_25))) {
         return SurfaceHit(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), depth, true);
       }
     }
@@ -2488,8 +2494,8 @@ vec4 surfaceMaterial_heightField(SurfaceHit hit, PlotUniforms typeplot_shared_u_
       float right = heightField((hit.point.x + h), hit.point.z);
       float before = heightField(hit.point.x, (hit.point.z - h));
       float after = heightField(hit.point.x, (hit.point.z + h));
-      float dx = (((abs(left) < 1000000000000000000.0) && (abs(right) < 1000000000000000000.0)) ? ((right - left) / (2.0 * h)) : ((abs(right) < 1000000000000000000.0) ? ((right - hit.point.y) / h) : ((abs(left) < 1000000000000000000.0) ? ((hit.point.y - left) / h) : 0.0)));
-      float dz = (((abs(before) < 1000000000000000000.0) && (abs(after) < 1000000000000000000.0)) ? ((after - before) / (2.0 * h)) : ((abs(after) < 1000000000000000000.0) ? ((after - hit.point.y) / h) : ((abs(before) < 1000000000000000000.0) ? ((hit.point.y - before) / h) : 0.0)));
+      float dx = ((present(left) && present(right)) ? ((right - left) / (2.0 * h)) : (present(right) ? ((right - hit.point.y) / h) : (present(left) ? ((hit.point.y - left) / h) : 0.0)));
+      float dz = ((present(before) && present(after)) ? ((after - before) / (2.0 * h)) : (present(after) ? ((after - hit.point.y) / h) : (present(before) ? ((hit.point.y - before) / h) : 0.0)));
       vec3 tx = cameraVector(vec3(1.0, dx, 0.0), typeplot_shared_u_27);
       vec3 tz = cameraVector(vec3(0.0, dz, 1.0), typeplot_shared_u_27);
       vec3 crossNormal = cross((tz / max(max(max(abs(tz.x), abs(tz.y)), abs(tz.z)), 1e-20)), (tx / max(max(max(abs(tx.x), abs(tx.y)), abs(tx.z)), 1e-20)));
@@ -2519,7 +2525,7 @@ vec4 plotSurface_heightField(vec2 uv, PlotUniforms typeplot_shared_u_28, bool ca
   if (_cse0) {
     hit = surfaceHit_heightField(uv, typeplot_shared_u_28);
   } else {
-    hit.valid = ((abs(hit.point.y) < 1000000000000000000.0) && surfaceInside(flat_, typeplot_shared_u_28));
+    hit.valid = (present(hit.point.y) && surfaceInside(flat_, typeplot_shared_u_28));
   }
   vec4 material = surfaceMaterial_heightField(hit, typeplot_shared_u_28);
   vec3 color = vec3(0.965, 0.973, 0.985);
@@ -3034,6 +3040,10 @@ vec4 labelRecord(ivec2 at) {
   return uintBitsToFloat(texelFetch(spatialLabels, at, int(0u)));
 }
 
+bool present(float value) {
+  return (abs(value) < 1000000000000000000.0);
+}
+
 vec3 axisLabel(vec2 pixel, vec2 at, int code, PlotViewport typeplot_shared_u_2) {
   float _cse0 = (((typeplot_shared_u_2.appearance.w * 1.5) + 4.0) + pixelWidth());
   if (any(greaterThan(abs((pixel - at)), vec2(_cse0, _cse0)))) {
@@ -3599,11 +3609,11 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
     float value = (p.y - heightField(p.x, p.z));
     float bracketEnd = at_4;
     float bracketValue = value;
-    if ((((abs(value) < 1000000000000000000.0) && (abs(before) < 1000000000000000000.0)) && ((value >= 0.0) == (before >= 0.0)))) {
+    if (((present(value) && present(before)) && ((value >= 0.0) == (before >= 0.0)))) {
       float middle = ((previous + at_4) * 0.5);
       vec3 point = (ray.origin + (ray.direction * middle));
       float midValue = (point.y - heightField(point.x, point.z));
-      if ((abs(midValue) < 1000000000000000000.0)) {
+      if (present(midValue)) {
         bool _gv1 = (before >= 0.0);
         if ((((midValue >= 0.0) != _gv1) || (midValue == 0.0))) {
           bracketEnd = middle;
@@ -3615,7 +3625,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
             float candidate = mix(previous, at_4, fraction);
             vec3 q = (ray.origin + (ray.direction * candidate));
             float typeplot_shared_sample = (q.y - heightField(q.x, q.z));
-            if (((abs(typeplot_shared_sample) < 1000000000000000000.0) && (((typeplot_shared_sample >= 0.0) != _gv1) || (typeplot_shared_sample == 0.0)))) {
+            if ((present(typeplot_shared_sample) && (((typeplot_shared_sample >= 0.0) != _gv1) || (typeplot_shared_sample == 0.0)))) {
               bracketEnd = candidate;
               bracketValue = typeplot_shared_sample;
             }
@@ -3623,7 +3633,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
         }
       }
     }
-    if ((((abs(bracketValue) < 1000000000000000000.0) && (abs(before) < 1000000000000000000.0)) && ((((bracketValue >= 0.0) != (before >= 0.0)) || (bracketValue == 0.0)) || (before == 0.0)))) {
+    if (((present(bracketValue) && present(before)) && ((((bracketValue >= 0.0) != (before >= 0.0)) || (bracketValue == 0.0)) || (before == 0.0)))) {
       float low = previous;
       float high = bracketEnd;
       float residual = before;
@@ -3633,11 +3643,10 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
         float middle_1 = mix(low, high, fraction_1);
         vec3 point_1 = (ray.origin + (ray.direction * middle_1));
         float typeplot_shared_sample_2 = (point_1.y - heightField(point_1.x, point_1.z));
-        float _gv2 = abs(typeplot_shared_sample_2);
-        if (((_gv2 < 1000000000000000000.0) == false)) {
+        if ((present(typeplot_shared_sample_2) == false)) {
           break;
         }
-        if (((_gv2 <= tolerance) && (length((project(vec3(point_1.x, (point_1.y - typeplot_shared_sample_2), point_1.z), typeplot_shared_u_25) - _cse4)) <= 0.02))) {
+        if (((abs(typeplot_shared_sample_2) <= tolerance) && (length((project(vec3(point_1.x, (point_1.y - typeplot_shared_sample_2), point_1.z), typeplot_shared_u_25) - _cse4)) <= 0.02))) {
           low = middle_1;
           high = middle_1;
           break;
@@ -3653,7 +3662,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
       float depth = ((low + high) * 0.5);
       vec3 point_2 = (ray.origin + (ray.direction * depth));
       float typeplot_shared_sample_3 = heightField(point_2.x, point_2.z);
-      if (((((abs(typeplot_shared_sample_3) < 1000000000000000000.0) && (abs((point_2.y - typeplot_shared_sample_3)) <= tolerance)) && (length((project(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), typeplot_shared_u_25) - _cse4)) <= 0.04)) && surfaceInside(point_2.xz, typeplot_shared_u_25))) {
+      if ((((present(typeplot_shared_sample_3) && (abs((point_2.y - typeplot_shared_sample_3)) <= tolerance)) && (length((project(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), typeplot_shared_u_25) - _cse4)) <= 0.04)) && surfaceInside(point_2.xz, typeplot_shared_u_25))) {
         return SurfaceHit(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), depth, true);
       }
     }
@@ -3687,8 +3696,8 @@ vec4 surfaceMaterial_heightField(SurfaceHit hit, PlotUniforms typeplot_shared_u_
       float right = heightField((hit.point.x + h), hit.point.z);
       float before = heightField(hit.point.x, (hit.point.z - h));
       float after = heightField(hit.point.x, (hit.point.z + h));
-      float dx = (((abs(left) < 1000000000000000000.0) && (abs(right) < 1000000000000000000.0)) ? ((right - left) / (2.0 * h)) : ((abs(right) < 1000000000000000000.0) ? ((right - hit.point.y) / h) : ((abs(left) < 1000000000000000000.0) ? ((hit.point.y - left) / h) : 0.0)));
-      float dz = (((abs(before) < 1000000000000000000.0) && (abs(after) < 1000000000000000000.0)) ? ((after - before) / (2.0 * h)) : ((abs(after) < 1000000000000000000.0) ? ((after - hit.point.y) / h) : ((abs(before) < 1000000000000000000.0) ? ((hit.point.y - before) / h) : 0.0)));
+      float dx = ((present(left) && present(right)) ? ((right - left) / (2.0 * h)) : (present(right) ? ((right - hit.point.y) / h) : (present(left) ? ((hit.point.y - left) / h) : 0.0)));
+      float dz = ((present(before) && present(after)) ? ((after - before) / (2.0 * h)) : (present(after) ? ((after - hit.point.y) / h) : (present(before) ? ((hit.point.y - before) / h) : 0.0)));
       vec3 tx = cameraVector(vec3(1.0, dx, 0.0), typeplot_shared_u_27);
       vec3 tz = cameraVector(vec3(0.0, dz, 1.0), typeplot_shared_u_27);
       vec3 crossNormal = cross((tz / max(max(max(abs(tz.x), abs(tz.y)), abs(tz.z)), 1e-20)), (tx / max(max(max(abs(tx.x), abs(tx.y)), abs(tx.z)), 1e-20)));
@@ -3718,7 +3727,7 @@ vec4 plotSurface_heightField(vec2 uv, PlotUniforms typeplot_shared_u_28, bool ca
   if (_cse0) {
     hit = surfaceHit_heightField(uv, typeplot_shared_u_28);
   } else {
-    hit.valid = ((abs(hit.point.y) < 1000000000000000000.0) && surfaceInside(flat_, typeplot_shared_u_28));
+    hit.valid = (present(hit.point.y) && surfaceInside(flat_, typeplot_shared_u_28));
   }
   vec4 material = surfaceMaterial_heightField(hit, typeplot_shared_u_28);
   vec3 color = vec3(0.965, 0.973, 0.985);
@@ -4457,6 +4466,10 @@ vec3 colorMap(float value, uint palette) {
   return mix(d, e, ((t * 4.0) - 3.0));
 }
 
+bool present(float value) {
+  return (abs(value) < 1000000000000000000.0);
+}
+
 vec2 plotSize(vec2 resolution) {
   return max(resolution, vec2(1.0, 1.0));
 }
@@ -4646,11 +4659,11 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
     float value = (p.y - heightField(p.x, p.z));
     float bracketEnd = at_4;
     float bracketValue = value;
-    if ((((abs(value) < 1000000000000000000.0) && (abs(before) < 1000000000000000000.0)) && ((value >= 0.0) == (before >= 0.0)))) {
+    if (((present(value) && present(before)) && ((value >= 0.0) == (before >= 0.0)))) {
       float middle = ((previous + at_4) * 0.5);
       vec3 point = (ray.origin + (ray.direction * middle));
       float midValue = (point.y - heightField(point.x, point.z));
-      if ((abs(midValue) < 1000000000000000000.0)) {
+      if (present(midValue)) {
         bool _gv1 = (before >= 0.0);
         if ((((midValue >= 0.0) != _gv1) || (midValue == 0.0))) {
           bracketEnd = middle;
@@ -4662,7 +4675,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
             float candidate = mix(previous, at_4, fraction);
             vec3 q = (ray.origin + (ray.direction * candidate));
             float typeplot_shared_sample = (q.y - heightField(q.x, q.z));
-            if (((abs(typeplot_shared_sample) < 1000000000000000000.0) && (((typeplot_shared_sample >= 0.0) != _gv1) || (typeplot_shared_sample == 0.0)))) {
+            if ((present(typeplot_shared_sample) && (((typeplot_shared_sample >= 0.0) != _gv1) || (typeplot_shared_sample == 0.0)))) {
               bracketEnd = candidate;
               bracketValue = typeplot_shared_sample;
             }
@@ -4670,7 +4683,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
         }
       }
     }
-    if ((((abs(bracketValue) < 1000000000000000000.0) && (abs(before) < 1000000000000000000.0)) && ((((bracketValue >= 0.0) != (before >= 0.0)) || (bracketValue == 0.0)) || (before == 0.0)))) {
+    if (((present(bracketValue) && present(before)) && ((((bracketValue >= 0.0) != (before >= 0.0)) || (bracketValue == 0.0)) || (before == 0.0)))) {
       float low = previous;
       float high = bracketEnd;
       float residual = before;
@@ -4680,11 +4693,10 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
         float middle_1 = mix(low, high, fraction_1);
         vec3 point_1 = (ray.origin + (ray.direction * middle_1));
         float typeplot_shared_sample_2 = (point_1.y - heightField(point_1.x, point_1.z));
-        float _gv2 = abs(typeplot_shared_sample_2);
-        if (((_gv2 < 1000000000000000000.0) == false)) {
+        if ((present(typeplot_shared_sample_2) == false)) {
           break;
         }
-        if (((_gv2 <= tolerance) && (length((project(vec3(point_1.x, (point_1.y - typeplot_shared_sample_2), point_1.z), typeplot_shared_u_25) - _cse4)) <= 0.02))) {
+        if (((abs(typeplot_shared_sample_2) <= tolerance) && (length((project(vec3(point_1.x, (point_1.y - typeplot_shared_sample_2), point_1.z), typeplot_shared_u_25) - _cse4)) <= 0.02))) {
           low = middle_1;
           high = middle_1;
           break;
@@ -4700,7 +4712,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
       float depth = ((low + high) * 0.5);
       vec3 point_2 = (ray.origin + (ray.direction * depth));
       float typeplot_shared_sample_3 = heightField(point_2.x, point_2.z);
-      if (((((abs(typeplot_shared_sample_3) < 1000000000000000000.0) && (abs((point_2.y - typeplot_shared_sample_3)) <= tolerance)) && (length((project(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), typeplot_shared_u_25) - _cse4)) <= 0.04)) && surfaceInside(point_2.xz, typeplot_shared_u_25))) {
+      if ((((present(typeplot_shared_sample_3) && (abs((point_2.y - typeplot_shared_sample_3)) <= tolerance)) && (length((project(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), typeplot_shared_u_25) - _cse4)) <= 0.04)) && surfaceInside(point_2.xz, typeplot_shared_u_25))) {
         return SurfaceHit(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), depth, true);
       }
     }
@@ -4734,8 +4746,8 @@ vec4 surfaceMaterial_heightField(SurfaceHit hit, PlotUniforms typeplot_shared_u_
       float right = heightField((hit.point.x + h), hit.point.z);
       float before = heightField(hit.point.x, (hit.point.z - h));
       float after = heightField(hit.point.x, (hit.point.z + h));
-      float dx = (((abs(left) < 1000000000000000000.0) && (abs(right) < 1000000000000000000.0)) ? ((right - left) / (2.0 * h)) : ((abs(right) < 1000000000000000000.0) ? ((right - hit.point.y) / h) : ((abs(left) < 1000000000000000000.0) ? ((hit.point.y - left) / h) : 0.0)));
-      float dz = (((abs(before) < 1000000000000000000.0) && (abs(after) < 1000000000000000000.0)) ? ((after - before) / (2.0 * h)) : ((abs(after) < 1000000000000000000.0) ? ((after - hit.point.y) / h) : ((abs(before) < 1000000000000000000.0) ? ((hit.point.y - before) / h) : 0.0)));
+      float dx = ((present(left) && present(right)) ? ((right - left) / (2.0 * h)) : (present(right) ? ((right - hit.point.y) / h) : (present(left) ? ((hit.point.y - left) / h) : 0.0)));
+      float dz = ((present(before) && present(after)) ? ((after - before) / (2.0 * h)) : (present(after) ? ((after - hit.point.y) / h) : (present(before) ? ((hit.point.y - before) / h) : 0.0)));
       vec3 tx = cameraVector(vec3(1.0, dx, 0.0), typeplot_shared_u_27);
       vec3 tz = cameraVector(vec3(0.0, dz, 1.0), typeplot_shared_u_27);
       vec3 crossNormal = cross((tz / max(max(max(abs(tz.x), abs(tz.y)), abs(tz.z)), 1e-20)), (tx / max(max(max(abs(tx.x), abs(tx.y)), abs(tx.z)), 1e-20)));
@@ -5096,6 +5108,10 @@ vec3 colorMap(float value, uint palette) {
   return mix(d, e, ((t * 4.0) - 3.0));
 }
 
+bool present(float value) {
+  return (abs(value) < 1000000000000000000.0);
+}
+
 vec2 plotSize(vec2 resolution) {
   return max(resolution, vec2(1.0, 1.0));
 }
@@ -5285,11 +5301,11 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
     float value = (p.y - heightField(p.x, p.z));
     float bracketEnd = at_4;
     float bracketValue = value;
-    if ((((abs(value) < 1000000000000000000.0) && (abs(before) < 1000000000000000000.0)) && ((value >= 0.0) == (before >= 0.0)))) {
+    if (((present(value) && present(before)) && ((value >= 0.0) == (before >= 0.0)))) {
       float middle = ((previous + at_4) * 0.5);
       vec3 point = (ray.origin + (ray.direction * middle));
       float midValue = (point.y - heightField(point.x, point.z));
-      if ((abs(midValue) < 1000000000000000000.0)) {
+      if (present(midValue)) {
         bool _gv1 = (before >= 0.0);
         if ((((midValue >= 0.0) != _gv1) || (midValue == 0.0))) {
           bracketEnd = middle;
@@ -5301,7 +5317,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
             float candidate = mix(previous, at_4, fraction);
             vec3 q = (ray.origin + (ray.direction * candidate));
             float typeplot_shared_sample = (q.y - heightField(q.x, q.z));
-            if (((abs(typeplot_shared_sample) < 1000000000000000000.0) && (((typeplot_shared_sample >= 0.0) != _gv1) || (typeplot_shared_sample == 0.0)))) {
+            if ((present(typeplot_shared_sample) && (((typeplot_shared_sample >= 0.0) != _gv1) || (typeplot_shared_sample == 0.0)))) {
               bracketEnd = candidate;
               bracketValue = typeplot_shared_sample;
             }
@@ -5309,7 +5325,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
         }
       }
     }
-    if ((((abs(bracketValue) < 1000000000000000000.0) && (abs(before) < 1000000000000000000.0)) && ((((bracketValue >= 0.0) != (before >= 0.0)) || (bracketValue == 0.0)) || (before == 0.0)))) {
+    if (((present(bracketValue) && present(before)) && ((((bracketValue >= 0.0) != (before >= 0.0)) || (bracketValue == 0.0)) || (before == 0.0)))) {
       float low = previous;
       float high = bracketEnd;
       float residual = before;
@@ -5319,11 +5335,10 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
         float middle_1 = mix(low, high, fraction_1);
         vec3 point_1 = (ray.origin + (ray.direction * middle_1));
         float typeplot_shared_sample_2 = (point_1.y - heightField(point_1.x, point_1.z));
-        float _gv2 = abs(typeplot_shared_sample_2);
-        if (((_gv2 < 1000000000000000000.0) == false)) {
+        if ((present(typeplot_shared_sample_2) == false)) {
           break;
         }
-        if (((_gv2 <= tolerance) && (length((project(vec3(point_1.x, (point_1.y - typeplot_shared_sample_2), point_1.z), typeplot_shared_u_25) - _cse4)) <= 0.02))) {
+        if (((abs(typeplot_shared_sample_2) <= tolerance) && (length((project(vec3(point_1.x, (point_1.y - typeplot_shared_sample_2), point_1.z), typeplot_shared_u_25) - _cse4)) <= 0.02))) {
           low = middle_1;
           high = middle_1;
           break;
@@ -5339,7 +5354,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
       float depth = ((low + high) * 0.5);
       vec3 point_2 = (ray.origin + (ray.direction * depth));
       float typeplot_shared_sample_3 = heightField(point_2.x, point_2.z);
-      if (((((abs(typeplot_shared_sample_3) < 1000000000000000000.0) && (abs((point_2.y - typeplot_shared_sample_3)) <= tolerance)) && (length((project(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), typeplot_shared_u_25) - _cse4)) <= 0.04)) && surfaceInside(point_2.xz, typeplot_shared_u_25))) {
+      if ((((present(typeplot_shared_sample_3) && (abs((point_2.y - typeplot_shared_sample_3)) <= tolerance)) && (length((project(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), typeplot_shared_u_25) - _cse4)) <= 0.04)) && surfaceInside(point_2.xz, typeplot_shared_u_25))) {
         return SurfaceHit(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), depth, true);
       }
     }
@@ -5373,8 +5388,8 @@ vec4 surfaceMaterial_heightField(SurfaceHit hit, PlotUniforms typeplot_shared_u_
       float right = heightField((hit.point.x + h), hit.point.z);
       float before = heightField(hit.point.x, (hit.point.z - h));
       float after = heightField(hit.point.x, (hit.point.z + h));
-      float dx = (((abs(left) < 1000000000000000000.0) && (abs(right) < 1000000000000000000.0)) ? ((right - left) / (2.0 * h)) : ((abs(right) < 1000000000000000000.0) ? ((right - hit.point.y) / h) : ((abs(left) < 1000000000000000000.0) ? ((hit.point.y - left) / h) : 0.0)));
-      float dz = (((abs(before) < 1000000000000000000.0) && (abs(after) < 1000000000000000000.0)) ? ((after - before) / (2.0 * h)) : ((abs(after) < 1000000000000000000.0) ? ((after - hit.point.y) / h) : ((abs(before) < 1000000000000000000.0) ? ((hit.point.y - before) / h) : 0.0)));
+      float dx = ((present(left) && present(right)) ? ((right - left) / (2.0 * h)) : (present(right) ? ((right - hit.point.y) / h) : (present(left) ? ((hit.point.y - left) / h) : 0.0)));
+      float dz = ((present(before) && present(after)) ? ((after - before) / (2.0 * h)) : (present(after) ? ((after - hit.point.y) / h) : (present(before) ? ((hit.point.y - before) / h) : 0.0)));
       vec3 tx = cameraVector(vec3(1.0, dx, 0.0), typeplot_shared_u_27);
       vec3 tz = cameraVector(vec3(0.0, dz, 1.0), typeplot_shared_u_27);
       vec3 crossNormal = cross((tz / max(max(max(abs(tz.x), abs(tz.y)), abs(tz.z)), 1e-20)), (tx / max(max(max(abs(tx.x), abs(tx.y)), abs(tx.z)), 1e-20)));
@@ -8354,6 +8369,10 @@ float sample_(float x, float z, float gridXMin, float gridXMax, float gridZMin, 
   return ((mix(mix(a, b, t.x), mix(c, d, t.x), t.y) * heightScale) + heightOffset);
 }
 
+bool present(float value) {
+  return (abs(value) < 1000000000000000000.0);
+}
+
 vec2 plotSize(vec2 resolution) {
   return max(resolution, vec2(1.0, 1.0));
 }
@@ -8508,11 +8527,11 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
     float value = (p.y - heightField(p.x, p.z));
     float bracketEnd = at_4;
     float bracketValue = value;
-    if ((((abs(value) < 1000000000000000000.0) && (abs(before) < 1000000000000000000.0)) && ((value >= 0.0) == (before >= 0.0)))) {
+    if (((present(value) && present(before)) && ((value >= 0.0) == (before >= 0.0)))) {
       float middle = ((previous + at_4) * 0.5);
       vec3 point = (ray.origin + (ray.direction * middle));
       float midValue = (point.y - heightField(point.x, point.z));
-      if ((abs(midValue) < 1000000000000000000.0)) {
+      if (present(midValue)) {
         bool _gv1 = (before >= 0.0);
         if ((((midValue >= 0.0) != _gv1) || (midValue == 0.0))) {
           bracketEnd = middle;
@@ -8524,7 +8543,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
             float candidate = mix(previous, at_4, fraction);
             vec3 q = (ray.origin + (ray.direction * candidate));
             float typeplot_shared_sample = (q.y - heightField(q.x, q.z));
-            if (((abs(typeplot_shared_sample) < 1000000000000000000.0) && (((typeplot_shared_sample >= 0.0) != _gv1) || (typeplot_shared_sample == 0.0)))) {
+            if ((present(typeplot_shared_sample) && (((typeplot_shared_sample >= 0.0) != _gv1) || (typeplot_shared_sample == 0.0)))) {
               bracketEnd = candidate;
               bracketValue = typeplot_shared_sample;
             }
@@ -8532,7 +8551,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
         }
       }
     }
-    if ((((abs(bracketValue) < 1000000000000000000.0) && (abs(before) < 1000000000000000000.0)) && ((((bracketValue >= 0.0) != (before >= 0.0)) || (bracketValue == 0.0)) || (before == 0.0)))) {
+    if (((present(bracketValue) && present(before)) && ((((bracketValue >= 0.0) != (before >= 0.0)) || (bracketValue == 0.0)) || (before == 0.0)))) {
       float low = previous;
       float high = bracketEnd;
       float residual = before;
@@ -8542,11 +8561,10 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
         float middle_1 = mix(low, high, fraction_1);
         vec3 point_1 = (ray.origin + (ray.direction * middle_1));
         float typeplot_shared_sample_2 = (point_1.y - heightField(point_1.x, point_1.z));
-        float _gv2 = abs(typeplot_shared_sample_2);
-        if (((_gv2 < 1000000000000000000.0) == false)) {
+        if ((present(typeplot_shared_sample_2) == false)) {
           break;
         }
-        if (((_gv2 <= tolerance) && (length((project(vec3(point_1.x, (point_1.y - typeplot_shared_sample_2), point_1.z), typeplot_shared_u_25) - _cse4)) <= 0.02))) {
+        if (((abs(typeplot_shared_sample_2) <= tolerance) && (length((project(vec3(point_1.x, (point_1.y - typeplot_shared_sample_2), point_1.z), typeplot_shared_u_25) - _cse4)) <= 0.02))) {
           low = middle_1;
           high = middle_1;
           break;
@@ -8562,7 +8580,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
       float depth = ((low + high) * 0.5);
       vec3 point_2 = (ray.origin + (ray.direction * depth));
       float typeplot_shared_sample_3 = heightField(point_2.x, point_2.z);
-      if (((((abs(typeplot_shared_sample_3) < 1000000000000000000.0) && (abs((point_2.y - typeplot_shared_sample_3)) <= tolerance)) && (length((project(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), typeplot_shared_u_25) - _cse4)) <= 0.04)) && surfaceInside(point_2.xz, typeplot_shared_u_25))) {
+      if ((((present(typeplot_shared_sample_3) && (abs((point_2.y - typeplot_shared_sample_3)) <= tolerance)) && (length((project(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), typeplot_shared_u_25) - _cse4)) <= 0.04)) && surfaceInside(point_2.xz, typeplot_shared_u_25))) {
         return SurfaceHit(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), depth, true);
       }
     }
@@ -8583,7 +8601,7 @@ uvec4 pickSurface_heightField(vec4 position, PlotUniforms typeplot_shared_u_29) 
   if ((typeplot_shared_u_29.view3d != 0u)) {
     hit = surfaceHit_heightField(uv, typeplot_shared_u_29);
   } else {
-    hit.valid = ((abs(hit.point.y) < 1000000000000000000.0) && surfaceInside(p, typeplot_shared_u_29));
+    hit.valid = (present(hit.point.y) && surfaceInside(p, typeplot_shared_u_29));
   }
   if ((hit.valid == false)) {
     return uvec4(0u, 0u, 0u, 0u);
@@ -8790,6 +8808,10 @@ float sample_(float x, float z, float gridXMin, float gridXMax, float gridZMin, 
   return ((mix(mix(a, b, t.x), mix(c, d, t.x), t.y) * heightScale) + heightOffset);
 }
 
+bool present(float value) {
+  return (abs(value) < 1000000000000000000.0);
+}
+
 vec2 plotSize(vec2 resolution) {
   return max(resolution, vec2(1.0, 1.0));
 }
@@ -8944,11 +8966,11 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
     float value = (p.y - heightField(p.x, p.z));
     float bracketEnd = at_4;
     float bracketValue = value;
-    if ((((abs(value) < 1000000000000000000.0) && (abs(before) < 1000000000000000000.0)) && ((value >= 0.0) == (before >= 0.0)))) {
+    if (((present(value) && present(before)) && ((value >= 0.0) == (before >= 0.0)))) {
       float middle = ((previous + at_4) * 0.5);
       vec3 point = (ray.origin + (ray.direction * middle));
       float midValue = (point.y - heightField(point.x, point.z));
-      if ((abs(midValue) < 1000000000000000000.0)) {
+      if (present(midValue)) {
         bool _gv1 = (before >= 0.0);
         if ((((midValue >= 0.0) != _gv1) || (midValue == 0.0))) {
           bracketEnd = middle;
@@ -8960,7 +8982,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
             float candidate = mix(previous, at_4, fraction);
             vec3 q = (ray.origin + (ray.direction * candidate));
             float typeplot_shared_sample = (q.y - heightField(q.x, q.z));
-            if (((abs(typeplot_shared_sample) < 1000000000000000000.0) && (((typeplot_shared_sample >= 0.0) != _gv1) || (typeplot_shared_sample == 0.0)))) {
+            if ((present(typeplot_shared_sample) && (((typeplot_shared_sample >= 0.0) != _gv1) || (typeplot_shared_sample == 0.0)))) {
               bracketEnd = candidate;
               bracketValue = typeplot_shared_sample;
             }
@@ -8968,7 +8990,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
         }
       }
     }
-    if ((((abs(bracketValue) < 1000000000000000000.0) && (abs(before) < 1000000000000000000.0)) && ((((bracketValue >= 0.0) != (before >= 0.0)) || (bracketValue == 0.0)) || (before == 0.0)))) {
+    if (((present(bracketValue) && present(before)) && ((((bracketValue >= 0.0) != (before >= 0.0)) || (bracketValue == 0.0)) || (before == 0.0)))) {
       float low = previous;
       float high = bracketEnd;
       float residual = before;
@@ -8978,11 +9000,10 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
         float middle_1 = mix(low, high, fraction_1);
         vec3 point_1 = (ray.origin + (ray.direction * middle_1));
         float typeplot_shared_sample_2 = (point_1.y - heightField(point_1.x, point_1.z));
-        float _gv2 = abs(typeplot_shared_sample_2);
-        if (((_gv2 < 1000000000000000000.0) == false)) {
+        if ((present(typeplot_shared_sample_2) == false)) {
           break;
         }
-        if (((_gv2 <= tolerance) && (length((project(vec3(point_1.x, (point_1.y - typeplot_shared_sample_2), point_1.z), typeplot_shared_u_25) - _cse4)) <= 0.02))) {
+        if (((abs(typeplot_shared_sample_2) <= tolerance) && (length((project(vec3(point_1.x, (point_1.y - typeplot_shared_sample_2), point_1.z), typeplot_shared_u_25) - _cse4)) <= 0.02))) {
           low = middle_1;
           high = middle_1;
           break;
@@ -8998,7 +9019,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
       float depth = ((low + high) * 0.5);
       vec3 point_2 = (ray.origin + (ray.direction * depth));
       float typeplot_shared_sample_3 = heightField(point_2.x, point_2.z);
-      if (((((abs(typeplot_shared_sample_3) < 1000000000000000000.0) && (abs((point_2.y - typeplot_shared_sample_3)) <= tolerance)) && (length((project(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), typeplot_shared_u_25) - _cse4)) <= 0.04)) && surfaceInside(point_2.xz, typeplot_shared_u_25))) {
+      if ((((present(typeplot_shared_sample_3) && (abs((point_2.y - typeplot_shared_sample_3)) <= tolerance)) && (length((project(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), typeplot_shared_u_25) - _cse4)) <= 0.04)) && surfaceInside(point_2.xz, typeplot_shared_u_25))) {
         return SurfaceHit(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), depth, true);
       }
     }
@@ -9019,7 +9040,7 @@ uvec4 pickSurface_heightField(vec4 position, PlotUniforms typeplot_shared_u_29) 
   if ((typeplot_shared_u_29.view3d != 0u)) {
     hit = surfaceHit_heightField(uv, typeplot_shared_u_29);
   } else {
-    hit.valid = ((abs(hit.point.y) < 1000000000000000000.0) && surfaceInside(p, typeplot_shared_u_29));
+    hit.valid = (present(hit.point.y) && surfaceInside(p, typeplot_shared_u_29));
   }
   if ((hit.valid == false)) {
     return uvec4(0u, 0u, 0u, 0u);
@@ -9226,6 +9247,10 @@ float sample_(float x, float z, float gridXMin, float gridXMax, float gridZMin, 
   return ((mix(mix(a, b, t.x), mix(c, d, t.x), t.y) * heightScale) + heightOffset);
 }
 
+bool present(float value) {
+  return (abs(value) < 1000000000000000000.0);
+}
+
 vec2 plotSize(vec2 resolution) {
   return max(resolution, vec2(1.0, 1.0));
 }
@@ -9380,11 +9405,11 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
     float value = (p.y - heightField(p.x, p.z));
     float bracketEnd = at_4;
     float bracketValue = value;
-    if ((((abs(value) < 1000000000000000000.0) && (abs(before) < 1000000000000000000.0)) && ((value >= 0.0) == (before >= 0.0)))) {
+    if (((present(value) && present(before)) && ((value >= 0.0) == (before >= 0.0)))) {
       float middle = ((previous + at_4) * 0.5);
       vec3 point = (ray.origin + (ray.direction * middle));
       float midValue = (point.y - heightField(point.x, point.z));
-      if ((abs(midValue) < 1000000000000000000.0)) {
+      if (present(midValue)) {
         bool _gv1 = (before >= 0.0);
         if ((((midValue >= 0.0) != _gv1) || (midValue == 0.0))) {
           bracketEnd = middle;
@@ -9396,7 +9421,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
             float candidate = mix(previous, at_4, fraction);
             vec3 q = (ray.origin + (ray.direction * candidate));
             float typeplot_shared_sample = (q.y - heightField(q.x, q.z));
-            if (((abs(typeplot_shared_sample) < 1000000000000000000.0) && (((typeplot_shared_sample >= 0.0) != _gv1) || (typeplot_shared_sample == 0.0)))) {
+            if ((present(typeplot_shared_sample) && (((typeplot_shared_sample >= 0.0) != _gv1) || (typeplot_shared_sample == 0.0)))) {
               bracketEnd = candidate;
               bracketValue = typeplot_shared_sample;
             }
@@ -9404,7 +9429,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
         }
       }
     }
-    if ((((abs(bracketValue) < 1000000000000000000.0) && (abs(before) < 1000000000000000000.0)) && ((((bracketValue >= 0.0) != (before >= 0.0)) || (bracketValue == 0.0)) || (before == 0.0)))) {
+    if (((present(bracketValue) && present(before)) && ((((bracketValue >= 0.0) != (before >= 0.0)) || (bracketValue == 0.0)) || (before == 0.0)))) {
       float low = previous;
       float high = bracketEnd;
       float residual = before;
@@ -9414,11 +9439,10 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
         float middle_1 = mix(low, high, fraction_1);
         vec3 point_1 = (ray.origin + (ray.direction * middle_1));
         float typeplot_shared_sample_2 = (point_1.y - heightField(point_1.x, point_1.z));
-        float _gv2 = abs(typeplot_shared_sample_2);
-        if (((_gv2 < 1000000000000000000.0) == false)) {
+        if ((present(typeplot_shared_sample_2) == false)) {
           break;
         }
-        if (((_gv2 <= tolerance) && (length((project(vec3(point_1.x, (point_1.y - typeplot_shared_sample_2), point_1.z), typeplot_shared_u_25) - _cse4)) <= 0.02))) {
+        if (((abs(typeplot_shared_sample_2) <= tolerance) && (length((project(vec3(point_1.x, (point_1.y - typeplot_shared_sample_2), point_1.z), typeplot_shared_u_25) - _cse4)) <= 0.02))) {
           low = middle_1;
           high = middle_1;
           break;
@@ -9434,7 +9458,7 @@ SurfaceHit surfaceHit_heightField(vec2 uv, PlotUniforms typeplot_shared_u_25) {
       float depth = ((low + high) * 0.5);
       vec3 point_2 = (ray.origin + (ray.direction * depth));
       float typeplot_shared_sample_3 = heightField(point_2.x, point_2.z);
-      if (((((abs(typeplot_shared_sample_3) < 1000000000000000000.0) && (abs((point_2.y - typeplot_shared_sample_3)) <= tolerance)) && (length((project(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), typeplot_shared_u_25) - _cse4)) <= 0.04)) && surfaceInside(point_2.xz, typeplot_shared_u_25))) {
+      if ((((present(typeplot_shared_sample_3) && (abs((point_2.y - typeplot_shared_sample_3)) <= tolerance)) && (length((project(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), typeplot_shared_u_25) - _cse4)) <= 0.04)) && surfaceInside(point_2.xz, typeplot_shared_u_25))) {
         return SurfaceHit(vec3(point_2.x, typeplot_shared_sample_3, point_2.z), depth, true);
       }
     }
@@ -9455,7 +9479,7 @@ uvec4 pickSurface_heightField(vec4 position, PlotUniforms typeplot_shared_u_29) 
   if ((typeplot_shared_u_29.view3d != 0u)) {
     hit = surfaceHit_heightField(uv, typeplot_shared_u_29);
   } else {
-    hit.valid = ((abs(hit.point.y) < 1000000000000000000.0) && surfaceInside(p, typeplot_shared_u_29));
+    hit.valid = (present(hit.point.y) && surfaceInside(p, typeplot_shared_u_29));
   }
   if ((hit.valid == false)) {
     return uvec4(0u, 0u, 0u, 0u);

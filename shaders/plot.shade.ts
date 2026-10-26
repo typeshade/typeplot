@@ -56,6 +56,11 @@ function labelRecord(at: vec2i): vec4 {return bitcast<vec4>(textureLoad(spatialL
 function curveRecord(at: vec2i): vec4 {return bitcast<vec4>(textureLoad(curveIntervals,at,0));}
 function seedRecord(at: vec2i): vec4 {return bitcast<vec4>(textureLoad(curveSeeds,at,0));}
 
+/** The omitted-domain contract of every user callback: a value of magnitude at
+ * least 1e18, or NaN, omits that point. Every search tests values through these. */
+export function present(value: f32): bool { return abs(value) < 1e18; }
+export function presentPoint(point: vec3): bool { return all(abs(point) < vec3(1e18)); }
+
 type ScalarCurve = (x: f32) => f32;
 type SpaceCurve = (t: f32) => vec3;
 type HeightField = (x: f32, z: f32) => f32;
@@ -167,7 +172,7 @@ function curveCoverage(p: vec2, value: f32, span: vec2, size: vec2, thickness: f
   // Clamp infinities before taking derivatives. A comparison also rejects a NaN result.
   const d = (p.y - clamp(value, -1e18, 1e18)) / span.y;
   const width = max(1 / size.y, min(fwidth(d), 0.025));
-  return abs(value) < 1e18 ? 1 - smoothstep(0, width * thickness, abs(d)) : 0;
+  return present(value) ? 1 - smoothstep(0, width * thickness, abs(d)) : 0;
 }
 
 /** Filled scalar graph with a quarter-unit grid and the reference diagonal y = x. */
@@ -178,7 +183,7 @@ export function plotFilled(sample: ScalarCurve, uv: vec2, u: PlotViewport): vec4
   const value = sample(p.x);
   const d = (p.y - clamp(value, -1e18, 1e18)) / span.y;
   const width = max(fwidth(d), 1 / size.y);
-  const fill = abs(value) < 1e18 ? 1 - smoothstep(-width, width, d) : 0;
+  const fill = present(value) ? 1 - smoothstep(-width, width, d) : 0;
   let color = mix(vec3(0.95, 0.96, 0.98), vec3(0.09, 0.47, 1), fill);
   const g = p * 4;
   const distance = abs(fract(g + 0.5) - 0.5);
@@ -230,8 +235,8 @@ function scalarField(sample: ScalarCurve, p: vec2, dx: vec2, dy: vec2, u: PlotUn
   const h = max(max(length(xGradient) * 0.125, abs(p.x) * 1e-6), 1e-7);
   const before = sample(p.x - h), after = sample(p.x + h);
   let slope = (after - before) / (2 * h);
-  if (!(abs(before) < 1e18)) slope = (after - value) / h;
-  if (!(abs(after) < 1e18)) slope = (value - before) / h;
+  if (!(present(before))) slope = (after - value) / h;
+  if (!(present(after))) slope = (value - before) / h;
   const normal = yGradient - slope * xGradient;
   const normSquared = max(dot(normal, normal), 1e-30);
   const residual = p.y - value;
@@ -242,7 +247,7 @@ function scalarField(sample: ScalarCurve, p: vec2, dx: vec2, dy: vec2, u: PlotUn
   const gapDistance = patternDistance(parameter, rate, u);
   // A discontinuity must not become an invented vertical connecting stroke.
   const continuous = !jumps || abs(value - (before + after) * 0.5) <= max(length(yGradient) * 2, abs(after - before) * 0.2);
-  return abs(value) < 1e18 && abs(slope) < 1e18 && continuous ? distanceCoverage(length(vec2(normalDistance, gapDistance)), u.appearance.z) : 0;
+  return present(value) && present(slope) && continuous ? distanceCoverage(length(vec2(normalDistance, gapDistance)), u.appearance.z) : 0;
 }
 
 /** Unbounded scalar field in two dimensions; the camera never sets a function domain. */
@@ -264,7 +269,7 @@ export function plot2D(sample: ScalarCurve, uv: vec2, u: PlotUniforms, jumps: bo
   color = labelColor(color, decor.yzw);
   const selected = ((vec2(u.probe, sample(u.probe)) - u.plotCenter) / span + 0.5) * size;
   const base = labelColor(mix(vec3(0.965, 0.973, 0.985), vec3(0.39, 0.43, 0.49), decor.x), decor.yzw);
-  return vec4(mix(base, abs(sample(u.probe)) < 1e18 ? pointColor(color, uv * size, selected) : color, u.sceneOpacity.y), 1);
+  return vec4(mix(base, present(sample(u.probe)) ? pointColor(color, uv * size, selected) : color, u.sceneOpacity.y), 1);
 }
 
 /** Camera coordinates in normalized world units, shared by projection and inverse rays. */
@@ -477,10 +482,10 @@ function scalarParameter(pixel: vec2, u: PlotUniforms): vec2 {
  * derivative is one-sided beside an omitted domain. */
 function scalarPointDistance(sample: ScalarCurve, pixel: vec2, t: f32, h: f32, u: PlotUniforms): f32 {
   const value = sample(t), at = vec3(t, value, 0);
-  if (!(abs(value) < 1e18 && inFront(at, u))) return 1e20;
+  if (!(present(value) && inFront(at, u))) return 1e20;
   const center = project(at, u);
   const beforeValue = sample(t - h), afterValue = sample(t + h);
-  const beforeValid = abs(beforeValue) < 1e18, afterValid = abs(afterValue) < 1e18;
+  const beforeValid = present(beforeValue), afterValid = present(afterValue);
   const before = beforeValid ? project(vec3(t - h, beforeValue, 0), u) : center;
   const after = afterValid ? project(vec3(t + h, afterValue, 0), u) : center;
   const step = beforeValid && afterValid ? 2 * h : h;
@@ -522,7 +527,7 @@ function scalarFootprintDistance(sample: ScalarCurve, pixel: vec2, seed: f32, u:
   let previous = low;
   let previousValue = sample(previous);
   // A footprint wholly inside the omitted domain has no endpoint to find.
-  if (edge && !(abs(previousValue) < 1e18) && !(abs(sample(high)) < 1e18)) return 1e20;
+  if (edge && !(present(previousValue)) && !(present(sample(high)))) return 1e20;
   let previousWorld = vec3(previous, previousValue, 0);
   let previousSide = dot(project(previousWorld, u) - pixel, normal);
   for (let i = 1; i <= 8; i++) {
@@ -530,8 +535,8 @@ function scalarFootprintDistance(sample: ScalarCurve, pixel: vec2, seed: f32, u:
     const nextValue = sample(next);
     const nextWorld = vec3(next, nextValue, 0);
     const nextSide = dot(project(nextWorld, u) - pixel, normal);
-    const previousValid = abs(previousValue) < 1e18 && inFront(previousWorld, u);
-    const nextValid = abs(nextValue) < 1e18 && inFront(nextWorld, u);
+    const previousValid = present(previousValue) && inFront(previousWorld, u);
+    const nextValid = present(nextValue) && inFront(nextWorld, u);
     let crossing = 1e20;
     if (previousValid && nextValid && previousSide * nextSide <= 0) {
       crossing = scalarCrossing(sample, pixel, normal, previous, next, previousSide, u);
@@ -540,7 +545,7 @@ function scalarFootprintDistance(sample: ScalarCurve, pixel: vec2, seed: f32, u:
       for (let step = 0; step < 12; step++) {
         const t = (inside + outside) * 0.5;
         const value = sample(t);
-        if (abs(value) < 1e18 && inFront(vec3(t, value, 0), u)) inside = t;
+        if (present(value) && inFront(vec3(t, value, 0), u)) inside = t;
         else outside = t;
       }
       best = min(best, scalarPointDistance(sample, pixel, inside, h, u));
@@ -572,7 +577,7 @@ function projectedScalarDistance(sample: ScalarCurve, pixel: vec2, u: PlotUnifor
   for (let iteration = 0; iteration < 13; iteration++) {
     if (!(steps < 5)) { break; }
     const value = sample(t);
-    if (!(abs(value) < 1e18)) {
+    if (!(present(value))) {
       edge = true;
       if (anchored) {
         t = (previous + t) * 0.5;
@@ -587,15 +592,15 @@ function projectedScalarDistance(sample: ScalarCurve, pixel: vec2, u: PlotUnifor
     const h = max(abs(t) * 1e-6, 0.0001);
     const before = sample(t - h), after = sample(t + h);
     const at = project(point, u);
-    const validBefore = abs(before) < 1e18 && inFront(vec3(t - h, before, 0), u);
-    const validAfter = abs(after) < 1e18 && inFront(vec3(t + h, after, 0), u);
-    if (!(abs(before) < 1e18 && abs(after) < 1e18)) edge = true;
+    const validBefore = present(before) && inFront(vec3(t - h, before, 0), u);
+    const validAfter = present(after) && inFront(vec3(t + h, after, 0), u);
+    if (!(present(before) && present(after))) edge = true;
     const a = validBefore ? project(vec3(t - h, before, 0), u) : at;
     const b = validAfter ? project(vec3(t + h, after, 0), u) : at;
     const tangent = (b - a) / (validBefore && validAfter ? 2 * h : h);
     const norm = dot(tangent, tangent);
     const continuous = !jumps || abs(value - (before + after) * 0.5) <= max(u.plotSpan.y * 1e-4, abs(after - before) * 0.2);
-    if (abs(value) < 1e18 && inFront(point, u) && continuous) {
+    if (present(value) && inFront(point, u) && continuous) {
       const gap = patternDistance(t, pixelWidth() / max(sqrt(norm), 1e-20), u);
       best = min(best, length(vec2(length(pixel - at), gap)));
     }
@@ -628,7 +633,7 @@ export function plotScalar3D(sample: ScalarCurve, trajectory: SpaceCurve, uv: ve
   let color = mix(background.color, vec3(0.09, 0.42, 0.92), curve);
   color = labelColor(color, background.labels);
   const selected = vec3(u.probe, sample(u.probe), 0);
-  return vec4(mix(labelColor(background.color, background.labels), abs(selected.y) < 1e18 && inFront(selected, u) ? pointColor(color, pixel, project(selected, u)) : color, u.sceneOpacity.y), 1);
+  return vec4(mix(labelColor(background.color, background.labels), present(selected.y) && inFront(selected, u) ? pointColor(color, pixel, project(selected, u)) : color, u.sceneOpacity.y), 1);
 }
 
 /** Refine a candidate against the actual projected callback, never a chord SDF. */
@@ -647,14 +652,14 @@ function refineTrajectoryHit(trajectory: SpaceCurve, pixel: vec2, candidate: vec
     let world = trajectory(next);
     let projected = project(world, u);
     const error = dot(at - pixel, at - pixel);
-    if (!jumps && all(abs(atWorld) < vec3(1e18)) && inFront(atWorld, u) && error <= pow(max(0, u.appearance.z * 0.5 - pixelWidth() * 0.5), 2)) return vec2(sqrt(error), t);
-    if (!(all(abs(world) < vec3(1e18)) && inFront(world, u) && dot(projected - pixel, projected - pixel) <= error)) {
+    if (!jumps && presentPoint(atWorld) && inFront(atWorld, u) && error <= pow(max(0, u.appearance.z * 0.5 - pixelWidth() * 0.5), 2)) return vec2(sqrt(error), t);
+    if (!(presentPoint(world) && inFront(world, u) && dot(projected - pixel, projected - pixel) <= error)) {
       next = (t + next) * 0.5;
       world = trajectory(next);
       projected = project(world, u);
     }
     // Safeguard the numerical step: refinement may not make a valid seed worse.
-    if (all(abs(world) < vec3(1e18)) && inFront(world, u) && dot(projected - pixel, projected - pixel) <= error) {
+    if (presentPoint(world) && inFront(world, u) && dot(projected - pixel, projected - pixel) <= error) {
       if (next == t) break;
       const movement=length(projected-at);
       t = next;
@@ -664,7 +669,7 @@ function refineTrajectoryHit(trajectory: SpaceCurve, pixel: vec2, candidate: vec
   const world = trajectory(t);
   const middle = trajectory((low + high) * 0.5);
   const continuous = !jumps || length(middle - (trajectory(low) + trajectory(high)) * 0.5) <= max(1e-6, length(trajectory(high) - trajectory(low)) * 0.2);
-  return vec2(all(abs(world) < vec3(1e18)) && continuous && inFront(world, u) ? length(pixel - project(world, u)) : 1e20, t);
+  return vec2(presentPoint(world) && continuous && inFront(world, u) ? length(pixel - project(world, u)) : 1e20, t);
 }
 
 function refineTrajectory(trajectory: SpaceCurve, pixel: vec2, candidate: vec4, u: PlotUniforms, jumps: bool): f32 {
@@ -683,7 +688,7 @@ function intervalHit(trajectory: SpaceCurve, pixel: vec2, low: f32, high: f32, u
   let start = low, end = high;
   let a = trajectory(start), b = trajectory(end);
   const frontA = inFront(a, u), frontB = inFront(b, u);
-  if (!(all(abs(a) < vec3(1e18)) && all(abs(b) < vec3(1e18))) || (!frontA && !frontB)) return vec2(1e20, low);
+  if (!(presentPoint(a) && presentPoint(b)) || (!frontA && !frontB)) return vec2(1e20, low);
   if (frontA != frontB) {
     // Clip the parameter against actual callback evaluations, rather than a
     // world-space chord which can put the seed behind the near plane.
@@ -739,13 +744,13 @@ function parameterFocus(trajectory: SpaceCurve, u: PlotUniforms): vec2 {
   const pixel = plotSize(u.resolution) * 0.5;
   let center = u.parameterFocusSeed;
   const initial = trajectory(center);
-  let error = all(abs(initial) < vec3(1e18)) && inFront(initial,u) ? dot(project(initial,u)-pixel,project(initial,u)-pixel) : 1e30;
+  let error = presentPoint(initial) && inFront(initial,u) ? dot(project(initial,u)-pixel,project(initial,u)-pixel) : 1e30;
   // Search long-baseline trends before a local tangent. Periodic transverse
   // motion must not trap the visible window near the original parameter zero.
   for (let level = 0; level < 8; level++) {
     const radius = pow(4,f32(level));
     const a = trajectory(u.parameterFocusSeed-radius), b = trajectory(u.parameterFocusSeed+radius);
-    if (all(abs(a) < vec3(1e18)) && all(abs(b) < vec3(1e18))) {
+    if (presentPoint(a) && presentPoint(b)) {
       const middle = (a+b)*0.5, direction = (b-a)/(2*radius);
       const originH = homogeneous(middle,u,false), directionH = homogeneous(direction,u,true);
       const slope = directionH.xy - pixel*directionH.z;
@@ -753,7 +758,7 @@ function parameterFocus(trajectory: SpaceCurve, u: PlotUniforms): vec2 {
       if (norm > 1e-20) {
         const candidate = u.parameterFocusSeed + dot(pixel*originH.z-originH.xy,slope)/norm;
         const point = trajectory(candidate);
-        if (abs(candidate) < 1e18 && all(abs(point) < vec3(1e18)) && inFront(point,u)) {
+        if (present(candidate) && presentPoint(point) && inFront(point,u)) {
           const delta = project(point,u)-pixel, nextError = dot(delta,delta);
           if (nextError < error) {center=candidate;error=nextError;}
         }
@@ -772,7 +777,7 @@ function parameterFocus(trajectory: SpaceCurve, u: PlotUniforms): vec2 {
     for (let backtrack=0;backtrack<4;backtrack++) {
       const point = trajectory(candidate), delta=project(point,u)-pixel;
       const nextError=dot(delta,delta);
-      if(all(abs(point)<vec3(1e18))&&inFront(point,u)&&nextError<=error){center=candidate;error=nextError;break;}
+      if(presentPoint(point)&&inFront(point,u)&&nextError<=error){center=candidate;error=nextError;break;}
       candidate=(candidate+center)*0.5;
     }
   }
@@ -811,7 +816,7 @@ function trajectoryDistance(trajectory: SpaceCurve, pixel: vec2, u: PlotUniforms
     }
     if (high >= low) {
       const a = trajectory(low), middle = trajectory(t), b = trajectory(high);
-      const finite = all(abs(a) < vec3(1e18)) && all(abs(middle) < vec3(1e18)) && all(abs(b) < vec3(1e18));
+      const finite = presentPoint(a) && presentPoint(middle) && presentPoint(b);
       if (finite) {
         let possible = true;
         if (inFront(a, u) && inFront(middle, u) && inFront(b, u)) {
@@ -832,7 +837,7 @@ function trajectoryDistance(trajectory: SpaceCurve, pixel: vec2, u: PlotUniforms
 
 function spatialProbe(trajectory: SpaceCurve, u: PlotUniforms): vec3 {
   const selected = trajectory(u.probe);
-  const visible = ((u.parameterMode & u32(1)) != u32(0) || u.probe >= u.parameterBounds.x) && ((u.parameterMode & u32(2)) != u32(0) || u.probe <= u.parameterBounds.y) && all(abs(selected) < vec3(1e18)) && inFront(selected, u);
+  const visible = ((u.parameterMode & u32(1)) != u32(0) || u.probe >= u.parameterBounds.x) && ((u.parameterMode & u32(2)) != u32(0) || u.probe <= u.parameterBounds.y) && presentPoint(selected) && inFront(selected, u);
   return vec3(project(selected, u), visible ? 1 : 0);
 }
 
@@ -886,7 +891,7 @@ function intervalWork(trajectory: SpaceCurve, low: f32, high: f32, focus: vec2, 
   let previous=trajectory(t0);
   for(let i=1;i<=4;i++) {
     const point=trajectory(searchParameter(mix(low,high,f32(i)*0.25),focus,u));
-    if(all(abs(previous)<vec3(1e18))&&all(abs(point)<vec3(1e18))&&(inFront(previous,u)||inFront(point,u)))
+    if(presentPoint(previous)&&presentPoint(point)&&(inFront(previous,u)||inFront(point,u)))
       total+=visibleChordLength(project(previous,u),project(point,u),u);
     previous=point;
   }
@@ -948,7 +953,7 @@ export function prepareCurveIntervals(trajectory: SpaceCurve, position: vec4, u:
   let a = trajectory(start), b = trajectory(end);
   const frontA = inFront(a, u), frontB = inFront(b, u);
   const initialMiddle=trajectory((start+end)*0.5);
-  if (!(all(abs(a) < vec3(1e18)) && all(abs(b) < vec3(1e18))) || (!frontA && !frontB && !inFront(initialMiddle,u))) return empty;
+  if (!(presentPoint(a) && presentPoint(b)) || (!frontA && !frontB && !inFront(initialMiddle,u))) return empty;
   if (frontA != frontB) {
     let left = start, right = end;
     for (let i = 0; i < 12; i++) {
@@ -961,7 +966,7 @@ export function prepareCurveIntervals(trajectory: SpaceCurve, position: vec4, u:
     a = trajectory(start); b = trajectory(end);
   }
   const m = trajectory((start + end) * 0.5);
-  if (!all(abs(m) < vec3(1e18))) return empty;
+  if (!presentPoint(m)) return empty;
   const continuous = !jumps || length(m - (a + b) * 0.5) <= max(1e-6, length(b - a) * 0.2);
   if (!continuous) return empty;
   const ha = homogeneous(a, u, false), hb = homogeneous(b, u, false);
@@ -1229,12 +1234,12 @@ function surfaceHit(field: HeightField, uv: vec2, u: PlotUniforms): SurfaceHit {
     const p = ray.origin + ray.direction * at;
     const value = p.y - field(p.x, p.z);
     let bracketEnd=at,bracketValue=value;
-    if(abs(value)<1e18&&abs(before)<1e18&&(value>=0)==(before>=0)) {
+    if(present(value)&&present(before)&&(value>=0)==(before>=0)) {
       // A narrow grazing intersection can enter and leave between two samples.
       // Inspect its local extremum instead of silently discarding the interval.
       const middle=(previous+at)*0.5,point=ray.origin+ray.direction*middle;
       const midValue=point.y-field(point.x,point.z);
-      if(abs(midValue)<1e18) {
+      if(present(midValue)) {
         if((midValue>=0)!=(before>=0)||midValue==0){bracketEnd=middle;bracketValue=midValue;}
         else {
           const curvature=before+value-2*midValue;
@@ -1242,26 +1247,26 @@ function surfaceHit(field: HeightField, uv: vec2, u: PlotUniforms): SurfaceHit {
           if(curvature*before>0&&fraction>0&&fraction<1) {
             const candidate=mix(previous,at,fraction),q=ray.origin+ray.direction*candidate;
             const sample=q.y-field(q.x,q.z);
-            if(abs(sample)<1e18&&((sample>=0)!=(before>=0)||sample==0)){bracketEnd=candidate;bracketValue=sample;}
+            if(present(sample)&&((sample>=0)!=(before>=0)||sample==0)){bracketEnd=candidate;bracketValue=sample;}
           }
         }
       }
     }
-    if (abs(bracketValue) < 1e18 && abs(before) < 1e18 && ((bracketValue >= 0) != (before >= 0) || bracketValue == 0 || before == 0)) {
+    if (present(bracketValue) && present(before) && ((bracketValue >= 0) != (before >= 0) || bracketValue == 0 || before == 0)) {
       let low = previous, high = bracketEnd, residual = before,rightResidual=bracketValue;
       for (let iteration: u32 = 0; iteration < u32(40); iteration++) {
         const fraction=iteration%u32(3)==u32(2)?0.5:clamp(residual/(residual-rightResidual),0.25,0.75);
         const middle = mix(low,high,fraction);
         const point = ray.origin + ray.direction * middle;
         const sample = point.y - field(point.x, point.z);
-        if (!(abs(sample) < 1e18)) break;
+        if (!(present(sample))) break;
         if(abs(sample)<=tolerance&&length(project(vec3(point.x,point.y-sample,point.z),u)-uv*plotSize(u.resolution))<=0.02){low=middle;high=middle;break;}
         if ((sample >= 0) == (residual >= 0)) {low = middle; residual = sample;} else {high = middle;rightResidual=sample;}
       }
       const depth = (low + high) * 0.5;
       const point = ray.origin + ray.direction * depth;
       const sample = field(point.x, point.z);
-      if (abs(sample) < 1e18 && abs(point.y - sample) <= tolerance && length(project(vec3(point.x,sample,point.z),u)-uv*plotSize(u.resolution))<=0.04 && surfaceInside(point.xz, u)) return {point: vec3(point.x, sample, point.z), depth, valid: true};
+      if (present(sample) && abs(point.y - sample) <= tolerance && length(project(vec3(point.x,sample,point.z),u)-uv*plotSize(u.resolution))<=0.04 && surfaceInside(point.xz, u)) return {point: vec3(point.x, sample, point.z), depth, valid: true};
     }
     before = value; previous = at;
   }
@@ -1313,8 +1318,8 @@ function surfaceMaterial(field: HeightField, hit: SurfaceHit, u: PlotUniforms): 
       const before = field(hit.point.x, hit.point.z - h), after = field(hit.point.x, hit.point.z + h);
       // Observation-grid edges and missing neighbors use one-sided derivatives.
       // Undefined sentinel values must never enter the lighting normal.
-      const dx = abs(left) < 1e18 && abs(right) < 1e18 ? (right - left) / (2 * h) : abs(right) < 1e18 ? (right - hit.point.y) / h : abs(left) < 1e18 ? (hit.point.y - left) / h : 0;
-      const dz = abs(before) < 1e18 && abs(after) < 1e18 ? (after - before) / (2 * h) : abs(after) < 1e18 ? (after - hit.point.y) / h : abs(before) < 1e18 ? (hit.point.y - before) / h : 0;
+      const dx = present(left) && present(right) ? (right - left) / (2 * h) : present(right) ? (right - hit.point.y) / h : present(left) ? (hit.point.y - left) / h : 0;
+      const dz = present(before) && present(after) ? (after - before) / (2 * h) : present(after) ? (after - hit.point.y) / h : present(before) ? (hit.point.y - before) / h : 0;
       const tx = cameraVector(vec3(1, dx, 0), u), tz = cameraVector(vec3(0, dz, 1), u);
       const crossNormal = cross(tz / max(max(max(abs(tz.x), abs(tz.y)), abs(tz.z)), 1e-20), tx / max(max(max(abs(tx.x), abs(tx.y)), abs(tx.z)), 1e-20));
       const normalLength = length(crossNormal);
@@ -1337,7 +1342,7 @@ export function plotSurface(field: HeightField, uv: vec2, u: PlotUniforms, cache
   const flat = u.plotCenter + (uv - vec2(0.5)) * u.plotSpan;
   let hit: SurfaceHit = {point: vec3(flat.x, field(flat.x, flat.y), flat.y), depth: 0, valid: false};
   if (u.view3d != u32(0)) hit = surfaceHit(field, uv, u);
-  else hit.valid = abs(hit.point.y) < 1e18 && surfaceInside(flat, u);
+  else hit.valid = present(hit.point.y) && surfaceInside(flat, u);
   const material = surfaceMaterial(field, hit, u);
   let color = vec3(0.965, 0.973, 0.985), labels = vec3(0);
   let decor = vec4(0);
@@ -1357,7 +1362,7 @@ export function pickSurface(field: HeightField, position: vec4, u: PlotUniforms)
   const p = u.plotCenter + (uv - vec2(0.5)) * u.plotSpan;
   let hit: SurfaceHit = {point: vec3(p.x, field(p.x, p.y), p.y), depth: 0, valid: false};
   if (u.view3d != u32(0)) hit = surfaceHit(field, uv, u);
-  else hit.valid = abs(hit.point.y) < 1e18 && surfaceInside(p, u);
+  else hit.valid = present(hit.point.y) && surfaceInside(p, u);
   if (!hit.valid) return vec4u(0);
   return position.x < 1 ? vec4u(bitcast<vec3u>(hit.point), 1) : vec4u(bitcast<u32>(hit.point.y), 0, 0, 1);
 }
@@ -1365,7 +1370,7 @@ export function pickSurface(field: HeightField, position: vec4, u: PlotUniforms)
 function queryProjection(point: vec3, u: PlotUniforms): vec2 {
   return u.view3d == u32(0) ? ((point.xy-u.plotCenter)/u.plotSpan+vec2(0.5))*u.resolution : project(point,u);
 }
-function queryVisible(point: vec3, u: PlotUniforms): bool {return all(abs(point)<vec3(1e18))&&(u.view3d==u32(0)||inFront(point,u));}
+function queryVisible(point: vec3, u: PlotUniforms): bool {return presentPoint(point)&&(u.view3d==u32(0)||inFront(point,u));}
 /** One-pixel query: use the same domains, clipped dash bands and half intervals as rendering. */
 export function pickTrajectory(trajectory: SpaceCurve, position: vec4, u: PlotUniforms, scalar: bool, jumps: bool): vec4u {
   const pixel=query.pixel,focus=parameterFocus(trajectory,u);
@@ -1399,7 +1404,7 @@ export function pickTrajectory(trajectory: SpaceCurve, position: vec4, u: PlotUn
     for(let half=0;half<2;half++) {
       let start=half==0?low:middle,end=half==0?middle:high;
       let a=trajectory(start),b=trajectory(end);
-      if(!(all(abs(a)<vec3(1e18))&&all(abs(b)<vec3(1e18))))continue;
+      if(!(presentPoint(a)&&presentPoint(b)))continue;
       const frontA=u.view3d!=u32(2)||inFront(a,u),frontB=u.view3d!=u32(2)||inFront(b,u);
       if(!frontA&&!frontB)continue;
       if(frontA!=frontB) {
@@ -1412,7 +1417,7 @@ export function pickTrajectory(trajectory: SpaceCurve, position: vec4, u: PlotUn
         a=trajectory(start);b=trajectory(end);
       }
       const m=trajectory((start+end)*0.5);
-      if(!(all(abs(m)<vec3(1e18)))||(jumps&&length(m-(a+b)*0.5)>max(1e-6,length(b-a)*0.2)))continue;
+      if(!(presentPoint(m))||(jumps&&length(m-(a+b)*0.5)>max(1e-6,length(b-a)*0.2)))continue;
       const pa=queryProjection(a,u),pb=queryProjection(b,u),delta=pb-pa;
       const fraction=clamp(dot(pixel-pa,delta)/max(dot(delta,delta),1e-20),0,1);
       const wa=u.view3d==u32(0)?1:homogeneous(a,u,false).z,wb=u.view3d==u32(0)?1:homogeneous(b,u,false).z;
@@ -1496,7 +1501,7 @@ function referenceSceneHit(trajectory: SpaceCurve, pixel: vec2, u: PlotUniforms,
     }
     if (high >= low) {
       const a = trajectory(low), middle = trajectory(t), b = trajectory(high);
-      const finite = all(abs(a) < vec3(1e18)) && all(abs(middle) < vec3(1e18)) && all(abs(b) < vec3(1e18));
+      const finite = presentPoint(a) && presentPoint(middle) && presentPoint(b);
       if (finite) {
         let possible = true;
         if (inFront(a, u) && inFront(middle, u) && inFront(b, u)) {
