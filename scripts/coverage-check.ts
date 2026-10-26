@@ -7,7 +7,10 @@
 // closest-point search: domain edges with an infinite slope, both-sided edges,
 // unbounded values and a smooth control. See docs/verification.md.
 //
-// Run: npm run check:coverage [-- --precision f64] [-- --only <name>]
+// Run: npm run check:coverage [-- --only <name>]
+//
+// The shader runs as a correctly rounding f32 machine (precision "f32"), which
+// is what the GPU computes; the projection that places the truth uses f64.
 import path from "node:path";
 import { compile, compileModuleJs } from "typeshade";
 import { plotSource } from "../src/plot-source.js";
@@ -24,7 +27,7 @@ const option = (name: string) => {
   const at = args.indexOf(name);
   return at >= 0 ? args[at + 1] : undefined;
 };
-const precision = (option("--precision") ?? "f32") as "f32" | "f64";
+const precision = "f32";
 const only = option("--only");
 
 /** A callback with its exact JS twin. NaN marks the omitted domain. */
@@ -69,6 +72,16 @@ const callbacks: readonly Callback[] = [
     focus: [
       [1, 0],
       [0.05, Math.log(0.05)],
+      [1e-4, Math.log(1e-4)],
+    ],
+  },
+  {
+    name: "fast-sine",
+    body: "return sin(40 * x);",
+    exact: (x) => Math.sin(40 * x),
+    focus: [
+      [0, 0],
+      [Math.PI / 80, 1],
     ],
   },
   {
@@ -214,7 +227,7 @@ function truthSegments(
   box: [number, number, number, number],
 ): Segment[] {
   const segments: Segment[] = [];
-  const quantize = precision === "f32" ? Math.fround : (t: number) => t;
+  const quantize = Math.fround;
   const valid = (t: number) => Number.isFinite(callback.exact(quantize(t)));
   const at = (t: number) => project([quantize(t), callback.exact(quantize(t))]);
   const near = (a: Vec2, b: Vec2) => {
@@ -226,7 +239,7 @@ function truthSegments(
       Math.min(a[1], b[1]) <= box[3] + pad
     );
   };
-  // In f32 the shader can only evaluate f32 parameters, so the truth may not be
+  // The shader can only evaluate f32 parameters, so the truth may not be
   // finer: an edge bisects to the last valid f32 parameter, and parameters
   // closer than one f32 step are separate points, never joined by a chord.
   const edge = (inside: number, outside: number) => {
@@ -239,7 +252,6 @@ function truthSegments(
     return inside;
   };
   const separate = (a: number, b: number) => {
-    if (precision !== "f32") return false;
     const fa = Math.fround(a),
       fb = Math.fround(b),
       mid = Math.fround((fa + fb) / 2);
@@ -451,6 +463,6 @@ for (const failure of failures)
     `\n${failure.name} ("!" missing, "x" spurious, "~" f32 floor, "#" drawn, "+" truth only)\n${failure.map}`,
   );
 console.log(
-  `\n${cases - failures.length}/${cases} cases passed (${precision}) in ${((performance.now() - started) / 1000).toFixed(1)} s.`,
+  `\n${cases - failures.length}/${cases} cases passed in ${((performance.now() - started) / 1000).toFixed(1)} s.`,
 );
 if (failures.length) process.exitCode = 1;
