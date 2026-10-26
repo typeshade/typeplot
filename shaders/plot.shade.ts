@@ -247,7 +247,57 @@ function scalarField(sample: ScalarCurve, p: vec2, dx: vec2, dy: vec2, u: PlotUn
   const gapDistance = patternDistance(parameter, rate, u);
   // A discontinuity must not become an invented vertical connecting stroke.
   const continuous = !jumps || abs(value - (before + after) * 0.5) <= max(length(yGradient) * 2, abs(after - before) * 0.2);
-  return present(value) && present(slope) && continuous ? distanceCoverage(length(vec2(normalDistance, gapDistance)), u.appearance.z) : 0;
+  // The tangent line stands in for the graph only where the graph is close to
+  // straight across the stroke. Beside an omitted domain or on a steep branch,
+  // measure actual callback points with the projected query that 3D uses.
+  const steep = abs(slope) * length(xGradient) > length(yGradient) * 2;
+  const edge = !(present(value) && present(before) && present(after));
+  if (steep || edge) {
+    const reach = (u.appearance.z * 0.5 + pixelWidth()) / pixelWidth();
+    const reachX = reach * length(xGradient), reachY = reach * length(yGradient);
+    const left = sample(p.x - reachX), right = sample(p.x + reachX);
+    const near = present(value) || present(left) || present(right);
+    const omitted = !(present(value) && present(left) && present(right));
+    let low = 1e20, high = -1e20;
+    if (present(value)) { low = min(low, value); high = max(high, value); }
+    if (present(left)) { low = min(low, left); high = max(high, left); }
+    if (present(right)) { low = min(low, right); high = max(high, right); }
+    if (near && (omitted || (p.y >= low - reachY && p.y <= high + reachY))) return projectedScalarCoverage(sample, p, u, jumps);
+  }
+  if (!(present(value) && present(slope) && continuous)) return 0;
+  // Where the tangent line would draw, it must agree with the callback at its own
+  // foot point; near a sharp extremum the line overshoots the graph.
+  if (normalDistance <= u.appearance.z * 0.5 + pixelWidth()) {
+    const actual = sample(parameter);
+    if (!present(actual) || abs(actual - (value + slope * (parameter - p.x))) > length(yGradient) * 0.25) return projectedScalarCoverage(sample, p, u, jumps);
+  }
+  return distanceCoverage(length(vec2(normalDistance, gapDistance)), u.appearance.z);
+}
+
+/** 2D coverage from actual projected callback points, as in 3D. */
+function projectedScalarCoverage(sample: ScalarCurve, p: vec2, u: PlotUniforms, jumps: bool): f32 {
+  const pixel = ((p - u.plotCenter) / max(u.plotSpan, vec2(0.00001)) + 0.5) * plotSize(u.resolution);
+  return distanceCoverage(projectedScalarDistance(sample, pixel, flatView(u), jumps), u.appearance.z);
+}
+
+/** The orthographic front view whose projection equals the 2D plot mapping
+ * ((p - plotCenter) / plotSpan + 0.5) * size, so 2D can use the projected
+ * scalar query. The horizontal span absorbs the aspect ratio that 3D applies. */
+function flatView(u: PlotUniforms): PlotUniforms {
+  const size = plotSize(u.resolution);
+  const span = max(u.plotSpan, vec2(0.00001));
+  const identity = mat4(vec4(1, 0, 0, 0), vec4(0, 1, 0, 0), vec4(0, 0, 1, 0), vec4(0, 0, 0, 1));
+  return {
+    ...u,
+    plotSpan: vec2(span.x * size.y / size.x, span.y),
+    rotationBasis: vec4(0, 1, 0, 1),
+    plotPan: vec2(0),
+    cameraLens: vec2(1, 1),
+    plotCenterZ: 0,
+    view3d: u32(1),
+    model: identity,
+    inverseModel: identity,
+  };
 }
 
 /** Unbounded scalar field in two dimensions; the camera never sets a function domain. */
@@ -500,13 +550,14 @@ function scalarPointDistance(sample: ScalarCurve, pixel: vec2, t: f32, h: f32, u
 }
 
 /** Bisect a valid/omitted parameter pair to the last valid parameter: an actual
- * endpoint of the callback. It runs to f32 resolution, since a steep branch
+ * endpoint of the callback. It runs to the arithmetic's resolution, since a steep branch
  * (x^0.25 at zero) climbs several pixels between parameters 1e-6 apart. */
 function scalarDomainEdge(sample: ScalarCurve, inside: f32, outside: f32, u: PlotUniforms): f32 {
   let a = inside, b = outside;
   for (let step = 0; step < 64; step++) {
-    if (abs(b - a) <= max(abs(a), abs(b)) * 1.2e-7) break;
     const t = (a + b) * 0.5;
+    // No representable parameter is left between the two.
+    if (t == a || t == b) break;
     const value = sample(t);
     if (present(value) && inFront(vec3(t, value, 0), u)) a = t;
     else b = t;
