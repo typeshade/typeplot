@@ -522,7 +522,7 @@ function scalarFootprintDistance(sample: ScalarCurve, pixel: vec2, seed: f32, u:
   let previous = low;
   let previousValue = sample(previous);
   // A footprint wholly inside the omitted domain has no endpoint to find.
-  if (edge && abs(previousValue) >= 1e18 && abs(sample(high)) >= 1e18) return 1e20;
+  if (edge && !(abs(previousValue) < 1e18) && !(abs(sample(high)) < 1e18)) return 1e20;
   let previousWorld = vec3(previous, previousValue, 0);
   let previousSide = dot(project(previousWorld, u) - pixel, normal);
   for (let i = 1; i <= 8; i++) {
