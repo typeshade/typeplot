@@ -8,7 +8,8 @@ import type {
 } from "./render/snapshot.js";
 import {
   createRuntime,
-  type Resident,
+  type Buffer,
+  type f32,
   type Runtime,
   type Pack,
   type Texture,
@@ -79,7 +80,7 @@ function letters(
 }
 interface SampleResource {
   data: RenderSeries["data"];
-  points: Resident<Float32Array>;
+  points: Buffer<f32>;
   count: number;
   ordered: boolean;
   period: number;
@@ -110,7 +111,7 @@ export class GpuRenderer {
     {
       values: readonly number[];
       levels: string;
-      points: Resident<Float32Array>;
+      points: Buffer<f32>;
     }
   >();
   private destroyed = false;
@@ -417,7 +418,7 @@ export class GpuRenderer {
     this.samples.set(series.key, resource);
     return resource;
   }
-  private release(points: Resident<Float32Array>): void {
+  private release(points: Buffer<f32>): void {
     this.session.release(points);
   }
   private prune(scene: Scene): void {
@@ -438,7 +439,7 @@ export class GpuRenderer {
         this.fields.delete(field);
       }
   }
-  private fieldResource(field: RenderField): Resident<Float32Array> {
+  private fieldResource(field: RenderField): Buffer<f32> {
     const levels = JSON.stringify(field.options.levels),
       previous = this.fields.get(field.key);
     if (previous?.values === field.values && previous.levels === levels)
