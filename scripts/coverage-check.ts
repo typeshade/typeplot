@@ -94,7 +94,7 @@ const curves: readonly Curve[] = [
   ),
   scalar(
     "quarter-power",
-    "if (x < 0) { return 1e20; }\n  return pow(x, 0.25);",
+    "if (x < 0) { return 1e20; }\n  return x ** 0.25;",
     (x) => (x < 0 ? NaN : Math.pow(x, 0.25)),
     [[0, 0]],
   ),
