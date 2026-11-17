@@ -35,7 +35,8 @@ import { PlotControlHost } from "./controls.js";
 import { OpacityFade } from "./fade.js";
 import {
   createRuntime,
-  type Resident,
+  type Buffer,
+  type f32,
   type Pack,
   type Runtime,
   type Texture,
@@ -544,7 +545,7 @@ export async function createPlot(
   let candidates: Texture | undefined;
   let labels: Texture | undefined;
   let originResources: CurveOrigin | undefined;
-  const inputs: Record<string, Resident<Float32Array>> = Object.create(null);
+  const inputs: Record<string, Buffer<f32>> = Object.create(null);
   let inputGeneration = 0;
   let context: GPUCanvasContext | WebGL2RenderingContext | undefined;
   let controller: ReturnType<typeof createPlotInteraction> | undefined;
