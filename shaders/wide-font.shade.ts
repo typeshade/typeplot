@@ -11,7 +11,7 @@ function widePower(exponent: i32): f64 {
  * Widening an already-rounded f32 0.1 would preserve the wrong world phase. */
 export function wideGridSpacing(step: f32): f64 {
   const exponent = i32(floor(log2(max(step,1e-30))/log2(10)));
-  const multiplier = round(step/pow(10,f32(exponent)));
+  const multiplier = round(step/(10 ** f32(exponent)));
   return f64(multiplier)*widePower(exponent);
 }
 function wideDigit(value: f64, exponent: i32): i32 {

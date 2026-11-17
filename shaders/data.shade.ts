@@ -59,9 +59,9 @@ function dataTickLevels(lower: f32, span: f32, pixels: f32, logarithmic: f32, ho
   const rough = span * size * 4 / max(pixels, 1);
   let gap = size * 2.6;
   if (horizontal) {
-    const low = logarithmic > 0 ? pow(10, lower) : lower;
-    const high = logarithmic > 0 ? pow(10, lower + span) : lower + span;
-    const step = logarithmic > 0 ? max(low * (pow(10, min(rough, 20)) - 1), 1e-30) : rough;
+    const low = logarithmic > 0 ? 10 ** lower : lower;
+    const high = logarithmic > 0 ? 10 ** (lower + span) : lower + span;
+    const step = logarithmic > 0 ? max(low * (10 ** min(rough, 20) - 1), 1e-30) : rough;
     gap = max(size * 3.5, max(numberWidth(low, step, size), numberWidth(high, step, size)) + size * 1.3);
   }
   let raw = span * gap / max(pixels * u.labelStyle.y, 1);
@@ -100,8 +100,8 @@ function dataTickLevels(lower: f32, span: f32, pixels: f32, logarithmic: f32, ho
     if (u.layer > 0.5) {
       if (tick.x >= lo.x - 0.01 && tick.x <= hi.x + 0.01) {
         coverage = max(coverage, tickMark(p, vec2(tick.x, hi.y + 2.5), vec2(1, 0), 2.5, 1) * weights.x);
-        const n = u.logarithmic.x > 0 ? pow(10, nearest.x) : nearest.x;
-        const step = u.logarithmic.x > 0 ? max(n * (pow(10, xLevels.x) - 1), 1e-30) : xLevels.x;
+        const n = u.logarithmic.x > 0 ? 10 ** nearest.x : nearest.x;
+        const step = u.logarithmic.x > 0 ? max(n * (10 ** xLevels.x - 1), 1e-30) : xLevels.x;
         const width = numberWidth(n, step, u.labelStyle.x);
         const room = min(tick.x - width * 0.5 - 4, u.resolution.x - tick.x - width * 0.5 - 4);
         const fit = smoothstep(width + 6, width + 14, spacing.x / u.span.x * size.x);
@@ -111,8 +111,8 @@ function dataTickLevels(lower: f32, span: f32, pixels: f32, logarithmic: f32, ho
       }
       if (tick.y >= lo.y - 0.01 && tick.y <= hi.y + 0.01) {
         coverage = max(coverage, tickMark(p, vec2(lo.x - 2.5, tick.y), vec2(0, 1), 2.5, 1) * weights.y);
-        const n = u.logarithmic.y > 0 ? pow(10, nearest.y) : nearest.y;
-        const step = u.logarithmic.y > 0 ? max(n * (pow(10, yLevels.x) - 1), 1e-30) : yLevels.x;
+        const n = u.logarithmic.y > 0 ? 10 ** nearest.y : nearest.y;
+        const step = u.logarithmic.y > 0 ? max(n * (10 ** yLevels.x - 1), 1e-30) : yLevels.x;
         const width = numberWidth(n, step, u.labelStyle.x);
         const fit = smoothstep(u.labelStyle.x * 1.6, u.labelStyle.x * 2.2, spacing.y / u.span.y * size.y);
         const opacity = weights.y * fit * smoothstep(0, 5, lo.x - 13 - width);
@@ -159,7 +159,7 @@ function visibleDashPeriod(): f32 {
     rate = u.span.x / extent().x;
     if (u.logarithmic.x > 0) {
       // Use the visible data interval, not a distant full-dataset maximum.
-      const visibleMaximum = min(s.dataBounds.z, pow(10, u.lower.x + u.span.x));
+      const visibleMaximum = min(s.dataBounds.z, 10 ** (u.lower.x + u.span.x));
       rate *= max(visibleMaximum, 1e-30) * log(10);
       if (s.ordered != u32(0) && s.count >= u32(2)) {
         // Measure the actual projected source interval. Sparse samples interpolate
@@ -180,7 +180,7 @@ function visibleDashPeriod(): f32 {
   // Signed levels refine as well as coarsen. A zero floor would let one
   // magnified on-band fill the viewport and make a dashed line appear solid.
   const level = ceil(log2(max(rate * pixelPeriod / s.period, 1e-20)));
-  return max(s.period * pow(2, level), 1e-30);
+  return max(s.period * (2 ** level), 1e-30);
 }
 
 function pathDistance(p: vec2, a: vec2, b: vec2, parameters: vec2, period: f32): f32 {
@@ -255,9 +255,9 @@ function seriesHit(p: vec2, search: f32): DataHit {
   if (segmentKind && s.ordered > u32(0)) {
     const low = u.lower.x + (p.x-radius-76) / extent().x * u.span.x;
     const high = u.lower.x + (p.x+radius-76) / extent().x * u.span.x;
-    const left = lowerBound(u.logarithmic.x > 0 ? pow(10,low) : low);
+    const left = lowerBound(u.logarithmic.x > 0 ? 10 ** low : low);
     start = left > u32(0) ? left-u32(1) : u32(0);
-    end = min(end,lowerBound(u.logarithmic.x > 0 ? pow(10,high) : high));
+    end = min(end,lowerBound(u.logarithmic.x > 0 ? 10 ** high : high));
   }
   const period = visibleDashPeriod();
   for (let index = start; index < end; index++) {
@@ -281,12 +281,12 @@ function seriesHit(p: vec2, search: f32): DataHit {
       candidate = (s.marker > 0.5 ? max(q.x,q.y) : length(q))-s.width;
     } else if (s.kind == 2 || s.kind == 3) {
       const horizontal = s.kind == 3;
-      const baseline = horizontal ? (u.logarithmic.x > 0 && s.baseline <= 0 ? pow(10,u.lower.x) : s.baseline) : (u.logarithmic.y > 0 && s.baseline <= 0 ? pow(10,u.lower.y) : s.baseline);
+      const baseline = horizontal ? (u.logarithmic.x > 0 && s.baseline <= 0 ? 10 ** u.lower.x : s.baseline) : (u.logarithmic.y > 0 && s.baseline <= 0 ? 10 ** u.lower.y : s.baseline);
       const first = horizontal ? vec2(baseline,points[extra]) : vec2(points[extra],a.y);
       const last = horizontal ? vec2(a.x,points[extra+u32(1)]) : vec2(points[extra+u32(1)],baseline);
       if (validData(first) && validData(last)) candidate = boxDistance(p,pixelPoint(first),pixelPoint(last));
     } else if (s.kind == 5) {
-      const baseline = vec2(a.x,u.logarithmic.y > 0 && s.baseline <= 0 ? pow(10,u.lower.y) : s.baseline);
+      const baseline = vec2(a.x,u.logarithmic.y > 0 && s.baseline <= 0 ? 10 ** u.lower.y : s.baseline);
       if (validData(baseline)) candidate = segmentDistance(p,point,pixelPoint(baseline))-s.width*0.5;
     } else if (s.kind == 7) {
       const lowX=points[extra],lowY=points[extra+u32(2)];
@@ -366,7 +366,7 @@ function fieldAt(column: i32, row: i32): f32 {
 function fieldSample(pixel: vec2): FieldSample {
   const position = (pixel-vec2(76,42))/extent();
   const scaled = u.lower+vec2(position.x,1-position.y)*u.span;
-  const value = vec2(u.logarithmic.x>0?pow(10,scaled.x):scaled.x,u.logarithmic.y>0?pow(10,scaled.y):scaled.y);
+  const value = vec2(u.logarithmic.x>0?10 ** scaled.x:scaled.x,u.logarithmic.y>0?10 ** scaled.y:scaled.y);
   const fraction = (value-field.bounds.xy)/(field.bounds.zw-field.bounds.xy);
   let coordinate = fraction*vec2(f32(field.shape.y),f32(field.shape.x))-vec2(0.5);
   if(field.origin!=u32(0))coordinate.y=f32(field.shape.x)-1-coordinate.y;
