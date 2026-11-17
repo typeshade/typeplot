@@ -79,7 +79,7 @@
     "esbuild": "^0.25.0",
     "prettier": "^3.0.0",
     "typescript": "^5.9.3",
-    "typeshade": "https://github.com/typeshade/typeshade.git#f149b4039e061b2a925fe33aaaad6da3d7f372c9",
+    "typeshade": "https://github.com/typeshade/typeshade.git#e19d4c74ce622a94c0097ef76bf0c0dcc78ab07e",
     "vite": "^6.4.5",
     "wrangler": "^4.152.0"
   },
