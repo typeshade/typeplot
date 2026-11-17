@@ -1,11 +1,12 @@
 import { CurveOrigin, type OriginPacket } from "./origin.js";
 import { relativeFrame } from "./relative.js";
 import type {
+  Buffer,
+  f32,
   Frame,
   Pack,
   RenderPass,
   RenderPipeline,
-  Resident,
   Runtime,
   Texture,
 } from "typeshade/runtime";
@@ -136,9 +137,8 @@ export class SceneField implements SceneObjectHandle {
   private readonly manifest: Pack;
   private readonly inputNames: string[];
   private readonly data = new Map<string, Float32Array>();
-  private readonly inputs: Record<string, Resident<Float32Array>> =
-    Object.create(null);
-  private readonly retired = new Set<Resident<Float32Array>>();
+  private readonly inputs: Record<string, Buffer<f32>> = Object.create(null);
+  private readonly retired = new Set<Buffer<f32>>();
   private values: Record<string, number>;
   private curveDomain: readonly [number, number];
   private search: ReturnType<typeof quality>;

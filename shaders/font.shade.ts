@@ -91,12 +91,12 @@ function numberFormat(input: f32, spacing: f32): NumberFormat {
   let digits: i32 = 1;
   if (scientific) {
     decimals = i32(clamp(ceil(f32(exponent) - log2(max(abs(spacing), 1e-30)) / log2(10)), 0, 6));
-    const scale = pow(10, f32(decimals));
-    magnitude = floor(magnitude / pow(10, f32(exponent)) * scale + 0.5);
+    const scale = 10 ** f32(decimals);
+    magnitude = floor(magnitude / (10 ** f32(exponent)) * scale + 0.5);
     if (magnitude >= 10 * scale) { magnitude = scale; exponent = exponent + 1; }
   } else {
-    magnitude = floor(magnitude * pow(10, f32(decimals)) + 0.5);
-    digits = i32(floor(log2(max(floor(magnitude / pow(10, f32(decimals))), 1)) / log2(10))) + 1;
+    magnitude = floor(magnitude * (10 ** f32(decimals)) + 0.5);
+    digits = i32(floor(log2(max(floor(magnitude / (10 ** f32(decimals))), 1)) / log2(10))) + 1;
   }
   for (let i = 0; i < 6; i++) {
     if (decimals > 0 && abs(magnitude - floor(magnitude / 10) * 10) < 0.01) {
@@ -119,7 +119,7 @@ function numberGlyph(n: NumberFormat, column: i32): i32 {
     if (i < mantissaLength) {
       if (n.decimals > 0 && i == 1) return 46;
       const digit = i - (i > 1 ? i32(1) : i32(0));
-      return 48 + i32(floor(n.value / pow(10, f32(n.decimals - digit)))) % 10;
+      return 48 + i32(floor(n.value / (10 ** f32(n.decimals - digit)))) % 10;
     }
     const suffix = i - mantissaLength;
     if (suffix == 0) return 101;
@@ -129,7 +129,7 @@ function numberGlyph(n: NumberFormat, column: i32): i32 {
   }
   if (n.decimals > 0 && i == n.digits) return 46;
   const digit = i - (i > n.digits ? i32(1) : i32(0));
-  return 48 + i32(floor(n.value / pow(10, f32(n.digits + n.decimals - digit - 1)))) % 10;
+  return 48 + i32(floor(n.value / (10 ** f32(n.digits + n.decimals - digit - 1)))) % 10;
 }
 
 /** Keep full SDF padding at character boundaries, as X-GIS glyph slots do.
@@ -168,7 +168,7 @@ export function numberWidth(value: f32, spacing: f32, size: f32): f32 {
  * Intermediate ticks fade as a continuous function of scale, without camera lag. */
 export function tickLevels(raw: f32): vec3 {
   const safe = max(raw, 1e-25);
-  const unit = pow(10, floor(log2(safe) / log2(10)));
+  const unit = 10 ** floor(log2(safe) / log2(10));
   const fine = safe < unit * 2 ? unit : safe < unit * 5 ? unit * 2 : unit * 5;
   const coarse = safe < unit * 2 ? unit * 2 : safe < unit * 5 ? unit * 5 : unit * 10;
   const phase = log2(safe / fine) / log2(coarse / fine);

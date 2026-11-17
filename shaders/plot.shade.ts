@@ -721,7 +721,7 @@ function refineTrajectoryHit(trajectory: SpaceCurve, pixel: vec2, candidate: vec
     let world = trajectory(next);
     let projected = project(world, u);
     const error = dot(at - pixel, at - pixel);
-    if (!jumps && presentPoint(atWorld) && inFront(atWorld, u) && error <= pow(max(0, u.appearance.z * 0.5 - pixelWidth() * 0.5), 2)) return vec2(sqrt(error), t);
+    if (!jumps && presentPoint(atWorld) && inFront(atWorld, u) && error <= max(0, u.appearance.z * 0.5 - pixelWidth() * 0.5) ** 2) return vec2(sqrt(error), t);
     if (!(presentPoint(world) && inFront(world, u) && dot(projected - pixel, projected - pixel) <= error)) {
       next = (t + next) * 0.5;
       world = trajectory(next);
@@ -870,7 +870,7 @@ function parameterFocus(trajectory: SpaceCurve, u: PlotUniforms): vec2 {
   const seed = u.parameterFocusSeed;
   const seedPoint = trajectory(seed);
   for (let level = 0; level < 8; level++) {
-    const radius = pow(4,f32(level));
+    const radius = 4 ** f32(level);
     let lowT = seed - radius, highT = seed + radius;
     let a = trajectory(lowT), b = trajectory(highT);
     if (!presentPoint(a) && presentPoint(b) && presentPoint(seedPoint)) { lowT = seed; a = seedPoint; }
@@ -1482,7 +1482,7 @@ function surfaceMaterial(field: HeightField, hit: SurfaceHit, u: PlotUniforms): 
       let normal = normalLength > 1e-12 ? crossNormal / normalLength : vec3(0, 0, 1);
       if (normal.z < 0) normal = -normal;
       const diffuse = max(0, dot(normal, normalize(vec3(-0.4, 0.7, 1))));
-      const specular = pow(max(0, dot(normal, normalize(vec3(-0.2, 0.35, 1)))), 32) * 0.16;
+      const specular = max(0, dot(normal, normalize(vec3(-0.2, 0.35, 1)))) ** 32 * 0.16;
       ink = ink * (0.4 + diffuse * 0.6) + vec3(specular);
     }
     const lines = max((u.surfaceFlags & u32(2)) != u32(0) ? wire : 0, (u.surfaceFlags & u32(4)) != u32(0) ? contours : 0);

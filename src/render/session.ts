@@ -1,9 +1,10 @@
 import {
+  array as hostArray,
   createDevice,
-  resident,
+  type Buffer,
   type Device,
+  type f32,
   type Frame,
-  type Resident,
   type Runtime,
 } from "typeshade/runtime";
 import { GpuCompletion } from "../gpu-completion.js";
@@ -13,7 +14,7 @@ import { WorkScope } from "./lifetime.js";
 export class RenderSession {
   private readonly scope = new WorkScope();
   private readonly completion: GpuCompletion;
-  private readonly arrays = new Set<Resident<unknown>>();
+  private readonly arrays = new Set<Buffer<f32>>();
   private device?: Device;
   private preparing?: Promise<void>;
   private retirement?: Promise<void>;
@@ -39,20 +40,20 @@ export class RenderSession {
       });
     return this.preparing;
   }
-  array<T>(value: T): Resident<T> {
+  array(value: Float32Array): Buffer<f32> {
     this.scope.assertOpen();
     if (this.runtime.tier === "webgpu" && !this.device)
       throw new Error(
         "Prepare the session's data owner before allocating resident inputs.",
       );
-    const handle = this.device ? this.device.array(value) : resident(value);
+    const handle = this.device ? this.device.array(value) : hostArray(value);
     this.arrays.add(handle);
     return handle;
   }
-  release(handle: Resident<unknown>): void {
+  release(handle: Buffer<f32>): void {
     if (!this.arrays.delete(handle)) return;
     if (this.device) this.device.release(handle);
-    else handle.destroy();
+    else handle.dispose();
   }
   present(frame: Frame): Promise<void> {
     return this.run(async () => {
