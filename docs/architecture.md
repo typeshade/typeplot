@@ -2,7 +2,7 @@
 
 The implementation baseline is TypeShade `e19d4c74ce622a94c0097ef76bf0c0dcc78ab07e`,
 the revision in package.json. Capability claims below come from that revision's public
-runtime, device, resident and fuse sources, not from design-direction documents.
+runtime, device, resource and fuse sources, not from design-direction documents.
 
 ## Responsibilities
 
@@ -11,8 +11,8 @@ runtime, device, resident and fuse sources, not from design-direction documents.
 | Named shader functions/classes, typed IR, WGSL/GLSL emission and reflected layouts              | Mathematical plot semantics, supported callback contracts and build-time artifacts.                 |
 | Runtime.load, Program.render and normalized pipeline caching                                    | Select named stages and bind scene snapshots; retain resolved handles for their use.                |
 | Runtime.frame, render/compute passes, attachments, viewport/scissor, depth/stencil and blending | Describe the passes a plot needs and the intended composition. Respect tier refusals.               |
-| Runtime.texture, texture readback, resident bindings                                            | Own plot-created textures and semantic caches; explicitly retire them before closing their runtime. |
-| Device.array/release, pooling, wait/dispose and device-loss information                         | Give resident observations one owner and keep them resident across camera/style changes.            |
+| Runtime.texture, texture readback, Buffer bindings                                              | Own plot-created textures and semantic caches; explicitly retire them before closing their runtime. |
+| array and Device.array/release (Buffer), pooling, wait/dispose and device-loss information      | Give resident observations one owner and keep them resident across camera/style changes.            |
 | Device.fuse, scratch storage, reports and time-budgeted kernel chunks                           | Supply real compatible kernel chains when data work needs them, and inspect reports.                |
 | CPU evaluation and emulated f64 kernels                                                         | Verify mathematical operations and choose precision deliberately at data/projection boundaries.     |
 
@@ -20,7 +20,8 @@ Public source references at the pinned revision:
 [runtime](https://github.com/typeshade/typeshade/blob/e19d4c74ce622a94c0097ef76bf0c0dcc78ab07e/src/runtime/runtime.ts),
 [render state and pipelines](https://github.com/typeshade/typeshade/blob/e19d4c74ce622a94c0097ef76bf0c0dcc78ab07e/src/runtime/program.ts),
 [device](https://github.com/typeshade/typeshade/blob/e19d4c74ce622a94c0097ef76bf0c0dcc78ab07e/src/runtime/device.ts),
-[resident values](https://github.com/typeshade/typeshade/blob/e19d4c74ce622a94c0097ef76bf0c0dcc78ab07e/src/core/resident.ts),
+[resources and Buffer](https://github.com/typeshade/typeshade/blob/e19d4c74ce622a94c0097ef76bf0c0dcc78ab07e/src/runtime/resource.ts),
+[Buffer of scalars](https://github.com/typeshade/typeshade/blob/e19d4c74ce622a94c0097ef76bf0c0dcc78ab07e/src/core/resident.ts),
 [fuse](https://github.com/typeshade/typeshade/blob/e19d4c74ce622a94c0097ef76bf0c0dcc78ab07e/src/fuse.ts).
 
 The compiler remains a Node/build-time dependency. A browser consumes compiled programs.
@@ -59,7 +60,7 @@ and an idle plot creates no continuing animation loop.
 A render session borrows its Runtime's device for resident computation on WebGPU, tracks
 asynchronous preparation/readback, and retires plot resources before disposing Device and
 Runtime. The current TypeShade API rejects createDevice({ runtime }) on WebGL2; that tier
-uses resident handles bound by its render runtime, without process-global configure calls.
+uses `array(xs)` Buffers bound by its render runtime, without process-global configure calls.
 Plot-created texture handles need explicit destruction, especially with borrowed contexts.
 
 ## Computation and rendering
